@@ -1,0 +1,212 @@
+@import "tailwindcss";
+
+/* ═══════════════════════════════════════════════════════════════════
+   Prodo Design System — Single Source of Truth
+   All tokens defined here, consumed via Tailwind utilities.
+   Never hardcode a color, radius, or shadow value in a component.
+   ═══════════════════════════════════════════════════════════════════ */
+
+@theme inline {
+  --font-sans: var(--font-geist);
+  --font-mono: var(--font-geist-mono);
+}
+
+/* ─── Color Tokens ─────────────────────────────────────────────── */
+
+:root {
+  /* Primary — VS Code blue, used for buttons + active states only */
+  --color-primary: #0078D4;
+  --color-primary-hover: #106EBE;
+  --color-primary-active: #005A9E;
+  --color-primary-subtle: rgba(0, 120, 212, 0.08);
+  --color-primary-border: rgba(0, 120, 212, 0.24);
+
+  /* Backgrounds — layered, never all-white */
+  --color-page: #F5F6F8;
+  --color-surface: #FFFFFF;
+  --color-surface-raised: #FFFFFF;
+  --color-surface-sunken: #EDEEF1;
+  --color-surface-hover: #F0F1F4;
+
+  /* Sidebar */
+  --color-sidebar: #1E1E2D;
+  --color-sidebar-hover: #2A2A3D;
+  --color-sidebar-active: rgba(0, 120, 212, 0.18);
+  --color-sidebar-text: #A2A3B7;
+  --color-sidebar-text-active: #FFFFFF;
+
+  /* Borders */
+  --color-border: #DCDFE4;
+  --color-border-strong: #C4C7CE;
+  --color-border-subtle: #ECEDF0;
+
+  /* Text */
+  --color-text: #1A1D26;
+  --color-text-muted: #5E6270;
+  --color-text-secondary: #8B8FA2;
+  --color-text-disabled: #B0B3C0;
+  --color-text-on-primary: #FFFFFF;
+
+  /* Semantic */
+  --color-success: #18A058;
+  --color-success-bg: rgba(24, 160, 88, 0.10);
+  --color-success-border: rgba(24, 160, 88, 0.30);
+
+  --color-danger: #E5484D;
+  --color-danger-bg: rgba(229, 72, 77, 0.08);
+  --color-danger-border: rgba(229, 72, 77, 0.24);
+
+  --color-warning: #E8A317;
+  --color-warning-bg: rgba(232, 163, 23, 0.10);
+  --color-warning-border: rgba(232, 163, 23, 0.30);
+
+  --color-info: #3B82F6;
+  --color-info-bg: rgba(59, 130, 246, 0.08);
+  --color-info-border: rgba(59, 130, 246, 0.24);
+
+  /* Radius */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-full: 9999px;
+
+  /* Shadows — layered for depth */
+  --shadow-xs: 0 1px 2px rgba(16, 24, 40, 0.05);
+  --shadow-sm: 0 1px 3px rgba(16, 24, 40, 0.06), 0 1px 2px rgba(16, 24, 40, 0.04);
+  --shadow-md: 0 4px 8px -2px rgba(16, 24, 40, 0.06), 0 2px 4px -2px rgba(16, 24, 40, 0.04);
+  --shadow-lg: 0 12px 24px -4px rgba(16, 24, 40, 0.08), 0 4px 8px -2px rgba(16, 24, 40, 0.04);
+  --shadow-xl: 0 24px 48px -12px rgba(16, 24, 40, 0.12);
+
+  /* Layout */
+  --sidebar-width: 240px;
+  --navbar-height: 56px;
+
+  /* Transitions */
+  --transition-fast: 120ms ease;
+  --transition-normal: 200ms ease;
+}
+
+/* ─── Base Reset ───────────────────────────────────────────────── */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  background: var(--color-page);
+  color: var(--color-text);
+  font-family: var(--font-sans), system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* ─── Utility Classes (hand-written, unlayered — wins over Tailwind) ── */
+
+/* Backgrounds */
+.bg-page { background-color: var(--color-page); }
+.bg-surface { background-color: var(--color-surface); }
+.bg-surface-raised { background-color: var(--color-surface-raised); }
+.bg-surface-sunken { background-color: var(--color-surface-sunken); }
+.bg-surface-hover { background-color: var(--color-surface-hover); }
+.bg-sidebar { background-color: var(--color-sidebar); }
+.bg-primary { background-color: var(--color-primary); }
+.bg-primary-subtle { background-color: var(--color-primary-subtle); }
+.bg-success { background-color: var(--color-success); }
+.bg-success-bg { background-color: var(--color-success-bg); }
+.bg-danger { background-color: var(--color-danger); }
+.bg-danger-bg { background-color: var(--color-danger-bg); }
+.bg-warning-bg { background-color: var(--color-warning-bg); }
+.bg-info-bg { background-color: var(--color-info-bg); }
+
+/* Text */
+.text-primary { color: var(--color-primary); }
+.text-text { color: var(--color-text); }
+.text-muted { color: var(--color-text-muted); }
+.text-secondary { color: var(--color-text-secondary); }
+.text-disabled { color: var(--color-text-disabled); }
+.text-on-primary { color: var(--color-text-on-primary); }
+.text-success { color: var(--color-success); }
+.text-danger { color: var(--color-danger); }
+.text-warning { color: var(--color-warning); }
+.text-info { color: var(--color-info); }
+.text-sidebar { color: var(--color-sidebar-text); }
+.text-sidebar-active { color: var(--color-sidebar-text-active); }
+
+/* Borders */
+.border-default { border-color: var(--color-border); }
+.border-strong { border-color: var(--color-border-strong); }
+.border-subtle { border-color: var(--color-border-subtle); }
+.border-primary { border-color: var(--color-primary); }
+.border-danger { border-color: var(--color-danger); }
+.border-success { border-color: var(--color-success); }
+
+/* Radius */
+.rounded-sm { border-radius: var(--radius-sm); }
+.rounded-md { border-radius: var(--radius-md); }
+.rounded-lg { border-radius: var(--radius-lg); }
+.rounded-xl { border-radius: var(--radius-xl); }
+
+/* Shadows */
+.shadow-xs { box-shadow: var(--shadow-xs); }
+.shadow-sm { box-shadow: var(--shadow-sm); }
+.shadow-md { box-shadow: var(--shadow-md); }
+.shadow-lg { box-shadow: var(--shadow-lg); }
+.shadow-xl { box-shadow: var(--shadow-xl); }
+
+/* ─── Focus Ring ───────────────────────────────────────────────── */
+
+.focus-ring:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-surface), 0 0 0 4px var(--color-primary);
+}
+
+/* ─── Form Resets ──────────────────────────────────────────────── */
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  background: none;
+  padding: 0;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* ─── Scrollbar ────────────────────────────────────────────────── */
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: var(--radius-full);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-border-strong);
+}

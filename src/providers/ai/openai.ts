@@ -1,0 +1,34 @@
+import OpenAI from "openai";
+import { env } from "@/config/env";
+
+let client: OpenAI | null = null;
+
+function getClient() {
+  if (!client) {
+    if (!env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY is not set");
+    client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+  }
+  return client;
+}
+
+export async function generateText(
+  prompt: string,
+  systemPrompt?: string,
+  temperature = 0.7
+): Promise<string> {
+  const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [];
+  if (systemPrompt) messages.push({ role: "system", content: systemPrompt });
+  messages.push({ role: "user", content: prompt });
+
+  const completion = await getClient().chat.completions.create({
+    model: "gpt-4o",
+    messages,
+    temperature,
+  });
+  return completion.choices[0]?.message?.content || "";
+}
+
+export function parseJsonResponse(text: string): any {
+  const cleaned = text.replace(/```json\n?|\n?```/g, "").trim();
+  return JSON.parse(cleaned);
+}
