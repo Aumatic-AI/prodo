@@ -62,7 +62,7 @@ export function CreatePostPage() {
 
     await createPost.mutateAsync({
       media_id: mediaId,
-      publish_at: when === "schedule" ? scheduleDate || null : null,
+      publish_at: when === "schedule" ? (scheduleDate ? scheduleDate.toISOString() : null) : null,
       targets,
     });
     router.push("/posts");
@@ -168,7 +168,7 @@ export function CreatePostPage() {
         <div className="space-y-6">
           <div className="bg-surface rounded-xl border border-default shadow-xs p-5">
             <h3 className="text-sm font-semibold text-text mb-4">When</h3>
-            <div className="space-y-2">
+            <div className="space-y-2.5">
               {([
                 { value: "now", label: "Publish now", icon: Send },
                 { value: "schedule", label: "Schedule", icon: Clock },
@@ -178,23 +178,23 @@ export function CreatePostPage() {
                   key={value}
                   onClick={() => setWhen(value)}
                   className={cn(
-                    "flex items-center gap-3 w-full px-4 py-3 rounded-lg border text-left transition-colors",
+                    "flex items-center gap-3 w-full px-4 py-3.5 rounded-lg border text-left transition-colors",
                     when === value
                       ? "border-primary bg-primary-subtle"
                       : "border-default hover:bg-surface-hover"
                   )}
                 >
-                  <Icon className="w-4 h-4 text-muted" />
+                  <Icon className="w-4 h-4 text-muted shrink-0" />
                   <span className="text-sm font-medium text-text">{label}</span>
                 </button>
               ))}
             </div>
             {when === "schedule" && (
-              <input
-                type="datetime-local"
+              <DateTimePicker
                 value={scheduleDate}
-                onChange={(e) => setScheduleDate(e.target.value)}
-                className="mt-3 w-full h-10 px-3 text-sm rounded-lg border border-default bg-page text-text"
+                onChange={setScheduleDate}
+                minDate={new Date()}
+                className="mt-3"
               />
             )}
           </div>
