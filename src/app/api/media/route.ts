@@ -33,6 +33,7 @@ export const POST = apiHandler(async (req: NextRequest) => {
     video_type: body.video_type,
     language: body.language,
     product: body.product,
+    reference_image_key: body.reference_image_key,
   });
 
   if (!isText) {

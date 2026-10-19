@@ -21,26 +21,23 @@ export function MediaDetailModal({ media, mediaUrl, onClose, onCreatePost, onDel
       <div className="relative w-full max-w-3xl max-h-[90vh] bg-surface rounded-xl shadow-xl overflow-hidden flex flex-col">
         {/* Top bar */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-default shrink-0">
-          <Button size="sm" onClick={onCreatePost}>
-            <Send className="w-3.5 h-3.5" />
-            Create post
-          </Button>
-          <div className="flex items-center gap-1">
-            <button
-              onClick={onDelete}
-              className="p-2 text-muted hover:text-danger transition-colors"
-              title="Delete"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
-            <button
-              onClick={onClose}
-              className="p-2 text-muted hover:text-text transition-colors"
-              title="Close"
-            >
-              <X className="w-4 h-4" />
-            </button>
+          <div className="flex items-center gap-2">
+            <Button size="sm" onClick={onCreatePost}>
+              <Send className="w-3.5 h-3.5" />
+              Create post
+            </Button>
+            <Button size="sm" variant="danger" onClick={onDelete}>
+              <Trash2 className="w-3.5 h-3.5" />
+              Delete
+            </Button>
           </div>
+          <button
+            onClick={onClose}
+            className="p-2 text-muted hover:text-text transition-colors"
+            title="Close"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
 
         {/* Media */}

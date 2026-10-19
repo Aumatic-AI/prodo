@@ -2,12 +2,13 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 const BUCKET = "media";
 
-export function storageKeyFor(type: "image" | "video" | "logo", id: string): string {
+export function storageKeyFor(type: "image" | "video" | "logo" | "reference", id: string): string {
   const now = new Date();
   const year = now.getFullYear();
   const month = String(now.getMonth() + 1).padStart(2, "0");
   const ext = type === "video" ? "mp4" : "png";
   if (type === "logo") return `logo/${Date.now()}.png`;
+  if (type === "reference") return `reference/${Date.now()}.png`;
   return `${type}s/${year}/${month}/${id}.${ext}`;
 }
 

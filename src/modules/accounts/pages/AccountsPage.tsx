@@ -11,8 +11,8 @@ import { Plus, Users } from "lucide-react";
 export function AccountsPage() {
   const { data: accounts, isLoading, error, refetch } = useAccounts();
 
-  async function handleConnect() {
-    // TODO: call /api/accounts/connect to get a connect URL, then window.open it
+  function handleConnect() {
+    window.open("https://app.upload-post.com", "_blank", "noopener,noreferrer");
   }
 
   return (

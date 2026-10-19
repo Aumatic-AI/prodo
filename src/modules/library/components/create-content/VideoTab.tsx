@@ -7,9 +7,10 @@ import { Dropdown } from "@/components/ui/Dropdown";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { Tabs } from "@/components/ui/Tabs";
 import { VoiceExplorerModal } from "@/components/global/VoiceExplorerModal";
-import { useGenerateMedia } from "../../hooks/useMedia";
+import { useGenerateMedia, useUploadReferenceImage } from "../../hooks/useMedia";
 import { useProfile } from "@/modules/settings/hooks/useProfile";
 import { IdeaField } from "./IdeaField";
+import { ReferenceImagePicker } from "./ReferenceImagePicker";
 import {
   ASPECT_RATIOS,
   DURATIONS,
@@ -33,9 +34,18 @@ export function VideoTab({ onSuccess }: { onSuccess: () => void }) {
   const [videoType, setVideoType] = useState("promotional");
   const [language, setLanguage] = useState("en");
   const [showVoiceModal, setShowVoiceModal] = useState(false);
+  const [refFile, setRefFile] = useState<File | null>(null);
+  const [refPreview, setRefPreview] = useState<string | null>(null);
 
   const generate = useGenerateMedia();
+  const uploadRef = useUploadReferenceImage();
   const { data: profile } = useProfile();
+
+  function handleRefSelect(file: File | null) {
+    if (refPreview) URL.revokeObjectURL(refPreview);
+    setRefFile(file);
+    setRefPreview(file ? URL.createObjectURL(file) : null);
+  }
 
   const products: { value: string; label: string }[] = (profile as any)?.products
     ? (profile as any).products.map((p: any) => ({ value: typeof p === "string" ? p : p.name, label: typeof p === "string" ? p : p.name }))
@@ -44,6 +54,12 @@ export function VideoTab({ onSuccess }: { onSuccess: () => void }) {
   const resolvedProduct = product === "__other__" ? customProduct : product;
 
   async function handleCreate() {
+    let referenceImageKey: string | undefined;
+    if (refFile) {
+      const result = await uploadRef.mutateAsync(refFile);
+      referenceImageKey = result.key;
+    }
+
     await generate.mutateAsync({
       type: "video",
       idea,
@@ -56,6 +72,7 @@ export function VideoTab({ onSuccess }: { onSuccess: () => void }) {
       character,
       video_type: videoType,
       language,
+      reference_image_key: referenceImageKey,
     });
     onSuccess();
   }
@@ -154,18 +171,26 @@ export function VideoTab({ onSuccess }: { onSuccess: () => void }) {
         />
       </div>
 
+      <ReferenceImagePicker
+        preview={refPreview}
+        onSelect={handleRefSelect}
+        hint="Upload a product or person photo to keep it consistent across every scene."
+      />
+
       <div className="flex justify-end gap-3 pt-2">
         <Button
           onClick={handleCreate}
-          loading={generate.isPending}
-          disabled={!idea.trim() || !resolvedProduct.trim()}
+          loading={uploadRef.isPending || generate.isPending}
+          disabled={!idea.trim() || !resolvedProduct.trim() || uploadRef.isPending || generate.isPending}
         >
           Generate Video
         </Button>
       </div>
 
-      {generate.error && (
-        <p className="text-sm text-danger bg-danger-bg rounded-lg px-3 py-2">{generate.error.message}</p>
+      {(uploadRef.error || generate.error) && (
+        <p className="text-sm text-danger bg-danger-bg rounded-lg px-3 py-2">
+          {uploadRef.error?.message || generate.error?.message}
+        </p>
       )}
 
       <VoiceExplorerModal

@@ -86,27 +86,33 @@ export function ProfileForm() {
   return (
     <>
       <div className="space-y-6 max-w-xl">
-        <LogoPicker
-          currentUrl={logoUrl}
-          previewUrl={logoPreview}
-          onSelect={handleLogoSelect}
-        />
+        <div className="flex gap-6 items-start">
+          <div className="w-44 shrink-0">
+            <LogoPicker
+              currentUrl={logoUrl}
+              previewUrl={logoPreview}
+              onSelect={handleLogoSelect}
+            />
+          </div>
 
-        <Input
-          id="name"
-          label="Business name"
-          value={form.name}
-          onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-          placeholder="Your business name"
-        />
+          <div className="flex-1 space-y-4">
+            <Input
+              id="name"
+              label="Business name"
+              value={form.name}
+              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+              placeholder="Your business name"
+            />
 
-        <Input
-          id="website"
-          label="Website"
-          value={form.website}
-          onChange={(e) => setForm((f) => ({ ...f, website: e.target.value }))}
-          placeholder="https://example.com"
-        />
+            <Input
+              id="website"
+              label="Website"
+              value={form.website}
+              onChange={(e) => setForm((f) => ({ ...f, website: e.target.value }))}
+              placeholder="https://example.com"
+            />
+          </div>
+        </div>
 
         <Textarea
           id="about"

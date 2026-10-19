@@ -1,10 +1,39 @@
 "use client";
 
+import { useState } from "react";
 import { ProfileForm } from "../components/ProfileForm";
 import { AccountsSection } from "../components/AccountsSection";
 import { ProductsEditor } from "../components/ProductsEditor";
+import { cn } from "@/lib/utils";
+import { Building2, Package, Users } from "lucide-react";
+
+const TABS = [
+  {
+    value: "profile",
+    label: "Business profile",
+    icon: Building2,
+    description: "This information helps AI write better content for your brand.",
+  },
+  {
+    value: "products",
+    label: "Products",
+    icon: Package,
+    description: "Products and services you offer. These appear as options when creating video content.",
+  },
+  {
+    value: "accounts",
+    label: "Connected accounts",
+    icon: Users,
+    description: "Social accounts connected via Upload-Post. Manage connections from the publishing dashboard.",
+  },
+] as const;
+
+type TabValue = (typeof TABS)[number]["value"];
 
 export function SettingsPage() {
+  const [tab, setTab] = useState<TabValue>("profile");
+  const active = TABS.find((t) => t.value === tab)!;
+
   return (
     <div>
       <div className="mb-8">
@@ -14,44 +43,51 @@ export function SettingsPage() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-x-10 gap-y-8">
-        {/* Profile section */}
-        <div className="pt-6">
-          <h2 className="text-sm font-semibold text-text">Business profile</h2>
-          <p className="mt-1 text-xs text-muted leading-relaxed">
-            This information helps AI write better content for your brand.
-          </p>
-        </div>
-        <div className="bg-surface rounded-xl border border-default shadow-xs p-6">
-          <ProfileForm />
-        </div>
+      <div className="grid grid-cols-1 lg:grid-cols-[220px_1fr] gap-8">
+        {/* Sidebar */}
+        <nav className="flex lg:flex-col gap-1">
+          {TABS.map((t) => {
+            const Icon = t.icon;
+            const isActive = tab === t.value;
+            return (
+              <button
+                key={t.value}
+                onClick={() => setTab(t.value)}
+                className={cn(
+                  "flex items-center gap-2.5 rounded-lg text-sm font-medium text-left transition-colors",
+                  isActive
+                    ? "bg-primary text-on-primary"
+                    : "text-muted hover:bg-surface-hover hover:text-text"
+                )}
+                style={{ padding: "10px 14px" }}
+              >
+                <Icon className="w-4 h-4 shrink-0" />
+                {t.label}
+              </button>
+            );
+          })}
+        </nav>
 
-        {/* Divider */}
-        <div className="hidden lg:block border-b border-default col-span-full" />
-
-        {/* Products section */}
-        <div className="pt-6">
-          <h2 className="text-sm font-semibold text-text">Products</h2>
-          <p className="mt-1 text-xs text-muted leading-relaxed">
-            Products and services you offer. These appear as options when creating video content.
-          </p>
-        </div>
-        <div className="bg-surface rounded-xl border border-default shadow-xs p-6">
-          <ProductsEditor />
-        </div>
-
-        {/* Divider */}
-        <div className="hidden lg:block border-b border-default col-span-full" />
-
-        {/* Accounts section */}
-        <div className="pt-6">
-          <h2 className="text-sm font-semibold text-text">Connected accounts</h2>
-          <p className="mt-1 text-xs text-muted leading-relaxed">
-            Social accounts connected via Upload-Post. Manage connections from the publishing dashboard.
-          </p>
-        </div>
+        {/* Content */}
         <div>
-          <AccountsSection />
+          <div className="mb-5">
+            <h2 className="text-sm font-semibold text-text">{active.label}</h2>
+            <p className="mt-1 text-xs text-muted leading-relaxed">{active.description}</p>
+          </div>
+
+          {tab === "profile" && (
+            <div className="bg-surface rounded-xl border border-default shadow-xs p-6">
+              <ProfileForm />
+            </div>
+          )}
+
+          {tab === "products" && (
+            <div className="bg-surface rounded-xl border border-default shadow-xs p-6">
+              <ProductsEditor />
+            </div>
+          )}
+
+          {tab === "accounts" && <AccountsSection />}
         </div>
       </div>
     </div>

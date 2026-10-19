@@ -9,19 +9,32 @@ function getKey() {
 
 export async function createImageTask(
   prompt: string,
-  imageSize: "9:16" | "4:5" | "16:9" | "1:1" = "4:5"
+  imageSize: "9:16" | "4:5" | "16:9" | "1:1" = "4:5",
+  referenceImageUrls?: string[],
 ): Promise<string> {
+  const input: Record<string, any> = {
+    prompt,
+    output_format: "png",
+    image_size: imageSize,
+  };
+  if (referenceImageUrls && referenceImageUrls.length > 0) input.image_urls = referenceImageUrls;
   const res = await fetch(`${API_BASE}/createTask`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${getKey()}` },
-    body: JSON.stringify({
-      model: "google/nano-banana",
-      input: { prompt, output_format: "png", image_size: imageSize },
-    }),
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${getKey()}`,
+    },
+    body: JSON.stringify({ model: "google/nano-banana", input }),
   });
   if (!res.ok) throw new Error(`Kie API error: ${await res.text()}`);
   const data = await res.json();
-  const jobId = data.taskId || data.jobId || data.id || data.data?.taskId || data.data?.jobId || data.data?.id;
+  const jobId =
+    data.taskId ||
+    data.jobId ||
+    data.id ||
+    data.data?.taskId ||
+    data.data?.jobId ||
+    data.data?.id;
   if (!jobId) throw new Error(`No jobId from Kie: ${JSON.stringify(data)}`);
   return jobId;
 }
@@ -30,19 +43,33 @@ export async function createVideoTask(
   prompt: string,
   imageUrls: string[],
   aspectRatio = "9:16",
-  duration = "4"
+  duration = "4",
 ): Promise<string> {
   const res = await fetch(`${API_BASE}/createTask`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${getKey()}` },
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${getKey()}`,
+    },
     body: JSON.stringify({
       model: "bytedance/seedance-1.5-pro",
-      input: { prompt, input_urls: imageUrls, aspect_ratio: aspectRatio, duration },
+      input: {
+        prompt,
+        input_urls: imageUrls,
+        aspect_ratio: aspectRatio,
+        duration,
+      },
     }),
   });
   if (!res.ok) throw new Error(`Kie API error: ${await res.text()}`);
   const data = await res.json();
-  const jobId = data.taskId || data.jobId || data.id || data.data?.taskId || data.data?.jobId || data.data?.id;
+  const jobId =
+    data.taskId ||
+    data.jobId ||
+    data.id ||
+    data.data?.taskId ||
+    data.data?.jobId ||
+    data.data?.id;
   if (!jobId) throw new Error(`No jobId from Kie: ${JSON.stringify(data)}`);
   return jobId;
 }

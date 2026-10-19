@@ -2,9 +2,14 @@
 
 import { Skeleton } from "@/components/ui/Skeleton";
 import { ErrorState } from "@/components/ui/ErrorState";
+import { Button } from "@/components/ui/Button";
 import { useAccounts } from "@/modules/accounts/hooks/useAccounts";
 import { cn } from "@/lib/utils";
-import { ExternalLink, Users } from "lucide-react";
+import { ExternalLink, Plus, Users } from "lucide-react";
+
+function connectAccount() {
+  window.open("https://app.upload-post.com", "_blank", "noopener,noreferrer");
+}
 
 const platformColors: Record<string, string> = {
   instagram: "bg-gradient-to-br from-purple-500 to-pink-500",
@@ -37,7 +42,11 @@ export function AccountsSection() {
         <div className="flex flex-col items-center justify-center py-10 border border-dashed border-default rounded-xl">
           <Users className="w-8 h-8 text-secondary mb-2" />
           <p className="text-sm text-muted">No accounts connected yet.</p>
-          <p className="text-xs text-secondary mt-1">Connect your social accounts on Upload-Post to start publishing.</p>
+          <p className="text-xs text-secondary mt-1 mb-4">Connect your social accounts on Upload-Post to start publishing.</p>
+          <Button size="sm" onClick={connectAccount}>
+            <Plus className="w-4 h-4" />
+            Connect account
+          </Button>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">

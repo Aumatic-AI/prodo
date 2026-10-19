@@ -58,7 +58,10 @@ export function IdeaField({ value, onChange, format, placeholder, label = "Your 
       </div>
 
       {options && options.length > 0 && (
-        <div className="mt-2 flex flex-col gap-2 p-3 rounded-lg border border-primary/20 bg-(--color-primary-subtle)">
+        <div
+          className="mt-2 flex flex-col gap-2 rounded-lg border border-default bg-(--color-primary-subtle)"
+          style={{ padding: "12px" }}
+        >
           <span className="text-xs font-semibold text-primary uppercase tracking-wide">
             AI generated ideas — click to use
           </span>
@@ -68,7 +71,8 @@ export function IdeaField({ value, onChange, format, placeholder, label = "Your 
                 key={i}
                 type="button"
                 onClick={() => selectOption(opt)}
-                className="text-left p-3 rounded-lg border border-default bg-surface hover:border-primary transition-colors text-sm text-text leading-relaxed"
+                className="text-left rounded-lg border border-default bg-surface hover:border-strong transition-colors text-sm text-text leading-relaxed"
+                style={{ padding: "12px" }}
               >
                 {opt}
               </button>

@@ -12,7 +12,7 @@ import { useCreatePost } from "../hooks/usePosts";
 import { defaultProvider } from "@/providers/publishing/registry";
 import { PLATFORMS } from "@/config/platforms";
 import { cn } from "@/lib/utils";
-import { ArrowLeft, Check, Send, Clock, FileText } from "lucide-react";
+import { ArrowLeft, Check, Send, Clock, FileText, Plus } from "lucide-react";
 
 type WhenOption = "now" | "schedule" | "draft";
 
@@ -106,7 +106,16 @@ export function CreatePostPage() {
             ) : accountsError ? (
               <ErrorState message="Failed to load accounts" />
             ) : !accounts?.length ? (
-              <p className="text-sm text-muted">No accounts connected.</p>
+              <div className="flex flex-col items-start gap-3">
+                <p className="text-sm text-muted">No accounts connected.</p>
+                <Button
+                  size="sm"
+                  onClick={() => window.open("https://app.upload-post.com", "_blank", "noopener,noreferrer")}
+                >
+                  <Plus className="w-4 h-4" />
+                  Connect account
+                </Button>
+              </div>
             ) : (
               <div className="space-y-2">
                 {accounts.map((account) => {
@@ -178,11 +187,12 @@ export function CreatePostPage() {
                   key={value}
                   onClick={() => setWhen(value)}
                   className={cn(
-                    "flex items-center gap-3 w-full px-4 py-3.5 rounded-lg border text-left transition-colors",
+                    "flex items-center gap-3 w-full rounded-lg border text-left transition-colors",
                     when === value
                       ? "border-primary bg-primary-subtle"
                       : "border-default hover:bg-surface-hover"
                   )}
+                  style={{ padding: "14px 16px" }}
                 >
                   <Icon className="w-4 h-4 text-muted shrink-0" />
                   <span className="text-sm font-medium text-text">{label}</span>

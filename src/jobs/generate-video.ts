@@ -4,12 +4,13 @@ import { getMedia, markReady, markFailed } from "@/core/media";
 import { getProfile } from "@/core/profile";
 import { buildVideoScriptPrompt, sceneCountForDuration } from "@/prompts/video-script";
 import { buildScenesPrompt } from "@/prompts/video-scenes";
+import { withVideoReferenceInstruction } from "@/prompts/image";
 import * as OpenAI from "@/providers/ai/openai";
 import * as Kie from "@/providers/ai/kie";
 import * as ElevenLabs from "@/providers/ai/elevenlabs";
 import * as FFmpeg from "@/providers/ffmpeg/client";
 import { submitSceneStitchJob, downloadAndStore } from "@/providers/ffmpeg/stitch-scenes";
-import { storageKeyFor } from "@/providers/storage/supabase-storage";
+import { storageKeyFor, urlFor } from "@/providers/storage/supabase-storage";
 import { NonRetriableError } from "inngest";
 
 export const generateVideo = inngest.createFunction(
@@ -36,6 +37,9 @@ export const generateVideo = inngest.createFunction(
 
     const durationSec = media.duration_sec || 15;
     const sceneCount = sceneCountForDuration(durationSec);
+    const referenceUrl = media.reference_image_key
+      ? urlFor(process.env.NEXT_PUBLIC_SUPABASE_URL!, media.reference_image_key)
+      : undefined;
 
     // 1. Generate narration script via OpenAI
     const scriptJson = await step.run("write-script", async () => {
@@ -89,7 +93,8 @@ export const generateVideo = inngest.createFunction(
     const imageJobs = await step.run("trigger-images", async () => {
       const jobs = [];
       for (const vp of visualPromptsJson.visual_prompts) {
-        const id = await Kie.createImageTask(vp.prompt, "9:16");
+        const scenePrompt = referenceUrl ? withVideoReferenceInstruction(vp.prompt) : vp.prompt;
+        const id = await Kie.createImageTask(scenePrompt, "9:16", referenceUrl ? [referenceUrl] : undefined);
         jobs.push({
           id,
           url: null as string | null,

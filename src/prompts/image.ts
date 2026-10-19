@@ -3,21 +3,19 @@ import type { BusinessProfile } from "@/core/profile";
 export function buildImagePrompt(
   idea: string,
   profile: BusinessProfile | null,
-  useLogo: boolean
+  hasReferenceImage: boolean = false,
+  product?: string
 ): string {
-  const parts: string[] = [];
+  return `${idea}.${
+    profile?.about ? `We are creating an ad for Business ${profile.name}:
+    ${profile.about}.` : ""
+  } ${
+    hasReferenceImage ? " Use the reference image as guidance for the final result." : ""
+  }${
+    product ? ` This image is specifically about: ${product}.` : ""
+  }`;
+}
 
-  parts.push(idea);
-
-  if (profile?.about) {
-    parts.push(`Context: ${profile.about}`);
-  }
-
-  parts.push("Photorealistic, high quality, professional social media image, vibrant colors, sharp detail");
-
-  if (useLogo && profile?.name) {
-    parts.push(`Include ${profile.name} logo naturally in the scene`);
-  }
-
-  return parts.join(". ");
+export function withVideoReferenceInstruction(prompt: string): string {
+  return `${prompt} The subject shown in the reference image must appear in the generated image exactly as it looks — same appearance and details, consistent throughout.`;
 }

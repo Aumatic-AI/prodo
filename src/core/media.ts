@@ -22,6 +22,7 @@ export interface Media {
   video_type: string | null;
   language: string | null;
   product: string | null;
+  reference_image_key: string | null;
   storage_key: string | null;
   error: string | null;
   created_at: string;
@@ -43,6 +44,7 @@ export interface CreateMediaInput {
   video_type?: string;
   language?: string;
   product?: string;
+  reference_image_key?: string;
   storage_key?: string;
 }
 

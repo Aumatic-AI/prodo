@@ -34,8 +34,22 @@ export function useGenerateMedia() {
       video_type?: string;
       language?: string;
       product?: string;
+      reference_image_key?: string;
     }) => apiFetch("/api/media", { method: "POST", body: JSON.stringify(input) }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["media"] }),
+  });
+}
+
+export function useUploadReferenceImage() {
+  return useMutation({
+    mutationFn: async (file: File) => {
+      const fd = new FormData();
+      fd.set("file", file);
+      return apiFetch<{ key: string; url: string }>("/api/media/reference", {
+        method: "POST",
+        body: fd,
+      });
+    },
   });
 }
 

@@ -3,8 +3,9 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getMedia, markReady, markFailed } from "@/core/media";
 import { getProfile } from "@/core/profile";
 import { buildImagePrompt } from "@/prompts/image";
+import { composeCreativeImage } from "@/providers/creative-render/composeCreativeImage";
 import * as Kie from "@/providers/ai/kie";
-import { storageKeyFor } from "@/providers/storage/supabase-storage";
+import { storageKeyFor, urlFor } from "@/providers/storage/supabase-storage";
 import { NonRetriableError } from "inngest";
 
 export const generateImage = inngest.createFunction(
@@ -29,10 +30,15 @@ export const generateImage = inngest.createFunction(
 
     const profile = await step.run("load-profile", () => getProfile(db));
 
-    // 1. Build prompt with business context and send directly to Kie
-    const prompt = buildImagePrompt(media.idea, profile, media.use_logo ?? false);
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+    const referenceUrl = media.reference_image_key ? urlFor(supabaseUrl, media.reference_image_key) : undefined;
+    const logoUrl = media.use_logo && profile?.logo_key ? urlFor(supabaseUrl, profile.logo_key) : undefined;
+    const aspectRatio = (media.aspect_ratio as "1:1" | "4:5" | "9:16" | "16:9") || "4:5";
+
+    // 1. Build prompt and send directly to Kie
+    const prompt = buildImagePrompt(media.idea, profile, !!referenceUrl, media.product || undefined);
     const jobId = await step.run("trigger-kie", () =>
-      Kie.createImageTask(prompt, (media.aspect_ratio as any) || "4:5")
+      Kie.createImageTask(prompt, aspectRatio, referenceUrl ? [referenceUrl] : undefined)
     );
 
     // 2. Poll for completion (up to 24 attempts, ~3 min)
@@ -55,11 +61,20 @@ export const generateImage = inngest.createFunction(
     if (!imageUrl) throw new Error("Image generation timed out");
     const finalUrl = imageUrl;
 
-    // 3. Download and upload to Supabase storage
+    // 3. Composite the exact logo (if enabled) onto the photo, then upload to Supabase storage
     const storageKey = await step.run("store", async () => {
-      const res = await fetch(finalUrl);
-      if (!res.ok) throw new Error(`Download failed: ${res.status}`);
-      const buffer = Buffer.from(await res.arrayBuffer());
+      const composited = logoUrl
+        ? await composeCreativeImage({ photoUrl: finalUrl, logoUrl, aspectRatio })
+        : null;
+
+      let buffer: Buffer;
+      if (composited) {
+        buffer = composited;
+      } else {
+        const res = await fetch(finalUrl);
+        if (!res.ok) throw new Error(`Download failed: ${res.status}`);
+        buffer = Buffer.from(await res.arrayBuffer());
+      }
 
       const key = storageKeyFor("image", media.id);
       const { error } = await db.storage
