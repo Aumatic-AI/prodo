@@ -54,6 +54,11 @@ async function postForm<T>(path: string, form: FormData): Promise<T> {
   return parseOrThrow(res);
 }
 
+async function del<T>(path: string): Promise<T> {
+  const res = await fetch(`${BASE_URL}${path}`, { method: "DELETE", headers: authHeader() });
+  return parseOrThrow(res);
+}
+
 function profileUrlFor(platform: string, handle?: string): string | undefined {
   if (!handle) return undefined;
   switch (platform) {
@@ -148,6 +153,16 @@ export class UploadPostPublisher implements Publisher {
       url: firstResult?.url,
       error: firstResult?.message,
     };
+  }
+
+  async cancelScheduled(providerRef: string): Promise<{ success: boolean }> {
+    // Only a scheduled submission (a job_id) is sitting in Upload-Post's
+    // schedule queue waiting to fire — a request_id was already submitted
+    // for immediate processing and isn't cancellable this way.
+    if (!providerRef.startsWith("job_id:")) return { success: true };
+    const jobId = providerRef.slice("job_id:".length);
+    const data = await del<any>(`/uploadposts/schedule/${encodeURIComponent(jobId)}`);
+    return { success: data?.success ?? true };
   }
 
   async listAccounts() {

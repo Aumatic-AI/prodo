@@ -5,6 +5,7 @@ type Events = {
   "media/generate-video": { data: { mediaId: string } };
   "post/publish": { data: { postId: string } };
   "post/check-status": { data: { postId: string; checkAt: string } };
+  "post/cancelled": { data: { postId: string } };
   "media/deleted": { data: { mediaId: string } };
 };
 

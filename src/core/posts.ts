@@ -129,6 +129,28 @@ export async function replacePostTargets(
   }
 }
 
+/** Reverts a scheduled post back to a clean draft — callers handle
+ * cancelling each target's upstream submission first (if any), this just
+ * resets our own rows so the post can be edited or rescheduled fresh. */
+export async function cancelPost(db: SupabaseClient, id: string) {
+  const { error: targetsError } = await db
+    .from("post_targets")
+    .update({ status: "pending", provider_ref: null, url: null, error: null })
+    .eq("post_id", id);
+  if (targetsError) throw targetsError;
+
+  await updatePost(db, id, { status: "draft", publish_at: null });
+}
+
+/** Drafts were never submitted anywhere, so deleting one is a plain,
+ * unambiguous delete — unlike a published/partial post, where "delete"
+ * was removed app-wide because it can't actually un-publish anything.
+ * post_targets cascade on delete, so removing the post row is enough. */
+export async function deletePost(db: SupabaseClient, id: string) {
+  const { error } = await db.from("posts").delete().eq("id", id);
+  if (error) throw error;
+}
+
 export async function updatePost(
   db: SupabaseClient,
   id: string,

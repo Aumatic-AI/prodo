@@ -29,7 +29,7 @@ export function buildVideoScriptPrompt(
 
   return `You are a professional social media video scriptwriter.
 
-${profileContext ? `Business context:\n${profileContext}\n` : ""}
+${profileContext ? `We are creating videos for the following business:\n${profileContext}\n` : ""}
 Write a narration script for a ${opts.durationSec}-second ${opts.videoType || "social media"} video.
 
 Topic: "${idea}"

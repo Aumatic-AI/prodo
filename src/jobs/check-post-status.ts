@@ -12,7 +12,7 @@ import { publisherFor } from "@/providers/publishing/registry";
  * find the real success/fail outcome and the live post URL.
  */
 export const checkPostStatus = inngest.createFunction(
-  { id: "check-post-status" },
+  { id: "check-post-status", cancelOn: [{ event: "post/cancelled", match: "data.postId" }] },
   { event: "post/check-status" },
   async ({ event, step }) => {
     const db = createAdminClient();

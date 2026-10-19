@@ -1,18 +1,24 @@
 "use client";
 
+import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { ErrorState } from "@/components/ui/ErrorState";
-import { usePost } from "@/modules/posts/hooks/usePosts";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import { usePost, useCancelPost, useDeletePost } from "@/modules/posts/hooks/usePosts";
 import { urlFor } from "@/providers/storage/supabase-storage";
-import { ArrowLeft, ExternalLink, Pencil, Video, FileText } from "lucide-react";
+import { ArrowLeft, ExternalLink, Pencil, Video, FileText, Ban, Trash2 } from "lucide-react";
 
 export function PostDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const { data: post, isLoading, error } = usePost(id);
+  const cancelPost = useCancelPost();
+  const deletePost = useDeletePost();
+  const [confirmCancelOpen, setConfirmCancelOpen] = useState(false);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
 
   if (isLoading) {
     return (
@@ -45,16 +51,60 @@ export function PostDetailPage() {
           </div>
         </div>
         {post.status === "draft" && (
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => router.push(`/posts/new?media=${post.media_id}&draft=${post.id}`)}
-          >
-            <Pencil className="w-4 h-4 mr-1.5" />
-            Continue editing
+          <div className="flex items-center gap-2">
+            <Button variant="danger" size="sm" onClick={() => setConfirmDeleteOpen(true)}>
+              <Trash2 className="w-4 h-4 mr-1.5" />
+              Delete
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => router.push(`/posts/new?media=${post.media_id}&draft=${post.id}`)}
+            >
+              <Pencil className="w-4 h-4 mr-1.5" />
+              Continue editing
+            </Button>
+          </div>
+        )}
+        {post.status === "scheduled" && (
+          <Button variant="secondary" size="sm" onClick={() => setConfirmCancelOpen(true)}>
+            <Ban className="w-4 h-4 mr-1.5" />
+            Cancel schedule
           </Button>
         )}
       </div>
+
+      <ConfirmModal
+        open={confirmCancelOpen}
+        onOpenChange={setConfirmCancelOpen}
+        title="Cancel scheduled post?"
+        description="This stops it from publishing and reverts it back to a draft — you can edit it and schedule or publish it again anytime."
+        confirmLabel="Cancel schedule"
+        variant="danger"
+        loading={cancelPost.isPending}
+        error={cancelPost.error ? (cancelPost.error as Error).message : null}
+        onConfirm={() => {
+          cancelPost.mutate(post.id, {
+            onSuccess: () => setConfirmCancelOpen(false),
+          });
+        }}
+      />
+
+      <ConfirmModal
+        open={confirmDeleteOpen}
+        onOpenChange={setConfirmDeleteOpen}
+        title="Delete this draft?"
+        description="This permanently deletes the draft and its target accounts. This can't be undone."
+        confirmLabel="Delete"
+        variant="danger"
+        loading={deletePost.isPending}
+        error={deletePost.error ? (deletePost.error as Error).message : null}
+        onConfirm={() => {
+          deletePost.mutate(post.id, {
+            onSuccess: () => router.push("/posts"),
+          });
+        }}
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">

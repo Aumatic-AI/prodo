@@ -38,6 +38,11 @@ export interface Publisher {
     error?: string;
   }>;
 
+  /** Cancels a still-pending scheduled submission upstream. A no-op
+   * (resolves success) for a providerRef that was never a scheduled
+   * submission in the first place. */
+  cancelScheduled(providerRef: string): Promise<{ success: boolean }>;
+
   listAccounts(): Promise<
     {
       id: string;

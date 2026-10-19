@@ -69,6 +69,25 @@ export function usePublishDraft() {
   });
 }
 
+export function useCancelPost() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => apiFetch(`/api/posts/${id}/cancel`, { method: "POST" }),
+    onSuccess: (_data, id) => {
+      qc.invalidateQueries({ queryKey: ["posts"] });
+      qc.invalidateQueries({ queryKey: ["posts", id] });
+    },
+  });
+}
+
+export function useDeletePost() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => apiFetch(`/api/posts/${id}`, { method: "DELETE" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["posts"] }),
+  });
+}
+
 export function useGenerateCaptions() {
   return useMutation({
     mutationFn: (input: { mediaId: string; platforms: string[] }) =>
