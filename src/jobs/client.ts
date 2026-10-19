@@ -6,7 +6,6 @@ type Events = {
   "post/publish": { data: { postId: string } };
   "post/check-status": { data: { postId: string; checkAt: string } };
   "media/deleted": { data: { mediaId: string } };
-  "post/deleted": { data: { postId: string } };
 };
 
 export const inngest = new Inngest({ id: "prodo", schemas: new Map() as any });

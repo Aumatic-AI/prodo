@@ -29,7 +29,7 @@ Requirements:
 - Image prompts should be detailed enough for AI image generation (Flux-style)
 - Video scenarios should describe natural, subtle motion — slow camera moves, gentle animation
 - Keep visual continuity across scenes (consistent setting, character, color grade)
-- Each scene is exactly 4 seconds long
+- Each scene lasts roughly 5-6 seconds — describe motion paced to read naturally over that span, not a quick action that finishes in a flash
 
 Output as JSON:
 {

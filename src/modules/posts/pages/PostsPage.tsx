@@ -4,9 +4,8 @@ import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Tabs } from "@/components/ui/Tabs";
-import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { PostsTable } from "../components/PostsTable";
-import { usePosts, useDeletePost } from "../hooks/usePosts";
+import { usePosts } from "../hooks/usePosts";
 import { Plus } from "lucide-react";
 
 const TABS = [
@@ -20,8 +19,6 @@ const TABS = [
 export function PostsPage() {
   const router = useRouter();
   const { data: posts, isLoading, error, refetch } = usePosts();
-  const deleteMutation = useDeletePost();
-  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [tab, setTab] = useState("all");
 
   const filtered = useMemo(() => {
@@ -53,26 +50,8 @@ export function PostsPage() {
           error={error}
           onRefetch={refetch}
           onView={(id) => router.push(`/posts/${id}`)}
-          onDelete={(id) => setDeleteTarget(id)}
         />
       </div>
-
-      <ConfirmModal
-        open={!!deleteTarget}
-        onOpenChange={() => setDeleteTarget(null)}
-        title="Delete post"
-        description="This will permanently delete this post and its targets."
-        confirmLabel="Delete"
-        variant="danger"
-        loading={deleteMutation.isPending}
-        error={deleteMutation.error?.message || null}
-        onConfirm={async () => {
-          if (deleteTarget) {
-            await deleteMutation.mutateAsync(deleteTarget);
-            setDeleteTarget(null);
-          }
-        }}
-      />
     </div>
   );
 }

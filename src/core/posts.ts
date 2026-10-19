@@ -137,8 +137,3 @@ export async function updatePost(
   const { error } = await db.from("posts").update(fields).eq("id", id);
   if (error) throw error;
 }
-
-export async function deletePost(db: SupabaseClient, id: string) {
-  const { error } = await db.from("posts").delete().eq("id", id);
-  if (error) throw error;
-}

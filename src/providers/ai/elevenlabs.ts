@@ -19,14 +19,25 @@ export function languageCode(language?: string | null): string | undefined {
   return LANGUAGE_CODE_MAP[language.toLowerCase().trim()];
 }
 
+export interface SpeechResult {
+  buffer: Buffer;
+  durationSec: number;
+}
+
+/**
+ * Uses the with-timestamps endpoint (not the plain TTS endpoint) so the
+ * character alignment data tells us exactly how long this clip's narration
+ * is — the caller needs that to size its video clip to the real spoken
+ * length instead of guessing a flat duration per scene.
+ */
 export async function generateSpeech(
   text: string,
   voiceId = "21m00Tcm4TlvDq8ikWAM",
   langCode?: string
-): Promise<Buffer> {
+): Promise<SpeechResult> {
   if (!env.ELEVENLABS_API_KEY) throw new Error("ELEVENLABS_API_KEY is not set");
 
-  const res = await fetch(`${API_BASE}/text-to-speech/${voiceId}`, {
+  const res = await fetch(`${API_BASE}/text-to-speech/${voiceId}/with-timestamps`, {
     method: "POST",
     headers: { "xi-api-key": env.ELEVENLABS_API_KEY, "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -47,5 +58,9 @@ export async function generateSpeech(
     throw new Error(`ElevenLabs API error (${res.status}): ${detail}`);
   }
 
-  return Buffer.from(await res.arrayBuffer());
+  const data = await res.json();
+  const buffer = Buffer.from(data.audio_base64, "base64");
+  const endTimes: number[] = data.alignment?.character_end_times_seconds || [];
+  const durationSec = endTimes.length > 0 ? Math.max(...endTimes) : 0;
+  return { buffer, durationSec };
 }

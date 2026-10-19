@@ -34,11 +34,16 @@ export const generateImage = inngest.createFunction(
     const referenceUrl = media.reference_image_key ? urlFor(supabaseUrl, media.reference_image_key) : undefined;
     const logoUrl = media.use_logo && profile?.logo_key ? urlFor(supabaseUrl, profile.logo_key) : undefined;
     const aspectRatio = (media.aspect_ratio as "1:1" | "4:5" | "9:16" | "16:9") || "4:5";
+    // nano-banana-2 dropped "4:5" from its supported ratios — map it to the
+    // closest portrait ratio it does support. This only affects the Kie
+    // request; our stored aspect_ratio and the logo-compositing step below
+    // keep using "4:5" as-is.
+    const kieAspectRatio: Kie.KieAspectRatio = aspectRatio === "4:5" ? "2:3" : aspectRatio;
 
     // 1. Build prompt and send directly to Kie
     const prompt = buildImagePrompt(media.idea, profile, !!referenceUrl, media.product || undefined);
     const jobId = await step.run("trigger-kie", () =>
-      Kie.createImageTask(prompt, aspectRatio, referenceUrl ? [referenceUrl] : undefined)
+      Kie.createImageTask(prompt, kieAspectRatio, referenceUrl ? [referenceUrl] : undefined)
     );
 
     // 2. Poll for completion (up to 24 attempts, ~3 min)

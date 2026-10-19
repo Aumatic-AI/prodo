@@ -11,29 +11,21 @@ function getClient() {
   return client;
 }
 
-export async function generateText(
-  prompt: string,
-  systemPrompt?: string,
-  temperature = 0.7
-): Promise<string> {
+const TEXT_MODEL = "gpt-6.1-sol";
+
+export async function generateText(prompt: string, systemPrompt?: string): Promise<string> {
   const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [];
   if (systemPrompt) messages.push({ role: "system", content: systemPrompt });
   messages.push({ role: "user", content: prompt });
 
   const completion = await getClient().chat.completions.create({
-    model: "gpt-4o",
+    model: TEXT_MODEL,
     messages,
-    temperature,
   });
   return completion.choices[0]?.message?.content || "";
 }
 
-export async function generateTextWithImage(
-  prompt: string,
-  imageUrl: string,
-  systemPrompt?: string,
-  temperature = 0.7
-): Promise<string> {
+export async function generateTextWithImage(prompt: string, imageUrl: string, systemPrompt?: string): Promise<string> {
   const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [];
   if (systemPrompt) messages.push({ role: "system", content: systemPrompt });
   messages.push({
@@ -45,9 +37,8 @@ export async function generateTextWithImage(
   });
 
   const completion = await getClient().chat.completions.create({
-    model: "gpt-4o",
+    model: TEXT_MODEL,
     messages,
-    temperature,
   });
   return completion.choices[0]?.message?.content || "";
 }

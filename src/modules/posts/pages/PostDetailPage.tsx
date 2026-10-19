@@ -5,18 +5,14 @@ import { Button } from "@/components/ui/Button";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { ErrorState } from "@/components/ui/ErrorState";
-import { ConfirmModal } from "@/components/ui/ConfirmModal";
-import { usePost, useDeletePost } from "@/modules/posts/hooks/usePosts";
+import { usePost } from "@/modules/posts/hooks/usePosts";
 import { urlFor } from "@/providers/storage/supabase-storage";
-import { useState } from "react";
-import { ArrowLeft, Trash2, ExternalLink, Pencil, Video, FileText } from "lucide-react";
+import { ArrowLeft, ExternalLink, Pencil, Video, FileText } from "lucide-react";
 
 export function PostDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const { data: post, isLoading, error } = usePost(id);
-  const deletePost = useDeletePost();
-  const [showDelete, setShowDelete] = useState(false);
 
   if (isLoading) {
     return (
@@ -48,22 +44,16 @@ export function PostDetailPage() {
             <p className="mt-0.5 text-sm text-muted">Created {new Date(post.created_at).toLocaleDateString()}</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          {post.status === "draft" && (
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => router.push(`/posts/new?media=${post.media_id}&draft=${post.id}`)}
-            >
-              <Pencil className="w-4 h-4 mr-1.5" />
-              Continue editing
-            </Button>
-          )}
-          <Button variant="danger" size="sm" onClick={() => setShowDelete(true)}>
-            <Trash2 className="w-4 h-4 mr-1.5" />
-            Delete
+        {post.status === "draft" && (
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => router.push(`/posts/new?media=${post.media_id}&draft=${post.id}`)}
+          >
+            <Pencil className="w-4 h-4 mr-1.5" />
+            Continue editing
           </Button>
-        </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -159,20 +149,6 @@ export function PostDetailPage() {
           </div>
         </div>
       </div>
-
-      <ConfirmModal
-        open={showDelete}
-        onOpenChange={setShowDelete}
-        title="Delete post"
-        description="This will permanently delete this post and its targets. This cannot be undone."
-        confirmLabel="Delete"
-        variant="danger"
-        loading={deletePost.isPending}
-        onConfirm={async () => {
-          await deletePost.mutateAsync(post.id);
-          router.push("/posts");
-        }}
-      />
     </div>
   );
 }

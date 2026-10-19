@@ -71,22 +71,28 @@ export const generateVideo = inngest.createFunction(
       };
     });
 
-    // 3. Generate voiceover via ElevenLabs
-    const audioUrl = await step.run("generate-audio", async () => {
+    // 3. Generate narration via ElevenLabs — one call per scene line (not
+    // one joined call for the whole script), so each clip's real spoken
+    // length is known and can size its own scene instead of every scene
+    // sharing one flat guessed duration.
+    const sceneAudios = await step.run("generate-audio", async () => {
       if (!media.voice_id) return null;
-      const fullScript = scriptJson.script.join(" ");
-      const audioBuffer = await ElevenLabs.generateSpeech(
-        fullScript,
-        media.voice_id,
-        ElevenLabs.languageCode(media.language)
-      );
-      const key = `audio/${media.id}_${Date.now()}.mp3`;
-      const { error } = await db.storage
-        .from("media")
-        .upload(key, audioBuffer, { contentType: "audio/mpeg" });
-      if (error) throw new Error("Audio upload failed: " + error.message);
-      const { data } = db.storage.from("media").getPublicUrl(key);
-      return data.publicUrl;
+      const results: { url: string; durationSec: number }[] = [];
+      for (let i = 0; i < scriptJson.script.length; i++) {
+        const { buffer, durationSec } = await ElevenLabs.generateSpeech(
+          scriptJson.script[i],
+          media.voice_id!,
+          ElevenLabs.languageCode(media.language)
+        );
+        const key = `audio/${media.id}_${i}_${Date.now()}.mp3`;
+        const { error } = await db.storage
+          .from("media")
+          .upload(key, buffer, { contentType: "audio/mpeg" });
+        if (error) throw new Error("Audio upload failed: " + error.message);
+        const { data } = db.storage.from("media").getPublicUrl(key);
+        results.push({ url: data.publicUrl, durationSec });
+      }
+      return results;
     });
 
     // 4. Trigger per-scene image generation
@@ -149,14 +155,27 @@ export const generateVideo = inngest.createFunction(
     const videoJobs = await step.run("trigger-videos", async () => {
       const jobs = [];
       for (const imgJob of imageJobs) {
+        const audio = sceneAudios?.[imgJob.scene - 1];
+        // +0.5s tail buffer: the alignment timestamp marks the end of the
+        // last spoken character, and the raw clip can run a touch longer
+        // than that (trailing consonant/breath) — pad so atrim never
+        // clips real speech off in the stitch step below.
+        const targetDuration = audio ? audio.durationSec + 0.5 : 4;
+        // Kie's model only needs to generate real motion up to its own
+        // duration ceiling — any gap beyond that is covered by the stitch
+        // step's freeze-pad, so this is just "ask for as much real motion
+        // as the model allows", not the authoritative scene length.
+        const kieDuration = String(Math.min(12, Math.max(4, Math.ceil(targetDuration))));
         const cinematicPrompt = `${imgJob.videoScenario} Cinematic quality, natural color grade, shallow depth of field, smooth slow camera movement only, no cuts within clip, photorealistic, preserve the exact scene composition from the image.`;
-        const id = await Kie.createVideoTask(cinematicPrompt, [imgJob.url!], "9:16", "4");
+        const id = await Kie.createVideoTask(cinematicPrompt, [imgJob.url!], "9:16", kieDuration);
         jobs.push({
           id,
           url: null as string | null,
           scene: imgJob.scene,
           cinematicPrompt,
           sourceImageUrl: imgJob.url!,
+          kieDuration,
+          targetDuration,
           resubmitted: false,
         });
       }
@@ -181,7 +200,7 @@ export const generateVideo = inngest.createFunction(
             if (!job.url) pending = true;
           } else if (status.state === "fail") {
             if (!job.resubmitted) {
-              job.id = await Kie.createVideoTask(job.cinematicPrompt, [job.sourceImageUrl], "9:16", "4");
+              job.id = await Kie.createVideoTask(job.cinematicPrompt, [job.sourceImageUrl], "9:16", job.kieDuration);
               job.resubmitted = true;
             } else {
               throw new Error(`Scene ${job.scene} video rejected twice: ${status.failMsg || "unknown"}`);
@@ -202,10 +221,14 @@ export const generateVideo = inngest.createFunction(
     if (!videosDone) throw new Error("Scene video generation timed out");
 
     const clipUrls = videoJobs.map((j) => j.url!);
+    const clipDurations = videoJobs.map((j) => j.targetDuration);
+    const audioUrls = sceneAudios ? videoJobs.map((j) => sceneAudios![j.scene - 1].url) : null;
 
-    // 8. Stitch scenes via FFmpeg API
+    // 8. Stitch scenes via FFmpeg API — each clip is forced to its own
+    // scene's real narration length (not a flat shared guess), so the
+    // merged video can never cut off mid-script.
     const stitchJobId = await step.run("stitch", () =>
-      submitSceneStitchJob({ clipUrls, audioUrl })
+      submitSceneStitchJob({ clipUrls, clipDurations, audioUrls })
     );
 
     // 9. Poll for stitching (up to 15 attempts, ~5 min)

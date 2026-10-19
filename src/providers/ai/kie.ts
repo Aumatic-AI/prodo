@@ -7,24 +7,28 @@ function getKey() {
   return env.KIE_API_KEY;
 }
 
+export type KieAspectRatio = "1:1" | "2:3" | "3:2" | "9:16" | "16:9" | "21:9" | "auto";
+
 export async function createImageTask(
   prompt: string,
-  imageSize: "9:16" | "4:5" | "16:9" | "1:1" = "4:5",
+  aspectRatio: KieAspectRatio = "2:3",
   referenceImageUrls?: string[],
+  resolution: "1K" | "2K" | "4K" = "2K",
 ): Promise<string> {
   const input: Record<string, any> = {
     prompt,
     output_format: "png",
-    image_size: imageSize,
+    aspect_ratio: aspectRatio,
+    resolution,
+    image_input: referenceImageUrls && referenceImageUrls.length > 0 ? referenceImageUrls : [],
   };
-  if (referenceImageUrls && referenceImageUrls.length > 0) input.image_urls = referenceImageUrls;
   const res = await fetch(`${API_BASE}/createTask`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${getKey()}`,
     },
-    body: JSON.stringify({ model: "google/nano-banana", input }),
+    body: JSON.stringify({ model: "nano-banana-2", input }),
   });
   if (!res.ok) throw new Error(`Kie API error: ${await res.text()}`);
   const data = await res.json();

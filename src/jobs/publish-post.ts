@@ -9,7 +9,6 @@ export const publishPost = inngest.createFunction(
     id: "publish-post",
     retries: 3,
     concurrency: [{ limit: 1, key: "event.data.postId" }],
-    cancelOn: [{ event: "post/deleted", match: "data.postId" }],
     onFailure: async ({ event }) => {
       const db = createAdminClient();
       const postId = event.data.event.data.postId;

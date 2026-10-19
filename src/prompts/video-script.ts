@@ -1,8 +1,14 @@
 import type { BusinessProfile } from "@/core/profile";
 import { buildProfileBlock } from "./profile-block";
 
+// Real narration pace for a 10-15 word line measures closer to ~5.5s than a
+// flat 4s once actually spoken by ElevenLabs — scenes are now sized to their
+// own real narration length (not forced to a fixed 4s), so this is what
+// determines how many scenes a requested video duration actually needs.
+const SECONDS_PER_LINE = 5.5;
+
 export function sceneCountForDuration(durationSec: number): number {
-  return Math.ceil(durationSec / 4);
+  return Math.ceil(durationSec / SECONDS_PER_LINE);
 }
 
 export function buildVideoScriptPrompt(
@@ -33,8 +39,8 @@ Tone: ${opts.audioStyle || "Conversational"}
 Language: ${lang}
 
 Requirements:
-- Write exactly ${sceneCount} narration lines (one per 4-second scene)
-- Each line should be speakable in ~4 seconds (roughly 10-15 words)
+- Write exactly ${sceneCount} narration lines (one per ~5-6 second scene)
+- Each line should be speakable in ~5-6 seconds (roughly 10-15 words)
 - Hook the viewer in the first line
 - End with a clear call-to-action
 - Write in ${lang}

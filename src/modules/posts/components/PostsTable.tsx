@@ -6,7 +6,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { platformMeta } from "@/modules/dashboard/lib/platforms";
 import { urlFor } from "@/providers/storage/supabase-storage";
-import { Send, Trash2, Video, FileText } from "lucide-react";
+import { Send, Video, FileText } from "lucide-react";
 import type { PostWithTargets } from "@/core/posts";
 
 interface PostsTableProps {
@@ -15,7 +15,6 @@ interface PostsTableProps {
   error: Error | null;
   onRefetch: () => void;
   onView: (id: string) => void;
-  onDelete: (id: string) => void;
 }
 
 function formatDateTime(iso: string) {
@@ -27,7 +26,7 @@ function formatDateTime(iso: string) {
   });
 }
 
-export function PostsTable({ posts, isLoading, error, onRefetch, onView, onDelete }: PostsTableProps) {
+export function PostsTable({ posts, isLoading, error, onRefetch, onView }: PostsTableProps) {
   if (isLoading) {
     return (
       <div className="divide-y divide-[var(--color-border-subtle)]">
@@ -65,7 +64,6 @@ export function PostsTable({ posts, isLoading, error, onRefetch, onView, onDelet
             <th className="text-left text-xs font-medium text-secondary uppercase tracking-wider px-4 py-2.5">Accounts</th>
             <th className="text-left text-xs font-medium text-secondary uppercase tracking-wider px-4 py-2.5">Status</th>
             <th className="text-left text-xs font-medium text-secondary uppercase tracking-wider px-4 py-2.5">Created</th>
-            <th className="text-right text-xs font-medium text-secondary uppercase tracking-wider px-4 py-2.5">Actions</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-[var(--color-border-subtle)]">
@@ -128,20 +126,6 @@ export function PostsTable({ posts, isLoading, error, onRefetch, onView, onDelet
                   )}
                 </td>
                 <td className="px-4 py-3 text-sm text-muted">{formatDateTime(post.created_at)}</td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center justify-end gap-2">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onDelete(post.id);
-                      }}
-                      className="p-1 text-muted hover:text-danger transition-colors"
-                      title="Delete"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </td>
               </tr>
             );
           })}
