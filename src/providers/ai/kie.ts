@@ -49,21 +49,27 @@ export async function createVideoTask(
   aspectRatio = "9:16",
   duration = "4",
 ): Promise<string> {
+  const input: Record<string, any> = {
+    prompt,
+    aspect_ratio: aspectRatio,
+    duration,
+    resolution: "720p",
+    // We overlay our own ElevenLabs narration in the stitch step and never
+    // read a source clip's audio track at all — turning this off avoids
+    // generating (and paying for) audio we'd just discard.
+    generate_audio: false,
+  };
+  // Single reference image per scene (the generated keyframe) — the first-
+  // frame mode, not the multi-reference_image_urls mode (can't combine both).
+  if (imageUrls.length > 0) input.first_frame_url = imageUrls[0];
+
   const res = await fetch(`${API_BASE}/createTask`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${getKey()}`,
     },
-    body: JSON.stringify({
-      model: "bytedance/seedance-1.5-pro",
-      input: {
-        prompt,
-        input_urls: imageUrls,
-        aspect_ratio: aspectRatio,
-        duration,
-      },
-    }),
+    body: JSON.stringify({ model: "bytedance/seedance-2-mini", input }),
   });
   if (!res.ok) throw new Error(`Kie API error: ${await res.text()}`);
   const data = await res.json();

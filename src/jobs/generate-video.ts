@@ -165,7 +165,8 @@ export const generateVideo = inngest.createFunction(
         // duration ceiling — any gap beyond that is covered by the stitch
         // step's freeze-pad, so this is just "ask for as much real motion
         // as the model allows", not the authoritative scene length.
-        const kieDuration = String(Math.min(12, Math.max(4, Math.ceil(targetDuration))));
+        // Seedance 2 Mini's documented range is 4-15s.
+        const kieDuration = String(Math.min(15, Math.max(4, Math.ceil(targetDuration))));
         const cinematicPrompt = `${imgJob.videoScenario} Cinematic quality, natural color grade, shallow depth of field, smooth slow camera movement only, no cuts within clip, photorealistic, preserve the exact scene composition from the image.`;
         const id = await Kie.createVideoTask(cinematicPrompt, [imgJob.url!], "9:16", kieDuration);
         jobs.push({
