@@ -1,23 +1,29 @@
 import type { Publisher, PublishResult } from "./types";
 import { AppError } from "@/core/errors";
 
-const BASE_URL = "https://app.upload-post.com/api";
+const BASE_URL = "https://api.upload-post.com/api";
 
-function headers() {
+function apiKey(): string {
   const key = process.env.UPLOAD_POST_API_KEY;
   if (!key) throw new AppError("Upload-Post API key not configured", "PROVIDER_DOWN", false);
-  return {
-    Authorization: `Bearer ${key}`,
-    "Content-Type": "application/json",
-  };
+  return key;
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`, { ...init, headers: headers() });
-  const body = await res.json().catch(() => ({}));
+function profileUsername(): string {
+  const user = process.env.UPLOAD_POST_PROFILE;
+  if (!user) throw new AppError("Upload-Post profile (UPLOAD_POST_PROFILE) not configured", "PROVIDER_DOWN", false);
+  return user;
+}
 
-  if (!res.ok) {
-    const msg = body?.message || body?.error || `Upload-Post error (${res.status})`;
+function authHeader(): Record<string, string> {
+  return { Authorization: `Apikey ${apiKey()}` };
+}
+
+async function parseOrThrow(res: Response) {
+  const data = await res.json().catch(() => ({}));
+  // 202 (scheduled) is a success case even though it's not res.ok's 2xx-only view in some runtimes.
+  if (!res.ok && res.status !== 202) {
+    const msg = data?.message || data?.error || `Upload-Post error (${res.status})`;
     if (res.status === 429) {
       throw new AppError("Upload-Post rate limit — try again shortly", "RATE_LIMITED", true, 30_000);
     }
@@ -26,8 +32,66 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     }
     throw new AppError(msg, "PROVIDER_DOWN", res.status >= 500);
   }
+  if (data?.success === false) {
+    throw new AppError(data?.message || data?.error || "Upload-Post request failed", "PROVIDER_DOWN", false);
+  }
+  return data;
+}
 
-  return body;
+async function get<T>(path: string, params?: Record<string, string | undefined>): Promise<T> {
+  const url = new URL(`${BASE_URL}${path}`);
+  if (params) {
+    for (const [k, v] of Object.entries(params)) {
+      if (v !== undefined) url.searchParams.set(k, v);
+    }
+  }
+  const res = await fetch(url.toString(), { headers: authHeader() });
+  return parseOrThrow(res);
+}
+
+async function postForm<T>(path: string, form: FormData): Promise<T> {
+  const res = await fetch(`${BASE_URL}${path}`, { method: "POST", headers: authHeader(), body: form });
+  return parseOrThrow(res);
+}
+
+function profileUrlFor(platform: string, handle?: string): string | undefined {
+  if (!handle) return undefined;
+  switch (platform) {
+    case "instagram":
+      return `https://instagram.com/${handle}`;
+    case "tiktok":
+      return `https://tiktok.com/@${handle}`;
+    case "twitter":
+    case "x":
+      return `https://x.com/${handle}`;
+    case "youtube":
+      return `https://youtube.com/@${handle}`;
+    default:
+      // Facebook pages and LinkedIn profiles/pages can't be reliably
+      // resolved to a public URL from just a handle — leave unclickable.
+      return undefined;
+  }
+}
+
+function buildBaseForm(platform: string, caption: string, scheduledDate?: string): FormData {
+  const form = new FormData();
+  form.append("user", profileUsername());
+  form.append("platform[]", platform);
+  form.append("title", caption);
+  if (scheduledDate) form.append("scheduled_date", scheduledDate);
+  return form;
+}
+
+function toResult(data: any, accountId: string): PublishResult {
+  const result = data.results?.[accountId];
+  const providerRef = data.job_id ? `job_id:${data.job_id}` : data.request_id ? `request_id:${data.request_id}` : undefined;
+  return {
+    success: result?.success ?? data.success ?? true,
+    providerRef,
+    url: result?.url,
+    error: result?.error,
+    scheduled: !!data.job_id,
+  };
 }
 
 export class UploadPostPublisher implements Publisher {
@@ -35,77 +99,70 @@ export class UploadPostPublisher implements Publisher {
     imageUrl: string;
     caption: string;
     accountId: string;
+    scheduledDate?: string;
   }): Promise<PublishResult> {
-    const data = await request<any>("/upload/photos", {
-      method: "POST",
-      body: JSON.stringify({
-        profile_id: params.accountId,
-        media_url: params.imageUrl,
-        caption: params.caption,
-      }),
-    });
-    return { success: true, providerRef: data.id };
+    const form = buildBaseForm(params.accountId, params.caption, params.scheduledDate);
+    form.append("photos[]", params.imageUrl);
+    const data = await postForm<any>("/upload_photos", form);
+    return toResult(data, params.accountId);
   }
 
   async publishVideo(params: {
     videoUrl: string;
     caption: string;
     accountId: string;
+    scheduledDate?: string;
   }): Promise<PublishResult> {
-    const data = await request<any>("/upload/video", {
-      method: "POST",
-      body: JSON.stringify({
-        profile_id: params.accountId,
-        media_url: params.videoUrl,
-        caption: params.caption,
-      }),
-    });
-    return { success: true, providerRef: data.id };
+    const form = buildBaseForm(params.accountId, params.caption, params.scheduledDate);
+    form.append("video", params.videoUrl);
+    const data = await postForm<any>("/upload", form);
+    return toResult(data, params.accountId);
   }
 
   async publishText(params: {
     caption: string;
     accountId: string;
+    scheduledDate?: string;
   }): Promise<PublishResult> {
-    const data = await request<any>("/upload/text", {
-      method: "POST",
-      body: JSON.stringify({
-        profile_id: params.accountId,
-        caption: params.caption,
-      }),
-    });
-    return { success: true, providerRef: data.id };
+    const form = buildBaseForm(params.accountId, params.caption, params.scheduledDate);
+    const data = await postForm<any>("/upload_text", form);
+    return toResult(data, params.accountId);
   }
 
   async getStatus(providerRef: string) {
-    const data = await request<any>(`/upload/status/${providerRef}`);
+    const [refType, refValue] = providerRef.includes(":")
+      ? [providerRef.slice(0, providerRef.indexOf(":")), providerRef.slice(providerRef.indexOf(":") + 1)]
+      : ["request_id", providerRef];
+
+    const data = await get<any>("/uploadposts/status", { [refType]: refValue });
     const status = data.status?.toLowerCase();
     const mapped =
       status === "completed" ? "completed" as const :
       status === "failed" ? "failed" as const :
       ["pending", "queued"].includes(status) ? "pending" as const :
       "processing" as const;
+
+    const firstResult = data.results?.[0];
     return {
       status: mapped,
-      url: data.url,
-      error: data.error,
+      url: firstResult?.url,
+      error: firstResult?.message,
     };
   }
 
   async listAccounts() {
-    const raw = await request<any>("/profiles");
-    const data = Array.isArray(raw) ? raw : Array.isArray(raw?.data) ? raw.data : [];
-    return data.map((p: any) => ({
-      id: String(p.id),
-      platform: p.platform?.toLowerCase() || "unknown",
-      name: p.username || p.name || "Unknown",
-      profileUrl: p.profile_url,
-      avatarUrl: p.avatar_url,
-    }));
-  }
+    const username = profileUsername();
+    const data = await get<any>(`/uploadposts/users/${encodeURIComponent(username)}`);
+    const socialAccounts: Record<string, any> = data?.profile?.social_accounts || {};
 
-  async getConnectUrl() {
-    const data = await request<{ url: string }>("/profiles/connect");
-    return data.url;
+    return Object.entries(socialAccounts)
+      .filter(([, value]) => !!value && typeof value === "object")
+      .map(([platform, value]) => ({
+        id: platform,
+        platform,
+        name: value.display_name || value.handle || username,
+        avatarUrl: value.social_images,
+        profileUrl: profileUrlFor(platform, value.handle),
+      }));
   }
 }

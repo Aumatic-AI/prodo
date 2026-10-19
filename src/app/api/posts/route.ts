@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { apiHandler } from "@/lib/api-handler";
 import { createClient } from "@/lib/supabase/server";
-import { listPosts, createPost } from "@/core/posts";
+import { listPosts, createPost, validateScheduleDate } from "@/core/posts";
 import { inngest } from "@/jobs/client";
 
 export const GET = apiHandler(async () => {
@@ -14,23 +14,28 @@ export const POST = apiHandler(async (req: NextRequest) => {
   const db = await createClient();
   const body = await req.json();
 
+  const action: "now" | "schedule" | "draft" = body.action || "now";
+
+  if (action === "schedule") {
+    const scheduleError = body.publish_at ? validateScheduleDate(body.publish_at) : "publish_at is required to schedule";
+    if (scheduleError) {
+      return NextResponse.json({ error: { code: "VALIDATION_ERROR", message: scheduleError } }, { status: 400 });
+    }
+  }
+
   const post = await createPost(db, {
     media_id: body.media_id,
-    status: body.publish_at ? "scheduled" : "draft",
-    publish_at: body.publish_at || null,
+    status: action === "schedule" ? "scheduled" : "draft",
+    publish_at: action === "schedule" ? body.publish_at || null : null,
     targets: body.targets,
   });
 
-  if (!body.publish_at) {
+  if (action !== "draft") {
     await inngest.send({
       name: "post/publish",
       data: { postId: post.id },
       id: post.id,
     });
-    await (await createClient())
-      .from("posts")
-      .update({ status: "publishing" })
-      .eq("id", post.id);
   }
 
   return NextResponse.json(post, { status: 201 });

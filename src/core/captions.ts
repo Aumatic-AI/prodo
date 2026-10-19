@@ -1,29 +1,43 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { BusinessProfile } from "@/core/profile";
+import * as OpenAI from "@/providers/ai/openai";
+import {
+  buildCaptionMetadataPrompt,
+  buildImproveCaptionPrompt,
+  formatPlatformCaptions,
+  type CaptionMetadata,
+} from "@/prompts/captions";
 
-export async function writeCaptions(
-  _db: SupabaseClient,
-  _params: {
-    mediaIdea: string;
-    platforms: string[];
-    businessProfile: { name: string; about: string };
+export async function writeCaptions(params: {
+  idea: string;
+  imageUrl?: string | null;
+  platforms: string[];
+  profile: BusinessProfile | null;
+}): Promise<Record<string, string>> {
+  const { system, user } = buildCaptionMetadataPrompt(params.idea, params.profile);
+
+  let response = params.imageUrl
+    ? await OpenAI.generateTextWithImage(user, params.imageUrl, system)
+    : await OpenAI.generateText(user, system);
+
+  let meta: CaptionMetadata;
+  try {
+    meta = OpenAI.parseJsonResponse(response) as CaptionMetadata;
+  } catch {
+    // The vision call occasionally hedges/refuses instead of returning JSON —
+    // fall back to a text-only call (idea only, no image) rather than hard-failing.
+    response = await OpenAI.generateText(user, system);
+    meta = OpenAI.parseJsonResponse(response) as CaptionMetadata;
   }
-): Promise<Record<string, string>> {
-  // TODO: call OpenAI via the AI registry to generate per-platform captions
-  // const prompt = buildCaptionsPrompt(params);
-  // const result = await aiProvider.generate({ prompt });
-  // return parseCaptions(result, params.platforms);
-  return {};
+
+  return formatPlatformCaptions(meta, params.platforms);
 }
 
-export async function improveCaption(
-  _db: SupabaseClient,
-  _params: {
-    caption: string;
-    platform: string;
-    instruction: string;
-    businessProfile: { name: string; about: string };
-  }
-): Promise<string> {
-  // TODO: call OpenAI to refine the caption based on the instruction
-  return _params.caption;
+export async function improveCaption(params: {
+  caption: string;
+  platform: string;
+  instruction?: string;
+}): Promise<string> {
+  const { system, user } = buildImproveCaptionPrompt(params.caption, params.platform, params.instruction);
+  const response = await OpenAI.generateText(user, system);
+  return response.trim();
 }

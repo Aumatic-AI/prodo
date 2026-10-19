@@ -3,12 +3,20 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 export type PostStatus = "draft" | "scheduled" | "publishing" | "published" | "partial" | "failed";
 export type TargetStatus = "pending" | "sending" | "published" | "failed";
 
+export interface PostMediaSummary {
+  type: "image" | "video" | "text";
+  storage_key: string | null;
+  idea: string | null;
+  content: string | null;
+}
+
 export interface Post {
   id: string;
   media_id: string;
   status: PostStatus;
   publish_at: string | null;
   created_at: string;
+  media: PostMediaSummary | null;
 }
 
 export interface PostTarget {
@@ -32,7 +40,7 @@ export interface PostWithTargets extends Post {
 export async function listPosts(db: SupabaseClient) {
   const { data, error } = await db
     .from("posts")
-    .select("*, post_targets(*)")
+    .select("*, post_targets(*), media(type, storage_key, idea, content)")
     .order("created_at", { ascending: false });
   if (error) throw error;
   return data as PostWithTargets[];
@@ -41,11 +49,23 @@ export async function listPosts(db: SupabaseClient) {
 export async function getPost(db: SupabaseClient, id: string) {
   const { data, error } = await db
     .from("posts")
-    .select("*, post_targets(*)")
+    .select("*, post_targets(*), media(type, storage_key, idea, content)")
     .eq("id", id)
     .single();
   if (error) throw error;
   return data as PostWithTargets;
+}
+
+/** Upload-Post rejects a scheduled_date more than 365 days out. */
+export const MAX_SCHEDULE_DAYS = 365;
+
+export function validateScheduleDate(publishAt: string): string | null {
+  const date = new Date(publishAt);
+  if (Number.isNaN(date.getTime())) return "Invalid schedule date";
+  const maxDate = new Date(Date.now() + MAX_SCHEDULE_DAYS * 24 * 60 * 60 * 1000);
+  if (date > maxDate) return `Scheduled date can't be more than ${MAX_SCHEDULE_DAYS} days out`;
+  if (date < new Date()) return "Scheduled date must be in the future";
+  return null;
 }
 
 export async function createPost(
@@ -85,6 +105,28 @@ export async function createPost(
   }
 
   return getPost(db, post.id);
+}
+
+export async function replacePostTargets(
+  db: SupabaseClient,
+  postId: string,
+  targets: {
+    platform: string;
+    account_id: string;
+    account_name: string;
+    caption: string;
+    provider: string;
+  }[]
+) {
+  const { error: deleteError } = await db.from("post_targets").delete().eq("post_id", postId);
+  if (deleteError) throw deleteError;
+
+  if (targets.length > 0) {
+    const { error: insertError } = await db.from("post_targets").insert(
+      targets.map((t) => ({ post_id: postId, ...t }))
+    );
+    if (insertError) throw insertError;
+  }
 }
 
 export async function updatePost(

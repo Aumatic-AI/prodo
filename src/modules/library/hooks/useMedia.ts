@@ -17,6 +17,14 @@ export function useMedia(type?: MediaType) {
   });
 }
 
+export function useMediaItem(id: string | null) {
+  return useQuery<Media>({
+    queryKey: ["media-item", id],
+    queryFn: () => apiFetch(`/api/media/${id}`),
+    enabled: !!id,
+  });
+}
+
 export function useGenerateMedia() {
   const qc = useQueryClient();
   return useMutation({

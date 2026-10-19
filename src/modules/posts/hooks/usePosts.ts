@@ -29,6 +29,7 @@ export function useCreatePost() {
   return useMutation({
     mutationFn: (input: {
       media_id: string;
+      action: "now" | "schedule" | "draft";
       publish_at?: string | null;
       targets: {
         platform: string;
@@ -42,10 +43,56 @@ export function useCreatePost() {
   });
 }
 
+export function usePublishDraft() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: {
+      id: string;
+      action: "now" | "schedule" | "draft";
+      publish_at?: string | null;
+      targets?: {
+        platform: string;
+        account_id: string;
+        account_name: string;
+        caption: string;
+        provider: string;
+      }[];
+    }) =>
+      apiFetch(`/api/posts/${input.id}/publish`, {
+        method: "POST",
+        body: JSON.stringify({ action: input.action, publish_at: input.publish_at, targets: input.targets }),
+      }),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: ["posts"] });
+      qc.invalidateQueries({ queryKey: ["posts", variables.id] });
+    },
+  });
+}
+
 export function useDeletePost() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => apiFetch(`/api/posts/${id}`, { method: "DELETE" }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["posts"] }),
+  });
+}
+
+export function useGenerateCaptions() {
+  return useMutation({
+    mutationFn: (input: { mediaId: string; platforms: string[] }) =>
+      apiFetch<{ captions: Record<string, string> }>(`/api/media/${input.mediaId}/captions`, {
+        method: "POST",
+        body: JSON.stringify({ platforms: input.platforms }),
+      }),
+  });
+}
+
+export function useImproveCaption() {
+  return useMutation({
+    mutationFn: (input: { platform: string; caption: string; instruction?: string }) =>
+      apiFetch<{ caption: string }>("/api/captions/improve", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
   });
 }

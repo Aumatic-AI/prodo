@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Textarea } from "@/components/ui/Textarea";
@@ -8,26 +8,49 @@ import { DateTimePicker } from "@/components/ui/DateTimePicker";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { useAccounts } from "@/modules/accounts/hooks/useAccounts";
-import { useCreatePost } from "../hooks/usePosts";
+import { useMediaItem } from "@/modules/library/hooks/useMedia";
+import { useCreatePost, usePublishDraft, usePost, useGenerateCaptions, useImproveCaption } from "../hooks/usePosts";
+import { PlatformPreview } from "../components/previews";
 import { defaultProvider } from "@/providers/publishing/registry";
 import { PLATFORMS } from "@/config/platforms";
+import { platformMeta } from "@/modules/dashboard/lib/platforms";
+import { urlFor } from "@/providers/storage/supabase-storage";
 import { cn } from "@/lib/utils";
-import { ArrowLeft, Check, Send, Clock, FileText, Plus } from "lucide-react";
+import { ArrowLeft, Check, Send, Clock, FileText, Plus, Sparkles } from "lucide-react";
 
 type WhenOption = "now" | "schedule" | "draft";
 
 export function CreatePostPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const mediaId = searchParams.get("media");
+  const draftId = searchParams.get("draft");
+  const { data: draftPost } = usePost(draftId || "");
+  const mediaId = searchParams.get("media") || draftPost?.media_id || null;
 
   const { data: accounts, isLoading: accountsLoading, error: accountsError } = useAccounts();
+  const { data: media } = useMediaItem(mediaId);
   const createPost = useCreatePost();
+  const publishDraft = usePublishDraft();
+  const generateCaptions = useGenerateCaptions();
+  const improveCaption = useImproveCaption();
+  const submitMutation = draftId ? publishDraft : createPost;
 
   const [selectedAccounts, setSelectedAccounts] = useState<Set<string>>(new Set());
   const [captions, setCaptions] = useState<Record<string, string>>({});
+  const [activeTab, setActiveTab] = useState<string | null>(null);
+  const [improvingPlatform, setImprovingPlatform] = useState<string | null>(null);
+  const [captionError, setCaptionError] = useState<string | null>(null);
   const [when, setWhen] = useState<WhenOption>("now");
   const [scheduleDate, setScheduleDate] = useState<Date | undefined>(undefined);
+
+  const seededFromDraft = useRef(false);
+  useEffect(() => {
+    if (draftPost && !seededFromDraft.current) {
+      seededFromDraft.current = true;
+      setSelectedAccounts(new Set(draftPost.post_targets.map((t) => t.account_id)));
+      setCaptions(Object.fromEntries(draftPost.post_targets.map((t) => [t.platform, t.caption])));
+    }
+  }, [draftPost]);
 
   function toggleAccount(id: string) {
     setSelectedAccounts((prev) => {
@@ -48,6 +71,41 @@ export function CreatePostPage() {
 
   const selectedAccountsList = accounts?.filter((a) => selectedAccounts.has(a.id)) || [];
   const uniquePlatforms = [...new Set(selectedAccountsList.map((a) => a.platform))];
+  const uniquePlatformsKey = uniquePlatforms.join(",");
+
+  useEffect(() => {
+    if (!activeTab || !uniquePlatforms.includes(activeTab)) {
+      setActiveTab(uniquePlatforms[0] || null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uniquePlatformsKey, activeTab]);
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const mediaUrl = media?.storage_key ? urlFor(supabaseUrl, media.storage_key) : null;
+
+  async function handleGenerateCaptions() {
+    if (!mediaId || !uniquePlatforms.length) return;
+    setCaptionError(null);
+    try {
+      const result = await generateCaptions.mutateAsync({ mediaId, platforms: uniquePlatforms });
+      setCaptions((prev) => ({ ...prev, ...result.captions }));
+    } catch (e: any) {
+      setCaptionError(e.message || "Failed to generate captions");
+    }
+  }
+
+  async function handleImproveCaption(platform: string) {
+    setImprovingPlatform(platform);
+    setCaptionError(null);
+    try {
+      const result = await improveCaption.mutateAsync({ platform, caption: getCaptionForPlatform(platform) });
+      setCaptionForPlatform(platform, result.caption);
+    } catch (e: any) {
+      setCaptionError(e.message || "Failed to improve caption");
+    } finally {
+      setImprovingPlatform(null);
+    }
+  }
 
   async function handleCreate() {
     if (!mediaId || selectedAccountsList.length === 0) return;
@@ -59,12 +117,13 @@ export function CreatePostPage() {
       caption: getCaptionForPlatform(a.platform),
       provider: defaultProvider(),
     }));
+    const publish_at = when === "schedule" ? (scheduleDate ? scheduleDate.toISOString() : null) : null;
 
-    await createPost.mutateAsync({
-      media_id: mediaId,
-      publish_at: when === "schedule" ? (scheduleDate ? scheduleDate.toISOString() : null) : null,
-      targets,
-    });
+    if (draftId) {
+      await publishDraft.mutateAsync({ id: draftId, action: when, publish_at, targets });
+    } else {
+      await createPost.mutateAsync({ media_id: mediaId, action: when, publish_at, targets });
+    }
     router.push("/posts");
   }
 
@@ -79,6 +138,10 @@ export function CreatePostPage() {
     );
   }
 
+  const activeAccount = selectedAccountsList.find((a) => a.platform === activeTab);
+  const activeCfg = activeTab ? PLATFORMS[activeTab] : undefined;
+  const activeCaption = activeTab ? getCaptionForPlatform(activeTab) : "";
+
   return (
     <div>
       <div className="flex items-center gap-3 mb-6">
@@ -86,7 +149,7 @@ export function CreatePostPage() {
           <ArrowLeft className="w-5 h-5" />
         </button>
         <div>
-          <h1 className="text-2xl font-bold text-text">Create Post</h1>
+          <h1 className="text-2xl font-bold text-text">{draftId ? "Edit Draft" : "Create Post"}</h1>
           <p className="mt-0.5 text-sm text-muted">Pick accounts, write captions, and publish.</p>
         </div>
       </div>
@@ -149,26 +212,88 @@ export function CreatePostPage() {
           </div>
 
           {/* Captions */}
-          {uniquePlatforms.length > 0 && (
+          {uniquePlatforms.length > 0 && activeTab && (
             <div className="bg-surface rounded-xl border border-default shadow-xs p-5">
               <h3 className="text-sm font-semibold text-text mb-4">Captions</h3>
-              <div className="space-y-4">
+
+              {/* Platform tabs */}
+              <div className="flex flex-wrap gap-2 mb-5">
                 {uniquePlatforms.map((platform) => {
-                  const cfg = PLATFORMS[platform];
+                  const meta = platformMeta(platform);
+                  const Icon = meta?.icon;
+                  const active = activeTab === platform;
                   return (
-                    <Textarea
+                    <button
                       key={platform}
-                      label={cfg?.label || platform}
-                      hint={`${getCaptionForPlatform(platform).length} / ${cfg?.captionMaxLength || "∞"}`}
-                      value={getCaptionForPlatform(platform)}
-                      onChange={(e) => setCaptionForPlatform(platform, e.target.value)}
-                      placeholder={`Write a caption for ${cfg?.label || platform}...`}
-                      maxLength={cfg?.captionMaxLength}
-                      className="min-h-[100px]"
-                    />
+                      onClick={() => setActiveTab(platform)}
+                      className={cn(
+                        "flex items-center gap-1.5 rounded-full text-xs font-medium transition-colors",
+                        active ? "bg-primary text-on-primary" : "bg-page text-muted hover:text-text"
+                      )}
+                      style={{ padding: "6px 12px" }}
+                    >
+                      {Icon && <Icon className="w-3.5 h-3.5" />}
+                      {meta?.label || PLATFORMS[platform]?.label || platform}
+                    </button>
                   );
                 })}
               </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-sm font-medium text-text">
+                      {activeCfg?.label || activeTab} caption
+                    </label>
+                    {activeCaption.trim() ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleImproveCaption(activeTab)}
+                        loading={improvingPlatform === activeTab}
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        Improve with AI
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleGenerateCaptions}
+                        loading={generateCaptions.isPending}
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        Generate with AI
+                      </Button>
+                    )}
+                  </div>
+                  <Textarea
+                    value={activeCaption}
+                    onChange={(e) => setCaptionForPlatform(activeTab, e.target.value)}
+                    placeholder={`Write a caption for ${activeCfg?.label || activeTab}...`}
+                    maxLength={activeCfg?.captionMaxLength}
+                    hint={`${activeCaption.length} / ${activeCfg?.captionMaxLength || "∞"}`}
+                    className="min-h-[200px]"
+                  />
+                </div>
+
+                <div className="flex items-start justify-center pt-1">
+                  <PlatformPreview
+                    platform={activeTab as any}
+                    account={{
+                      displayName: activeAccount?.name || "your_account",
+                      avatarUrl: activeAccount?.avatarUrl,
+                    }}
+                    caption={activeCaption}
+                    mediaUrl={mediaUrl}
+                    mediaType={media?.type}
+                  />
+                </div>
+              </div>
+
+              {captionError && (
+                <p className="mt-4 text-sm text-danger bg-danger-bg rounded-lg px-3 py-2">{captionError}</p>
+              )}
             </div>
           )}
         </div>
@@ -204,6 +329,7 @@ export function CreatePostPage() {
                 value={scheduleDate}
                 onChange={setScheduleDate}
                 minDate={new Date()}
+                maxDate={new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)}
                 className="mt-3"
               />
             )}
@@ -212,15 +338,15 @@ export function CreatePostPage() {
           <Button
             className="w-full"
             onClick={handleCreate}
-            loading={createPost.isPending}
+            loading={submitMutation.isPending}
             disabled={!mediaId || selectedAccounts.size === 0}
           >
             {when === "draft" ? "Save draft" : when === "schedule" ? "Schedule post" : "Publish now"}
           </Button>
 
-          {createPost.error && (
+          {submitMutation.error && (
             <p className="text-sm text-danger bg-danger-bg rounded-lg px-3 py-2">
-              {createPost.error.message}
+              {submitMutation.error.message}
             </p>
           )}
         </div>

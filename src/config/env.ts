@@ -6,6 +6,7 @@ const envSchema = z.object({
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),
 
   UPLOAD_POST_API_KEY: z.string().min(1).optional(),
+  UPLOAD_POST_PROFILE: z.string().min(1).optional(),
 
   OPENAI_API_KEY: z.string().min(1).optional(),
   KIE_API_KEY: z.string().min(1).optional(),

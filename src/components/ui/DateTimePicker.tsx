@@ -40,6 +40,7 @@ interface DateTimePickerProps {
   value?: Date;
   onChange: (date: Date | undefined) => void;
   minDate?: Date;
+  maxDate?: Date;
   placeholder?: string;
   className?: string;
 }
@@ -48,6 +49,7 @@ export function DateTimePicker({
   value,
   onChange,
   minDate,
+  maxDate,
   placeholder = "Pick a date & time",
   className,
 }: DateTimePickerProps) {
@@ -68,6 +70,7 @@ export function DateTimePicker({
   const days = useMemo(() => getDaysInMonth(year, month), [year, month]);
   const todayStr = new Date().toDateString();
   const minDay = minDate ? new Date(minDate.getFullYear(), minDate.getMonth(), minDate.getDate()) : null;
+  const maxDay = maxDate ? new Date(maxDate.getFullYear(), maxDate.getMonth(), maxDate.getDate()) : null;
 
   function selectDay(day: Date) {
     const next = new Date(day);
@@ -118,7 +121,8 @@ export function DateTimePicker({
             <button
               type="button"
               onClick={() => setViewDate(new Date(year, month + 1, 1))}
-              className="p-1 text-muted hover:text-text transition-colors"
+              disabled={maxDay ? new Date(year, month + 1, 1) > maxDay : false}
+              className="p-1 text-muted hover:text-text transition-colors disabled:opacity-30 disabled:pointer-events-none"
             >
               <ChevronRight className="w-4 h-4" />
             </button>
@@ -137,7 +141,7 @@ export function DateTimePicker({
           <div className="grid grid-cols-7 gap-y-0.5 px-3 pb-3 pt-1">
             {days.map((day, i) => {
               if (!day) return <div key={`empty-${i}`} />;
-              const disabled = minDay ? day < minDay : false;
+              const disabled = (minDay ? day < minDay : false) || (maxDay ? day > maxDay : false);
               const selected = value ? isSameDay(day, value) : false;
               const isToday = day.toDateString() === todayStr;
               return (

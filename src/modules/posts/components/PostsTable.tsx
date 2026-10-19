@@ -4,7 +4,9 @@ import { StatusChip } from "@/components/ui/StatusChip";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
-import { Send, Trash2, Eye } from "lucide-react";
+import { platformMeta } from "@/modules/dashboard/lib/platforms";
+import { urlFor } from "@/providers/storage/supabase-storage";
+import { Send, Trash2, Video, FileText } from "lucide-react";
 import type { PostWithTargets } from "@/core/posts";
 
 interface PostsTableProps {
@@ -14,6 +16,15 @@ interface PostsTableProps {
   onRefetch: () => void;
   onView: (id: string) => void;
   onDelete: (id: string) => void;
+}
+
+function formatDateTime(iso: string) {
+  return new Date(iso).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 export function PostsTable({ posts, isLoading, error, onRefetch, onView, onDelete }: PostsTableProps) {
@@ -43,54 +54,97 @@ export function PostsTable({ posts, isLoading, error, onRefetch, onView, onDelet
     );
   }
 
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+
   return (
     <div className="overflow-hidden">
       <table className="w-full">
         <thead>
           <tr className="border-b border-[var(--color-border-subtle)] bg-surface-sunken">
-            <th className="text-left text-xs font-medium text-secondary uppercase tracking-wider px-4 py-2.5">Media</th>
+            <th className="text-left text-xs font-medium text-secondary uppercase tracking-wider px-4 py-2.5">Post</th>
             <th className="text-left text-xs font-medium text-secondary uppercase tracking-wider px-4 py-2.5">Accounts</th>
             <th className="text-left text-xs font-medium text-secondary uppercase tracking-wider px-4 py-2.5">Status</th>
-            <th className="text-left text-xs font-medium text-secondary uppercase tracking-wider px-4 py-2.5">Scheduled</th>
+            <th className="text-left text-xs font-medium text-secondary uppercase tracking-wider px-4 py-2.5">Created</th>
             <th className="text-right text-xs font-medium text-secondary uppercase tracking-wider px-4 py-2.5">Actions</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-[var(--color-border-subtle)]">
-          {posts.map((post) => (
-            <tr key={post.id} className="hover:bg-surface-hover transition-colors">
-              <td className="px-4 py-3 text-sm text-text">{post.media_id.slice(0, 8)}...</td>
-              <td className="px-4 py-3">
-                <div className="flex items-center gap-1">
-                  {post.post_targets.map((t) => (
-                    <StatusChip key={t.id} status={t.status} className="text-[10px]" />
-                  ))}
-                </div>
-              </td>
-              <td className="px-4 py-3">
-                <StatusChip status={post.status} />
-              </td>
-              <td className="px-4 py-3 text-sm text-muted">
-                {post.publish_at
-                  ? new Date(post.publish_at).toLocaleDateString("en-US", {
-                      month: "short",
-                      day: "numeric",
-                      hour: "numeric",
-                      minute: "2-digit",
-                    })
-                  : "—"}
-              </td>
-              <td className="px-4 py-3">
-                <div className="flex items-center justify-end gap-2">
-                  <button onClick={() => onView(post.id)} className="p-1 text-muted hover:text-primary transition-colors" title="View">
-                    <Eye className="w-4 h-4" />
-                  </button>
-                  <button onClick={() => onDelete(post.id)} className="p-1 text-muted hover:text-danger transition-colors" title="Delete">
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              </td>
-            </tr>
-          ))}
+          {posts.map((post) => {
+            const media = post.media;
+            const imageUrl = media?.type === "image" && media.storage_key ? urlFor(supabaseUrl, media.storage_key) : null;
+
+            return (
+              <tr
+                key={post.id}
+                onClick={() => onView(post.id)}
+                className="hover:bg-surface-hover transition-colors cursor-pointer"
+              >
+                <td className="px-4 py-3">
+                  <div className="w-10 h-10 rounded-lg overflow-hidden bg-surface-sunken flex items-center justify-center shrink-0">
+                    {imageUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={imageUrl} alt="" className="w-full h-full object-cover" />
+                    ) : media?.type === "video" ? (
+                      <Video className="w-4 h-4 text-secondary" />
+                    ) : (
+                      <FileText className="w-4 h-4 text-secondary" />
+                    )}
+                  </div>
+                </td>
+                <td className="px-4 py-3">
+                  <div className="flex items-center gap-1.5">
+                    {post.post_targets.map((t) => {
+                      const meta = platformMeta(t.platform);
+                      const Icon = meta?.icon;
+                      const badge = (
+                        <div
+                          className="w-7 h-7 rounded-md flex items-center justify-center"
+                          style={{ backgroundColor: meta?.color || "var(--color-surface-sunken)" }}
+                          title={`${t.account_name} (${meta?.label || t.platform}) — ${t.status}`}
+                        >
+                          {Icon ? <Icon className="w-3.5 h-3.5 text-white" /> : null}
+                        </div>
+                      );
+                      return t.url ? (
+                        <a
+                          key={t.id}
+                          href={t.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {badge}
+                        </a>
+                      ) : (
+                        <div key={t.id}>{badge}</div>
+                      );
+                    })}
+                  </div>
+                </td>
+                <td className="px-4 py-3">
+                  <StatusChip status={post.status} />
+                  {post.status === "scheduled" && post.publish_at && (
+                    <p className="text-xs text-muted mt-1">{formatDateTime(post.publish_at)}</p>
+                  )}
+                </td>
+                <td className="px-4 py-3 text-sm text-muted">{formatDateTime(post.created_at)}</td>
+                <td className="px-4 py-3">
+                  <div className="flex items-center justify-end gap-2">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDelete(post.id);
+                      }}
+                      className="p-1 text-muted hover:text-danger transition-colors"
+                      title="Delete"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>

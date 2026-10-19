@@ -3,21 +3,13 @@
 import { Skeleton } from "@/components/ui/Skeleton";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Button } from "@/components/ui/Button";
+import { AccountCard } from "@/modules/accounts/components/AccountCard";
 import { useAccounts } from "@/modules/accounts/hooks/useAccounts";
-import { cn } from "@/lib/utils";
-import { ExternalLink, Plus, Users } from "lucide-react";
+import { Plus, Users } from "lucide-react";
 
 function connectAccount() {
   window.open("https://app.upload-post.com", "_blank", "noopener,noreferrer");
 }
-
-const platformColors: Record<string, string> = {
-  instagram: "bg-gradient-to-br from-purple-500 to-pink-500",
-  facebook: "bg-blue-600",
-  linkedin: "bg-blue-700",
-  twitter: "bg-black",
-  tiktok: "bg-black",
-};
 
 export function AccountsSection() {
   const { data: accounts, isLoading, error, refetch } = useAccounts();
@@ -51,33 +43,7 @@ export function AccountsSection() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {accounts.map((account) => (
-            <div
-              key={account.id}
-              className="flex items-center gap-3 p-3 bg-page rounded-lg border border-default hover:border-[var(--color-border-strong)] transition-colors"
-            >
-              <div
-                className={cn(
-                  "w-9 h-9 rounded-lg flex items-center justify-center text-white text-xs font-bold shrink-0",
-                  platformColors[account.platform] || "bg-surface-sunken text-muted"
-                )}
-              >
-                {account.name.charAt(0).toUpperCase()}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-text truncate">{account.name}</p>
-                <p className="text-xs text-secondary capitalize">{account.platform}</p>
-              </div>
-              {account.profileUrl && (
-                <a
-                  href={account.profileUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="p-1.5 text-muted hover:text-primary transition-colors"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                </a>
-              )}
-            </div>
+            <AccountCard key={account.id} account={account} />
           ))}
         </div>
       )}

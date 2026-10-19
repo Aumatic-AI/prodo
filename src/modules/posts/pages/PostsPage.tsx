@@ -42,8 +42,8 @@ export function PostsPage() {
         </Button>
       </div>
 
-      <div className="bg-surface rounded-xl border border-default shadow-xs p-6">
-        <div className="mb-6">
+      <div className="bg-surface rounded-xl border border-default shadow-xs py-6">
+        <div className="mb-6 px-6">
           <Tabs tabs={TABS} value={tab} onChange={setTab} />
         </div>
 
