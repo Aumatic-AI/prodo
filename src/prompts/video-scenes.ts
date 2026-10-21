@@ -6,7 +6,6 @@ export function buildScenesPrompt(
   profile: BusinessProfile | null,
   opts: {
     character?: string;
-    videoType?: string;
   }
 ): string {
   const profileContext = buildProfileBlock(profile);
@@ -20,7 +19,7 @@ Below is a narration script broken into scenes. For each scene, write:
 2. A cinematic video motion description (how the scene animates — camera movement, subject action)
 
 Character: ${opts.character || "neutral"} presenter
-Style: ${opts.videoType || "Social media"} content — natural, candid, documentary-realistic. Real skin texture and imperfections, authentic ambient lighting, lived-in locations and props. Avoid anything that reads as synthetic, overly smooth, airbrushed, or "AI-generated" — the goal is footage someone would believe was shot with a real camera.
+Style: Social media content — natural, candid, documentary-realistic. Real skin texture and imperfections, authentic ambient lighting, lived-in locations and props. Avoid anything that reads as synthetic, overly smooth, airbrushed, or "AI-generated" — the goal is footage someone would believe was shot with a real camera.
 
 The narration is a separate voiceover track added afterward, not recorded live on camera — the person on screen must NEVER appear to be speaking, talking, or mouthing words. The script line below is only context for what that scene is about visually; do not depict anyone saying it. Instead show them doing something silent that matches the moment: gesturing, demonstrating, reacting, looking at camera or at what's around them, interacting with the setting or product. Mouth stays naturally closed or neutral throughout.
 

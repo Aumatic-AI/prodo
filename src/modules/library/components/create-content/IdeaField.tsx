@@ -33,6 +33,19 @@ export function IdeaField({ value, onChange, format, placeholder, label = "Your 
 
   return (
     <div>
+      {value.trim() && (
+        <div className="flex justify-end mb-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleImprove}
+            loading={improve.isPending}
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            Improve
+          </Button>
+        </div>
+      )}
       <Textarea
         id="idea"
         label={label}
@@ -42,20 +55,6 @@ export function IdeaField({ value, onChange, format, placeholder, label = "Your 
         placeholder={placeholder}
         className="min-h-[100px]"
       />
-      <div className="flex justify-end mt-2">
-        <span title={!value.trim() ? "Type an idea first to improve it with AI" : undefined}>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleImprove}
-            loading={improve.isPending}
-            disabled={!value.trim()}
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-            Improve
-          </Button>
-        </span>
-      </div>
 
       {options && options.length > 0 && (
         <div

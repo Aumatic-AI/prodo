@@ -19,7 +19,6 @@ export interface Media {
   voice_name: string | null;
   audio_style: string | null;
   character: string | null;
-  video_type: string | null;
   language: string | null;
   product: string | null;
   reference_image_key: string | null;
@@ -41,7 +40,6 @@ export interface CreateMediaInput {
   voice_name?: string;
   audio_style?: string;
   character?: string;
-  video_type?: string;
   language?: string;
   product?: string;
   reference_image_key?: string;

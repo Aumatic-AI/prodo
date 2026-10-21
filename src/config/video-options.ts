@@ -9,7 +9,6 @@ export const DURATIONS = [
   { value: "15", label: "15 sec" },
   { value: "30", label: "30 sec" },
   { value: "45", label: "45 sec" },
-  { value: "60", label: "60 sec" },
 ];
 
 export const AUDIO_STYLES = [
@@ -20,11 +19,6 @@ export const AUDIO_STYLES = [
 export const CHARACTERS = [
   { value: "male", label: "Male" },
   { value: "female", label: "Female" },
-];
-
-export const VIDEO_TYPES = [
-  { value: "promotional", label: "Promotional" },
-  { value: "explainer", label: "Explainer" },
 ];
 
 export const LANGUAGES = [

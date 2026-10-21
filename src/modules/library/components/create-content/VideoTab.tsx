@@ -16,7 +16,6 @@ import {
   DURATIONS,
   AUDIO_STYLES,
   CHARACTERS,
-  VIDEO_TYPES,
   LANGUAGES,
 } from "@/config/video-options";
 import { Mic } from "lucide-react";
@@ -31,7 +30,6 @@ export function VideoTab({ onSuccess }: { onSuccess: () => void }) {
   const [voiceId, setVoiceId] = useState("");
   const [voiceName, setVoiceName] = useState("");
   const [character, setCharacter] = useState("female");
-  const [videoType, setVideoType] = useState("promotional");
   const [language, setLanguage] = useState("en");
   const [showVoiceModal, setShowVoiceModal] = useState(false);
   const [refFile, setRefFile] = useState<File | null>(null);
@@ -72,7 +70,6 @@ export function VideoTab({ onSuccess }: { onSuccess: () => void }) {
       voice_id: hasVoice ? voiceId || undefined : undefined,
       voice_name: hasVoice ? voiceName || undefined : undefined,
       character: hasVoice ? character : undefined,
-      video_type: videoType,
       language,
       reference_image_key: referenceImageKey,
     });
@@ -89,25 +86,18 @@ export function VideoTab({ onSuccess }: { onSuccess: () => void }) {
         required
       />
 
-      <SegmentedControl
-        label="Aspect ratio"
-        options={ASPECT_RATIOS}
-        value={aspectRatio}
-        onChange={setAspectRatio}
-      />
-
       <div className="grid grid-cols-2 gap-4">
+        <SegmentedControl
+          label="Aspect ratio"
+          options={ASPECT_RATIOS}
+          value={aspectRatio}
+          onChange={setAspectRatio}
+        />
         <Dropdown
           label="Duration"
           options={DURATIONS}
           value={duration}
           onChange={setDuration}
-        />
-        <Dropdown
-          label="Video type"
-          options={VIDEO_TYPES}
-          value={videoType}
-          onChange={setVideoType}
         />
       </div>
 
@@ -133,31 +123,37 @@ export function VideoTab({ onSuccess }: { onSuccess: () => void }) {
         )}
       </div>
 
-      <div>
-        <p className="text-sm font-medium text-text mb-2">Audio style</p>
-        <Tabs
-          tabs={AUDIO_STYLES.map((s) => ({ value: s.value, label: s.label }))}
-          value={audioStyle}
-          onChange={setAudioStyle}
-        />
-      </div>
-
-      {audioStyle === "Voiceover" && (
+      <div className="grid grid-cols-2 gap-4">
         <div>
-          <p className="text-sm font-medium text-text mb-2">Voice</p>
-          <button
-            type="button"
-            onClick={() => setShowVoiceModal(true)}
-            className="flex items-center gap-3 w-full rounded-lg border border-default hover:border-strong transition-colors"
-            style={{ padding: "10px 14px", backgroundColor: "var(--color-page)" }}
-          >
-            <Mic className="w-4 h-4 text-secondary" />
-            <span className={voiceName ? "text-sm text-text" : "text-sm text-secondary"}>
-              {voiceName || "Choose a voice..."}
-            </span>
-          </button>
+          <p className="text-sm font-medium text-text mb-2">Audio style</p>
+          <Tabs
+            tabs={AUDIO_STYLES.map((s) => ({ value: s.value, label: s.label }))}
+            value={audioStyle}
+            onChange={setAudioStyle}
+          />
         </div>
-      )}
+
+        {audioStyle === "Voiceover" && (
+          <div>
+            <p className="text-sm font-medium text-text mb-2">
+              Voice<span className="text-danger"> *</span>
+            </p>
+            <button
+              type="button"
+              onClick={() => setShowVoiceModal(true)}
+              className={`flex items-center gap-3 w-full rounded-lg border transition-colors ${
+                voiceId ? "border-default hover:border-strong" : "border-danger"
+              }`}
+              style={{ padding: "10px 14px", backgroundColor: "var(--color-page)" }}
+            >
+              <Mic className="w-4 h-4 text-secondary" />
+              <span className={voiceName ? "text-sm text-text" : "text-sm text-secondary"}>
+                {voiceName || "Choose a voice..."}
+              </span>
+            </button>
+          </div>
+        )}
+      </div>
 
       <div className="grid grid-cols-2 gap-4">
         {audioStyle === "Voiceover" && (
@@ -186,7 +182,13 @@ export function VideoTab({ onSuccess }: { onSuccess: () => void }) {
         <Button
           onClick={handleCreate}
           loading={uploadRef.isPending || generate.isPending}
-          disabled={!idea.trim() || !resolvedProduct.trim() || uploadRef.isPending || generate.isPending}
+          disabled={
+            !idea.trim() ||
+            !resolvedProduct.trim() ||
+            (audioStyle === "Voiceover" && !voiceId) ||
+            uploadRef.isPending ||
+            generate.isPending
+          }
         >
           Generate Video
         </Button>

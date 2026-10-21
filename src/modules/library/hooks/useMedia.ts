@@ -39,7 +39,6 @@ export function useGenerateMedia() {
       voice_name?: string;
       audio_style?: string;
       character?: string;
-      video_type?: string;
       language?: string;
       product?: string;
       reference_image_key?: string;

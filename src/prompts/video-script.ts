@@ -17,7 +17,6 @@ export function buildVideoScriptPrompt(
   opts: {
     durationSec: number;
     character?: string;
-    videoType?: string;
     language?: string;
     product?: string;
   }
@@ -29,7 +28,7 @@ export function buildVideoScriptPrompt(
   return `You are a professional social media video scriptwriter.
 
 ${profileContext ? `We are creating videos for the following business:\n${profileContext}\n` : ""}
-Write a narration script for a ${opts.durationSec}-second ${opts.videoType || "social media"} video.
+Write a narration script for a ${opts.durationSec}-second social media video.
 
 Topic: "${idea}"
 ${opts.product ? `Product/Service: ${opts.product}` : ""}

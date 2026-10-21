@@ -46,7 +46,6 @@ export const generateVideo = inngest.createFunction(
       const prompt = buildVideoScriptPrompt(media.idea!, profile, {
         durationSec,
         character: media.character || undefined,
-        videoType: media.video_type || undefined,
         language: media.language || undefined,
         product: media.product || undefined,
       });
@@ -62,7 +61,6 @@ export const generateVideo = inngest.createFunction(
     const visualPromptsJson = await step.run("plan-scenes", async () => {
       const prompt = buildScenesPrompt(scriptJson.script, profile, {
         character: media.character || undefined,
-        videoType: media.video_type || undefined,
       });
       const response = await OpenAI.generateText(prompt);
       return OpenAI.parseJsonResponse(response) as {

@@ -30,7 +30,6 @@ export const POST = apiHandler(async (req: NextRequest) => {
     voice_name: body.voice_name,
     audio_style: body.audio_style,
     character: body.character,
-    video_type: body.video_type,
     language: body.language,
     product: body.product,
     reference_image_key: body.reference_image_key,
