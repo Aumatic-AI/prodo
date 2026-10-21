@@ -46,7 +46,6 @@ export const generateVideo = inngest.createFunction(
       const prompt = buildVideoScriptPrompt(media.idea!, profile, {
         durationSec,
         character: media.character || undefined,
-        audioStyle: media.audio_style || undefined,
         videoType: media.video_type || undefined,
         language: media.language || undefined,
         product: media.product || undefined,
@@ -167,7 +166,7 @@ export const generateVideo = inngest.createFunction(
         // as the model allows", not the authoritative scene length.
         // Seedance 2 Mini's documented range is 4-15s.
         const kieDuration = String(Math.min(15, Math.max(4, Math.ceil(targetDuration))));
-        const cinematicPrompt = `${imgJob.videoScenario} Cinematic quality, natural color grade, shallow depth of field, smooth slow camera movement only, no cuts within clip, photorealistic, preserve the exact scene composition from the image.`;
+        const cinematicPrompt = `${imgJob.videoScenario} Cinematic quality, natural color grade, shallow depth of field, smooth slow camera movement only, no cuts within clip, photorealistic, preserve the exact scene composition from the image. The subject does not talk or speak — no lip movement, mouth stays naturally closed or neutral throughout; narration is a separate voiceover added afterward, not something happening on screen.`;
         const id = await Kie.createVideoTask(cinematicPrompt, [imgJob.url!], "9:16", kieDuration);
         jobs.push({
           id,

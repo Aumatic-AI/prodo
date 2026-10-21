@@ -17,7 +17,6 @@ export function buildVideoScriptPrompt(
   opts: {
     durationSec: number;
     character?: string;
-    audioStyle?: string;
     videoType?: string;
     language?: string;
     product?: string;
@@ -35,7 +34,7 @@ Write a narration script for a ${opts.durationSec}-second ${opts.videoType || "s
 Topic: "${idea}"
 ${opts.product ? `Product/Service: ${opts.product}` : ""}
 Character: ${opts.character || "neutral"} narrator
-Tone: ${opts.audioStyle || "Conversational"}
+Tone: Conversational
 Language: ${lang}
 
 Requirements:

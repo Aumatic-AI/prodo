@@ -27,7 +27,7 @@ export function VideoTab({ onSuccess }: { onSuccess: () => void }) {
   const [duration, setDuration] = useState("30");
   const [product, setProduct] = useState("");
   const [customProduct, setCustomProduct] = useState("");
-  const [audioStyle, setAudioStyle] = useState("narration");
+  const [audioStyle, setAudioStyle] = useState("Voiceover");
   const [voiceId, setVoiceId] = useState("");
   const [voiceName, setVoiceName] = useState("");
   const [character, setCharacter] = useState("female");
@@ -60,6 +60,8 @@ export function VideoTab({ onSuccess }: { onSuccess: () => void }) {
       referenceImageKey = result.key;
     }
 
+    const hasVoice = audioStyle === "Voiceover";
+
     await generate.mutateAsync({
       type: "video",
       idea,
@@ -67,9 +69,9 @@ export function VideoTab({ onSuccess }: { onSuccess: () => void }) {
       duration_sec: parseInt(duration),
       product: resolvedProduct || undefined,
       audio_style: audioStyle,
-      voice_id: voiceId || undefined,
-      voice_name: voiceName || undefined,
-      character,
+      voice_id: hasVoice ? voiceId || undefined : undefined,
+      voice_name: hasVoice ? voiceName || undefined : undefined,
+      character: hasVoice ? character : undefined,
       video_type: videoType,
       language,
       reference_image_key: referenceImageKey,
@@ -140,29 +142,32 @@ export function VideoTab({ onSuccess }: { onSuccess: () => void }) {
         />
       </div>
 
-      {/* Voice selector */}
-      <div>
-        <p className="text-sm font-medium text-text mb-2">Voice</p>
-        <button
-          type="button"
-          onClick={() => setShowVoiceModal(true)}
-          className="flex items-center gap-3 w-full rounded-lg border border-default hover:border-strong transition-colors"
-          style={{ padding: "10px 14px", backgroundColor: "var(--color-page)" }}
-        >
-          <Mic className="w-4 h-4 text-secondary" />
-          <span className={voiceName ? "text-sm text-text" : "text-sm text-secondary"}>
-            {voiceName || "Choose a voice..."}
-          </span>
-        </button>
-      </div>
+      {audioStyle === "Voiceover" && (
+        <div>
+          <p className="text-sm font-medium text-text mb-2">Voice</p>
+          <button
+            type="button"
+            onClick={() => setShowVoiceModal(true)}
+            className="flex items-center gap-3 w-full rounded-lg border border-default hover:border-strong transition-colors"
+            style={{ padding: "10px 14px", backgroundColor: "var(--color-page)" }}
+          >
+            <Mic className="w-4 h-4 text-secondary" />
+            <span className={voiceName ? "text-sm text-text" : "text-sm text-secondary"}>
+              {voiceName || "Choose a voice..."}
+            </span>
+          </button>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-4">
-        <Dropdown
-          label="Character"
-          options={CHARACTERS}
-          value={character}
-          onChange={setCharacter}
-        />
+        {audioStyle === "Voiceover" && (
+          <Dropdown
+            label="Character"
+            options={CHARACTERS}
+            value={character}
+            onChange={setCharacter}
+          />
+        )}
         <Dropdown
           label="Language"
           options={LANGUAGES}

@@ -13,10 +13,8 @@ export const DURATIONS = [
 ];
 
 export const AUDIO_STYLES = [
-  { value: "narration", label: "Narration" },
-  { value: "conversational", label: "Conversational" },
-  { value: "dramatic", label: "Dramatic" },
-  { value: "calm", label: "Calm" },
+  { value: "Voiceover", label: "Voiceover" },
+  { value: "No Voice", label: "No Voice" },
 ];
 
 export const CHARACTERS = [

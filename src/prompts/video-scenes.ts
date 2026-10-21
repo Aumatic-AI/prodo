@@ -22,12 +22,15 @@ Below is a narration script broken into scenes. For each scene, write:
 Character: ${opts.character || "neutral"} presenter
 Style: ${opts.videoType || "Social media"} content — natural, candid, documentary-realistic. Real skin texture and imperfections, authentic ambient lighting, lived-in locations and props. Avoid anything that reads as synthetic, overly smooth, airbrushed, or "AI-generated" — the goal is footage someone would believe was shot with a real camera.
 
+The narration is a separate voiceover track added afterward, not recorded live on camera — the person on screen must NEVER appear to be speaking, talking, or mouthing words. The script line below is only context for what that scene is about visually; do not depict anyone saying it. Instead show them doing something silent that matches the moment: gesturing, demonstrating, reacting, looking at camera or at what's around them, interacting with the setting or product. Mouth stays naturally closed or neutral throughout.
+
 Script:
 ${numbered}
 
 Requirements:
 - Shot descriptions should be detailed and concrete (specific setting, lighting, framing) — describe it the way a director briefs a cinematographer, not the way you'd prompt an image generator
 - Video scenarios should describe natural, subtle motion — slow camera moves, gentle animation, the small imperfections of a handheld or tripod shot rather than a perfectly smooth synthetic glide
+- The subject must not talk, speak, or move their mouth as if forming words — describe silent action/reaction instead, never dialogue or narration happening on screen
 - Keep visual continuity across scenes (consistent setting, character, color grade)
 - Each scene lasts roughly 5-6 seconds — describe motion paced to read naturally over that span, not a quick action that finishes in a flash
 
