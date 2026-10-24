@@ -31,7 +31,8 @@ export const POST = apiHandler(async (req: NextRequest) => {
     audio_style: body.audio_style,
     character: body.character,
     language: body.language,
-    product: body.product,
+    offering_id: body.offering_id || undefined,
+    creative_spec: body.product_name ? { product_name: String(body.product_name).trim() } : undefined,
     reference_image_key: body.reference_image_key,
   });
 

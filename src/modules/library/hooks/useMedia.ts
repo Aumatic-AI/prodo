@@ -40,7 +40,8 @@ export function useGenerateMedia() {
       audio_style?: string;
       character?: string;
       language?: string;
-      product?: string;
+      offering_id?: string;
+      product_name?: string;
       reference_image_key?: string;
     }) => apiFetch("/api/media", { method: "POST", body: JSON.stringify(input) }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["media"] }),

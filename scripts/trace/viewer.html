@@ -1,0 +1,760 @@
+<title>Prodo Research Trace</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+/* Prodo's light app theme (src/styles/globals.css): grey page, white cards, #0078D4 for active states.
+   Layout: header with run facts → summary tiles → agent timeline → tabs (Agents, Vendors, AI, Database, All events). */
+:root {
+  color-scheme: light;
+  --page: #f5f6f8; --surface: #ffffff; --sunken: #edeef1; --hover: #f0f1f4;
+  --border: #dcdfe4; --border-subtle: #ecedf0; --border-strong: #c4c7ce;
+  --text: #1a1d26; --muted: #5e6270; --secondary: #8b8fa2;
+  --primary: #0078d4; --primary-subtle: rgba(0, 120, 212, 0.08); --primary-border: rgba(0, 120, 212, 0.24);
+  --success: #18a058; --success-bg: rgba(24, 160, 88, 0.1); --success-border: rgba(24, 160, 88, 0.3);
+  --danger: #d13438; --danger-bg: rgba(229, 72, 77, 0.08); --danger-border: rgba(229, 72, 77, 0.3);
+  --warning: #a86d00; --warning-bg: rgba(232, 163, 23, 0.12); --warning-border: rgba(232, 163, 23, 0.35);
+  --shadow-xs: 0 1px 2px rgba(16, 24, 40, 0.05);
+  --font: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--text); font-family: var(--font); font-size: 14px; line-height: 1.5; }
+button { font: inherit; color: inherit; cursor: pointer; }
+button:focus-visible, input:focus-visible, select:focus-visible, label:focus-within { outline: 2px solid var(--primary); outline-offset: 2px; }
+h1, h2, h3 { margin: 0; text-wrap: balance; }
+p { margin: 0; }
+code, pre, .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.num { font-variant-numeric: tabular-nums; }
+
+.top { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 10; background: var(--surface); border-bottom: 1px solid var(--border);
+  padding-block: 12px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 11; background: var(--surface); }
+.top-in { max-width: 1240px; margin: 0 auto; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 15px; }
+.brand i { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; background: var(--primary); color: #fff; font-style: normal; font-size: 14px; }
+.top-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; flex: 1; min-width: 0; }
+.wrap { max-width: 1240px; margin: 0 auto; padding-block: 20px 48px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex; flex-direction: column; gap: 16px; }
+
+.btn { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface);
+  font-size: 13px; font-weight: 500; box-shadow: var(--shadow-xs); white-space: nowrap; }
+.btn:hover { background: var(--hover); }
+.btn.pri { background: var(--primary); border-color: var(--primary); color: #fff; }
+.btn.ghost { border-color: transparent; background: transparent; box-shadow: none; color: var(--muted); }
+.btn.ghost:hover { background: var(--hover); color: var(--text); }
+.chip { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--sunken);
+  color: var(--muted); font-size: 12px; font-weight: 500; white-space: nowrap; }
+.chip.ok { background: var(--success-bg); color: var(--success); border-color: var(--success-border); }
+.chip.bad { background: var(--danger-bg); color: var(--danger); border-color: var(--danger-border); }
+.chip.warn { background: var(--warning-bg); color: var(--warning); border-color: var(--warning-border); }
+.chip.pri { background: var(--primary-subtle); color: var(--primary); border-color: var(--primary-border); }
+
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow-xs); }
+.card-h { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 14px 16px; border-bottom: 1px solid var(--border-subtle); }
+.card-h h2 { font-size: 14px; font-weight: 600; }
+.card-b { padding: 16px; }
+.note { padding: 12px 16px; border-radius: 12px; background: var(--primary-subtle); border: 1px solid var(--primary-border); color: var(--text); font-size: 13px; }
+
+.tiles { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 1000px) { .tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.tile { padding: 14px 16px; }
+.tile .k { font-size: 12px; color: var(--muted); }
+.tile .v { font-size: 22px; font-weight: 700; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.tile .s { font-size: 12px; color: var(--secondary); margin-top: 2px; }
+
+.lanes { display: flex; flex-direction: column; gap: 10px; }
+.lane { display: grid; grid-template-columns: 190px minmax(0, 1fr) 70px; align-items: center; gap: 12px; font-size: 13px; }
+@media (max-width: 640px) { .lane { grid-template-columns: 110px minmax(0, 1fr) 56px; } }
+.lane-name { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.track { position: relative; height: 22px; background: var(--sunken); border-radius: 6px; overflow: hidden; }
+.bar { position: absolute; top: 3px; bottom: 3px; border-radius: 4px; background: var(--primary); min-width: 4px; }
+.bar.done { background: var(--success); }
+.bar.failed { background: var(--danger); }
+.tick { position: absolute; top: 0; bottom: 0; width: 1px; background: rgba(26, 29, 38, 0.06); }
+.axis { display: grid; grid-template-columns: 190px minmax(0, 1fr) 70px; gap: 12px; font-size: 11px; color: var(--secondary); }
+@media (max-width: 640px) { .axis { grid-template-columns: 110px minmax(0, 1fr) 56px; } }
+.axis-in { position: relative; height: 14px; }
+.axis-in span { position: absolute; transform: translateX(-50%); }
+.axis-in span:first-child { transform: none; }
+.axis-in span:last-child { transform: translateX(-100%); }
+
+.tabs { display: inline-flex; flex-wrap: wrap; gap: 4px; padding: 4px; border-radius: 8px; background: var(--sunken); }
+.tabs button { border: 0; background: transparent; border-radius: 6px; padding: 6px 14px; font-size: 13px; font-weight: 500; color: var(--muted); }
+.tabs button.on { background: var(--primary); color: #fff; box-shadow: var(--shadow-xs); }
+.tabs button .c { margin-left: 6px; font-size: 12px; opacity: 0.75; }
+.toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+.filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.input { height: 32px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); padding: 0 10px; font: inherit; font-size: 13px; color: var(--text); min-width: 0; }
+.seg { display: inline-flex; gap: 2px; padding: 2px; border-radius: 8px; background: var(--sunken); }
+.seg button { border: 0; background: transparent; border-radius: 6px; padding: 4px 10px; font-size: 12.5px; font-weight: 500; color: var(--muted); }
+.seg button.on { background: var(--surface); color: var(--text); box-shadow: var(--shadow-xs); }
+.check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); cursor: pointer; }
+
+.agent-h { width: 100%; display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 14px 16px; border: 0; background: transparent; text-align: left; }
+.agent-h:hover { background: var(--hover); }
+.agent-h .t { font-size: 15px; font-weight: 600; }
+.agent-h .sub { font-size: 13px; color: var(--muted); margin-top: 2px; }
+.stats { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.caret { color: var(--secondary); transition: transform 0.15s; font-size: 12px; }
+.open > .agent-h .caret, .open > .step-h .caret { transform: rotate(90deg); }
+.steps { border-top: 1px solid var(--border-subtle); }
+.step { border-bottom: 1px solid var(--border-subtle); }
+.step:last-child { border-bottom: 0; }
+.step-h { width: 100%; display: grid; grid-template-columns: 18px 20px minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 10px 16px; border: 0; background: transparent; text-align: left; }
+.step-h:hover { background: var(--hover); }
+.step-h .name { font-weight: 500; }
+.step-h .id { font-family: var(--mono); font-size: 11.5px; color: var(--secondary); margin-left: 6px; }
+.step-h .sum { display: block; font-size: 12.5px; color: var(--muted); margin-top: 1px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border-strong); justify-self: center; }
+.dot.done { background: var(--success); } .dot.failed { background: var(--danger); } .dot.running { background: var(--primary); }
+.step-meta { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; align-items: center; font-size: 12px; color: var(--muted); }
+.evs { padding: 4px 16px 12px 62px; display: flex; flex-direction: column; gap: 4px; }
+@media (max-width: 640px) { .evs { padding-left: 16px; } }
+
+.ev { border: 1px solid var(--border-subtle); border-radius: 8px; background: var(--surface); }
+.ev.open { border-color: var(--border); }
+.ev-h { width: 100%; display: grid; grid-template-columns: 112px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 7px 10px; border: 0; background: transparent; text-align: left; font-size: 13px; }
+@media (max-width: 640px) { .ev-h { grid-template-columns: minmax(0, 1fr) auto; } .ev-h .kind { grid-column: 1 / -1; justify-self: start; } }
+.ev-h:hover { background: var(--hover); border-radius: 8px; }
+.ev-main { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ev-main b { font-weight: 600; }
+.ev-side { display: flex; gap: 6px; align-items: center; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.kind { justify-self: start; font-size: 11.5px; font-weight: 600; padding: 1px 7px; border-radius: 5px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.k-vendor { background: var(--primary-subtle); color: var(--primary); }
+.k-ai { background: #eef0fb; color: #3b4aa8; }
+.k-write { background: var(--success-bg); color: var(--success); }
+.k-read { background: var(--sunken); color: var(--muted); }
+.k-error { background: var(--danger-bg); color: var(--danger); }
+.k-step { background: var(--sunken); color: var(--text); }
+.ctx { font-size: 11.5px; color: var(--secondary); }
+
+.detail { border-top: 1px solid var(--border-subtle); padding: 12px; display: flex; flex-direction: column; gap: 12px; }
+.kv { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 4px 12px; font-size: 12.5px; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; min-width: 0; overflow-wrap: anywhere; font-family: var(--mono); font-size: 12px; }
+.block h4 { margin: 0 0 6px; font-size: 12px; font-weight: 600; color: var(--muted); display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.block pre { margin: 0; max-height: 360px; overflow: auto; padding: 10px 12px; background: var(--page); border: 1px solid var(--border-subtle); border-radius: 8px;
+  font-size: 12px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+.msg { border-left: 3px solid var(--border); padding-left: 10px; }
+.msg.system { border-color: var(--secondary); } .msg.user { border-color: var(--primary); }
+.copy { border: 0; background: transparent; color: var(--primary); font-size: 12px; font-weight: 500; padding: 0 4px; }
+
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; font-weight: 500; color: var(--muted); font-size: 12px; padding: 8px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+td { padding: 9px 12px; border-bottom: 1px solid var(--border-subtle); vertical-align: top; }
+tr:last-child td { border-bottom: 0; }
+td.r, th.r { text-align: right; font-variant-numeric: tabular-nums; }
+tr.click { cursor: pointer; } tr.click:hover td { background: var(--hover); }
+.up { color: var(--success); font-weight: 600; } .down { color: var(--danger); font-weight: 600; }
+.sub-row td { padding-top: 0; font-size: 12px; color: var(--muted); }
+
+.empty { padding: 48px 24px; text-align: center; color: var(--muted); }
+.empty h2 { font-size: 16px; color: var(--text); margin-bottom: 6px; }
+.drop { outline: 2px dashed var(--primary); outline-offset: -8px; }
+.toast { position: fixed; z-index: 20; left: 50%; transform: translateX(-50%); bottom: calc(20px + env(safe-area-inset-bottom, 0px)); background: var(--text); color: #fff; padding: 8px 14px; border-radius: 8px; font-size: 13px; }
+@media (prefers-reduced-motion: reduce) { .caret { transition: none; } }
+</style>
+
+<div class="top"><div class="top-in" id="top"></div></div>
+<main class="wrap" id="app"></main>
+<input type="file" id="file" accept=".jsonl,.json,.txt" hidden>
+
+<script type="application/json" id="trace-data">__TRACE_DATA__</script>
+<script>
+/* LOGIC:START */
+const AGENTS = {
+  website_analyst: { name: "Website Analyst", task: "Reads the website: pages, facts, Brand Brain" },
+  visual_identity_analyst: { name: "Visual Identity Analyst", task: "Colours, fonts, logo versions, visual style" },
+  social_market_analyst: { name: "Social & Market Analyst", task: "Own posts, competitors, ads, videos, hooks" },
+  brand_strategist: { name: "Brand Strategist", task: "Writes the Brand Bible draft" },
+};
+const ORDER = Object.keys(AGENTS);
+const STRUCTURAL = new Set(["run-start", "run-end", "agent-start", "agent-end", "step-start", "step-end", "snapshot"]);
+
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const num = (n) => Number(n || 0).toLocaleString("en");
+const plural = (n, word) => `${num(n)} ${word}${n === 1 ? "" : "s"}`;
+function fmtMs(ms) {
+  if (ms == null || Number.isNaN(ms)) return "";
+  if (ms < 1000) return `${Math.round(ms)} ms`;
+  if (ms < 60000) return `${(ms / 1000).toFixed(ms < 10000 ? 1 : 0)} s`;
+  return `${Math.floor(ms / 60000)} m ${Math.round((ms % 60000) / 1000)} s`;
+}
+const money = (n) => (n == null ? "–" : n > 0 && n < 0.01 ? "<$0.01" : `$${n.toFixed(2)}`);
+const human = (id) => (id ? id.replace(/[-_]+/g, " ").replace(/^./, (c) => c.toUpperCase()) : "");
+const agentName = (key) => AGENTS[key]?.name ?? human(key);
+function hostPath(url) {
+  try {
+    const u = new URL(url);
+    const q = u.search.length > 1 ? (u.search.length > 60 ? `${u.search.slice(0, 57)}…` : u.search) : "";
+    return `${u.host}${u.pathname}${q}`;
+  } catch {
+    return url || "";
+  }
+}
+function endpoint(e) {
+  try {
+    const path = new URL(e.url).pathname.replace(/\/[0-9a-f-]{16,}|\/\d{3,}/gi, "/:id");
+    return `${e.method} ${path}`;
+  } catch {
+    return `${e.method} ${e.url}`;
+  }
+}
+const isBad = (e) => !!e.error || (e.type === "http" && e.status >= 400) || (e.type === "db" && e.status >= 400);
+
+function kindOf(e) {
+  if (isBad(e)) return "error";
+  if (e.type === "http") return "vendor";
+  if (e.type === "llm") return "ai";
+  if (e.type === "db") return e.read ? "read" : "write";
+  return "step";
+}
+
+/** One-line description of an event. Returns escaped HTML. */
+function describe(e) {
+  const kind = kindOf(e);
+  if (e.type === "http") {
+    const status = e.status ? `<span class="chip ${e.status < 400 ? "ok" : "bad"}">${e.status}</span>` : `<span class="chip bad">failed</span>`;
+    const credits = e.credits != null ? `<span>${plural(e.credits, "credit")}</span>` : "";
+    return { kind, label: e.service || "HTTP", main: `<b>${esc(e.method)}</b> ${esc(hostPath(e.url))}`, side: `${credits}${status}` };
+  }
+  if (e.type === "llm") {
+    const main = e.op === "embed" ? `<b>embed</b> ${plural(e.inputs, "text")} · ${esc(e.model)}` : `<b>chat</b> · ${esc(e.model)}`;
+    const side = e.error ? `<span class="chip bad">failed</span>` : `<span>${num(e.tokensIn)} in${e.op === "chat" ? ` · ${num(e.tokensOut)} out` : ""}</span><span>${money(e.costUsd)}</span>`;
+    return { kind, label: "OpenAI", main, side };
+  }
+  if (e.type === "db") {
+    const rows = e.rows != null ? ` · ${plural(e.rows, "row")}` : "";
+    const target = e.table === "storage" ? `storage ${esc(e.path || "")}` : esc(e.table);
+    return { kind, label: e.read ? "DB read" : "DB write", main: `<b>${esc(e.op)}</b> ${target}${rows}`, side: e.status >= 400 ? `<span class="chip bad">${e.status}</span>` : "" };
+  }
+  return { kind, label: human(e.type), main: esc(e.summary || e.error || ""), side: "" };
+}
+
+function build(events, runId) {
+  const all = events.filter((e) => e && typeof e.ts === "number").sort((a, b) => a.ts - b.ts || (a.seq || 0) - (b.seq || 0));
+  const runIds = [...new Set(all.map((e) => e.runId || "(no run)"))];
+  const run = runId && runIds.includes(runId) ? runId : runIds.find((r) => r !== "(no run)") || runIds[0];
+  const evs = all.filter((e) => (e.runId || "(no run)") === run);
+  evs.forEach((e, i) => (e._i = i));
+  if (!evs.length) return { runIds, run, evs, agents: [], empty: true };
+
+  const t0 = Math.min(...evs.map((e) => e.ts));
+  const t1 = Math.max(...evs.map((e) => e.ts + (e.ms || 0)));
+  const agents = new Map();
+  const agentOf = (key) => {
+    if (!agents.has(key)) agents.set(key, { key, name: agentName(key), task: AGENTS[key]?.task || "", steps: new Map(), setup: [], events: [], start: null, end: null, state: null, summary: null, error: null });
+    return agents.get(key);
+  };
+  const runEvents = [];
+  let runStart = null;
+  let runEnd = null;
+  const snapshots = {};
+
+  for (const e of evs) {
+    if (e.type === "run-start") runStart = e;
+    if (e.type === "run-end") runEnd = e;
+    if (e.type === "snapshot") snapshots[e.phase] = e;
+    if (!e.agent) {
+      if (!STRUCTURAL.has(e.type)) runEvents.push(e);
+      continue;
+    }
+    const a = agentOf(e.agent);
+    a.start = a.start == null ? e.ts : Math.min(a.start, e.ts);
+    a.end = Math.max(a.end ?? 0, e.ts + (e.ms || 0));
+    if (e.type === "agent-end") {
+      a.state = e.status;
+      a.summary = e.summary || a.summary;
+      a.error = e.error || a.error;
+    }
+    if (e.type === "agent-start" && !a.state) a.state = "running";
+    if (STRUCTURAL.has(e.type) && !e.type.startsWith("step-")) continue;
+    if (!e.step) {
+      if (!STRUCTURAL.has(e.type)) a.setup.push(e);
+      continue;
+    }
+    if (!a.steps.has(e.step)) a.steps.set(e.step, { id: e.step, events: [], attempts: new Set(), start: e.ts, end: e.ts, status: "running", cost: 0 });
+    const s = a.steps.get(e.step);
+    s.attempts.add(e.attempt || 1);
+    s.start = Math.min(s.start, e.ts);
+    s.end = Math.max(s.end, e.ts + (e.ms || 0));
+    if (e.type === "step-end") {
+      s.status = e.status;
+      s.summary = e.summary || s.summary;
+      s.error = e.status === "failed" ? e.error : undefined;
+      s.cost += e.costUsd || 0;
+      s.tokensIn = (s.tokensIn || 0) + (e.tokensIn || 0);
+      s.tokensOut = (s.tokensOut || 0) + (e.tokensOut || 0);
+      s.output = e.output;
+      s.input = s.input ?? undefined;
+    } else if (e.type === "step-start") {
+      if (e.input !== undefined) s.input = e.input;
+    } else {
+      s.events.push(e);
+    }
+  }
+
+  const count = (list) => {
+    const c = { vendor: 0, ai: 0, write: 0, read: 0, error: 0 };
+    for (const e of list) c[kindOf(e)]++;
+    return c;
+  };
+  const agentList = [...agents.values()]
+    .sort((x, y) => (ORDER.indexOf(x.key) + 1 || 99) - (ORDER.indexOf(y.key) + 1 || 99))
+    .map((a) => {
+      const steps = [...a.steps.values()].sort((x, y) => x.start - y.start);
+      steps.forEach((s) => (s.counts = count(s.events)));
+      const events = [...a.setup, ...steps.flatMap((s) => s.events)];
+      const failedStep = steps.some((s) => s.status === "failed");
+      const state = a.state || (steps.length && steps.every((s) => s.status === "done") ? "done" : failedStep ? "failed" : "running");
+      return { ...a, steps, events, counts: count(events), state, cost: steps.reduce((n, s) => n + s.cost, 0), ms: (a.end ?? a.start) - a.start };
+    });
+
+  const nonStruct = evs.filter((e) => !STRUCTURAL.has(e.type));
+  const http = nonStruct.filter((e) => e.type === "http");
+  const llm = nonStruct.filter((e) => e.type === "llm");
+  const db = nonStruct.filter((e) => e.type === "db");
+
+  const vendors = new Map();
+  for (const e of http) {
+    const v = vendors.get(e.service) || { name: e.service, calls: 0, errors: 0, ms: 0, credits: 0, hasCredits: false, endpoints: new Map() };
+    v.calls++;
+    v.errors += isBad(e) ? 1 : 0;
+    v.ms += e.ms || 0;
+    if (e.credits != null) {
+      v.credits += e.credits;
+      v.hasCredits = true;
+      v.creditsLeft = e.creditsLeft ?? v.creditsLeft;
+    }
+    const key = endpoint(e);
+    v.endpoints.set(key, (v.endpoints.get(key) || 0) + 1);
+    vendors.set(e.service, v);
+  }
+  const models = new Map();
+  for (const e of llm) {
+    const key = `${e.model} · ${e.op}`;
+    const m = models.get(key) || { name: e.model, op: e.op, calls: 0, errors: 0, tokensIn: 0, tokensOut: 0, cost: 0, ms: 0 };
+    m.calls++;
+    m.errors += isBad(e) ? 1 : 0;
+    m.tokensIn += e.tokensIn || 0;
+    m.tokensOut += e.tokensOut || 0;
+    m.cost += e.costUsd || 0;
+    m.ms += e.ms || 0;
+    models.set(key, m);
+  }
+  const tables = new Map();
+  for (const e of db) {
+    const t = tables.get(e.table) || { name: e.table, ops: {}, rows: 0, reads: 0, writes: 0, errors: 0 };
+    if (e.read) t.reads++;
+    else {
+      t.writes++;
+      t.ops[e.op] = (t.ops[e.op] || 0) + 1;
+      t.rows += e.rows ?? (e.sent && typeof e.sent === "object" && "rows" in e.sent ? e.sent.rows : 1);
+    }
+    t.errors += isBad(e) ? 1 : 0;
+    tables.set(e.table, t);
+  }
+
+  const steps = agentList.flatMap((a) => a.steps);
+  return {
+    runIds,
+    run,
+    evs,
+    nonStruct,
+    t0,
+    t1,
+    duration: Math.max(1, t1 - t0),
+    runStart,
+    runEnd,
+    snapshots,
+    agents: agentList,
+    runEvents,
+    vendors: [...vendors.values()].sort((a, b) => b.calls - a.calls),
+    models: [...models.values()].sort((a, b) => b.cost - a.cost),
+    tables: [...tables.values()].sort((a, b) => b.writes - a.writes || b.reads - a.reads),
+    totals: {
+      http: http.length,
+      httpErrors: http.filter(isBad).length,
+      llm: llm.length,
+      tokensIn: llm.reduce((n, e) => n + (e.tokensIn || 0), 0),
+      tokensOut: llm.reduce((n, e) => n + (e.tokensOut || 0), 0),
+      cost: steps.reduce((n, s) => n + s.cost, 0),
+      credits: http.reduce((n, e) => n + (e.credits || 0), 0),
+      writes: db.filter((e) => !e.read).length,
+      reads: db.filter((e) => e.read).length,
+      errors: nonStruct.filter(isBad).length,
+      retries: steps.reduce((n, s) => n + Math.max(0, s.attempts.size - 1), 0),
+      steps: steps.length,
+      failedSteps: steps.filter((s) => s.status === "failed").length,
+    },
+  };
+}
+
+/* ---------- views (return HTML strings) ---------- */
+
+const COPY = [];
+function pre(value) {
+  const text = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+  COPY.push(text);
+  return { text, id: COPY.length - 1 };
+}
+function block(title, value) {
+  if (value === undefined || value === null || value === "") return "";
+  const p = pre(value);
+  return `<div class="block"><h4>${esc(title)}<button class="copy" data-copy="${p.id}">Copy</button></h4><pre>${esc(p.text)}</pre></div>`;
+}
+function kv(rows) {
+  const items = rows.filter(([, v]) => v !== undefined && v !== null && v !== "");
+  return items.length ? `<dl class="kv">${items.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl>` : "";
+}
+
+function detailHtml(e, m) {
+  const where = e.agent ? `${agentName(e.agent)}${e.step ? ` › ${e.step}` : ""}${e.attempt > 1 ? ` (attempt ${e.attempt})` : ""}` : "Run";
+  const at = `+${fmtMs(e.ts - m.t0)}`;
+  if (e.type === "http") {
+    return (
+      kv([["Where", where], ["When", at], ["Vendor", e.service], ["Request", `${e.method} ${e.url}`], ["Status", e.status ?? "no response"], ["Time", fmtMs(e.ms)], ["Size", e.bytes != null ? `${num(e.bytes)} characters` : undefined], ["Credits", e.credits != null ? `${e.credits} used${e.creditsLeft != null ? `, ${num(e.creditsLeft)} left` : ""}` : undefined], ["Error", e.error]]) +
+      block("Request body", e.req) +
+      block("Response", e.res)
+    );
+  }
+  if (e.type === "llm") {
+    const messages = (e.prompt || [])
+      .map((msg) => `<div class="msg ${esc(msg.role)}">${block(`${msg.role} message`, Array.isArray(msg.content) ? msg.content.join("\n\n") : msg.content)}</div>`)
+      .join("");
+    return (
+      kv([["Where", where], ["When", at], ["Model", e.model], ["Call", e.op === "embed" ? `Embeddings for ${plural(e.inputs, "text")} (${num(e.chars)} characters)` : "Chat"], ["Tokens", `${num(e.tokensIn)} in${e.op === "chat" ? ` · ${num(e.tokensOut)} out` : ""}`], ["Cost (estimate)", money(e.costUsd)], ["Time", fmtMs(e.ms)], ["Error", e.error]]) +
+      (e.op === "embed" ? block("First text", e.sample) : messages + block("Reply", e.reply))
+    );
+  }
+  if (e.type === "db") {
+    return (
+      kv([["Where", where], ["When", at], ["Operation", e.op], ["Table", e.table], ["Path", e.path], ["Columns", e.select], ["Filter", e.filter], ["Rows", e.rows], ["Status", e.status], ["Time", fmtMs(e.ms)], ["Error", e.error]]) +
+      block(e.op === "rpc" ? "Arguments" : "Data sent", e.sent) +
+      block("Result", e.result)
+    );
+  }
+  return block("Event", e);
+}
+
+function evRow(e, m, st, withContext) {
+  const d = describe(e);
+  const open = st.openEvents.has(e._i);
+  const ctx = withContext ? `<span class="ctx">${esc(e.agent ? agentName(e.agent) : "Run")}${e.step ? ` › ${esc(e.step)}` : ""}</span>` : "";
+  return `<div class="ev ${open ? "open" : ""}"><button class="ev-h" data-ev="${e._i}" aria-expanded="${open}">
+    <span class="kind k-${d.kind}">${esc(d.label)}</span>
+    <span class="ev-main">${d.main}${ctx ? `<br>${ctx}` : ""}</span>
+    <span class="ev-side">${d.side}<span class="num">${fmtMs(e.ms)}</span><span class="ctx num">+${fmtMs(e.ts - m.t0)}</span></span>
+  </button>${open ? `<div class="detail">${detailHtml(e, m)}</div>` : ""}</div>`;
+}
+
+function stateChip(state) {
+  const map = { done: ["ok", "Done"], failed: ["bad", "Failed"], running: ["pri", "Running"] };
+  const [cls, label] = map[state] || ["", human(state || "unknown")];
+  return `<span class="chip ${cls}">${label}</span>`;
+}
+
+function countChips(c, cost) {
+  return [
+    c.vendor ? `<span class="chip">${plural(c.vendor, "call")}</span>` : "",
+    c.ai ? `<span class="chip">${c.ai} AI</span>` : "",
+    c.write ? `<span class="chip">${c.write} DB writes</span>` : "",
+    c.error ? `<span class="chip bad">${plural(c.error, "error")}</span>` : "",
+    cost ? `<span class="chip">${money(cost)}</span>` : "",
+  ].join("");
+}
+
+function topView(m, meta) {
+  const status = m.runEnd ? stateChip(m.runEnd.status) : m.agents.some((a) => a.state === "failed") ? stateChip("failed") : "";
+  const runs = m.runIds.length > 1 ? `<select class="input" id="run-pick">${m.runIds.map((r) => `<option value="${esc(r)}" ${r === m.run ? "selected" : ""}>${esc(r)}</option>`).join("")}</select>` : `<span class="chip mono">${esc(m.run || "")}</span>`;
+  const when = m.t0 ? new Date(m.t0).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "";
+  return `<span class="brand"><i>⚡</i>Research trace</span>
+    <span class="top-meta">${runs}${status}${when ? `<span>${esc(when)}</span>` : ""}${meta?.label ? `<span class="chip pri">${esc(meta.label)}</span>` : ""}</span>
+    <button class="btn" data-act="load">Load trace file</button>`;
+}
+
+function tilesView(m) {
+  const t = m.totals;
+  const done = m.agents.filter((a) => a.state === "done").length;
+  const tile = (k, v, s) => `<div class="card tile"><div class="k">${k}</div><div class="v">${v}</div>${s ? `<div class="s">${s}</div>` : ""}</div>`;
+  return `<section class="tiles">
+    ${tile("Duration", fmtMs(m.duration), `${plural(t.steps, "step")}${t.retries ? ` · ${plural(t.retries, "retry")}` : ""}`)}
+    ${tile("Agents", `${done} / ${m.agents.length}`, t.failedSteps ? `${plural(t.failedSteps, "step")} failed` : "finished")}
+    ${tile("Vendor calls", num(t.http), t.credits ? `${plural(t.credits, "ScrapeCreators credit")}` : t.httpErrors ? `${plural(t.httpErrors, "error")}` : "no errors")}
+    ${tile("AI calls", num(t.llm), `${num(t.tokensIn)} in · ${num(t.tokensOut)} out`)}
+    ${tile("Estimated cost", money(t.cost), "from agent steps")}
+    ${tile("Database writes", num(t.writes), `${num(t.reads)} reads`)}
+  </section>`;
+}
+
+function timelineView(m) {
+  if (!m.agents.length) return "";
+  const pct = (ts) => ((ts - m.t0) / m.duration) * 100;
+  const ticks = [0, 0.25, 0.5, 0.75, 1];
+  return `<section class="card"><div class="card-h"><h2>Timeline</h2><span class="ctx">Agents 1–3 run side by side; the Strategist starts when they finish</span></div>
+    <div class="card-b"><div class="lanes">${m.agents
+      .map((a) => {
+        const bars = a.steps.map((s) => `<span class="bar ${s.status}" style="left:${pct(s.start)}%;width:${Math.max(0.4, ((s.end - s.start) / m.duration) * 100)}%" title="${esc(s.id)} · ${fmtMs(s.end - s.start)}"></span>`).join("");
+        return `<div class="lane"><span class="lane-name" title="${esc(a.name)}">${esc(a.name)}</span><div class="track">${ticks.map((t) => `<span class="tick" style="left:${t * 100}%"></span>`).join("")}${bars}</div><span class="ctx num">${fmtMs(a.ms)}</span></div>`;
+      })
+      .join("")}
+      <div class="axis"><span></span><div class="axis-in">${ticks.map((t) => `<span style="left:${t * 100}%">${fmtMs(t * m.duration) || "0"}</span>`).join("")}</div><span></span></div>
+    </div></div></section>`;
+}
+
+function agentsView(m, st) {
+  const showRead = (e) => st.showReads || e.type !== "db" || !e.read;
+  const cards = m.agents.map((a) => {
+    const open = st.openAgents.has(a.key);
+    const setup = a.setup.filter(showRead);
+    const steps = open
+      ? a.steps
+          .map((s) => {
+            const sid = `${a.key}|${s.id}`;
+            const sOpen = st.openSteps.has(sid);
+            const visible = s.events.filter(showRead);
+            const hidden = s.events.length - visible.length;
+            const attempts = s.attempts.size > 1 ? `<span class="chip warn">${s.attempts.size} attempts</span>` : "";
+            return `<div class="step ${sOpen ? "open" : ""}"><button class="step-h" data-step="${esc(sid)}" aria-expanded="${sOpen}">
+              <span class="caret">▶</span><span class="dot ${s.status}"></span>
+              <span><span class="name">${esc(human(s.id))}</span><span class="id">${esc(s.id)}</span><span class="sum">${esc(s.status === "failed" ? s.error || "Failed" : s.summary || "")}</span></span>
+              <span class="step-meta">${attempts}${countChips(s.counts, 0)}<span class="num">${s.cost ? money(s.cost) : ""}</span><span class="num">${fmtMs(s.end - s.start)}</span></span>
+            </button>${
+              sOpen
+                ? `<div class="evs">${s.input !== undefined ? `<div class="ev"><div class="detail" style="border:0">${block("Step input", s.input)}</div></div>` : ""}${visible.map((e) => evRow(e, m, st, false)).join("") || `<p class="ctx">No outside calls in this step.</p>`}${hidden ? `<p class="ctx">${plural(hidden, "database read")} hidden. Turn on "Show reads" to see them.</p>` : ""}${s.output !== undefined ? `<div class="ev"><div class="detail" style="border:0">${block("Step result", s.output)}</div></div>` : ""}</div>`
+                : ""
+            }</div>`;
+          })
+          .join("") +
+        (setup.length ? `<div class="step"><div class="evs" style="padding-top:10px"><p class="ctx">Setup (outside steps)</p>${setup.map((e) => evRow(e, m, st, false)).join("")}</div></div>` : "")
+      : "";
+    return `<section class="card ${open ? "open" : ""}"><button class="agent-h" data-agent="${esc(a.key)}" aria-expanded="${open}">
+      <span class="caret">▶</span>
+      <span><span class="t">${esc(a.name)}</span> ${stateChip(a.state)}<span class="sub">${esc(a.state === "failed" ? a.error || "" : a.summary || a.task)}</span></span>
+      <span class="stats">${countChips(a.counts, a.cost)}<span class="chip">${fmtMs(a.ms)}</span></span>
+    </button>${open ? `<div class="steps">${steps}</div>` : ""}</section>`;
+  });
+  const run = m.runEvents.filter(showRead);
+  const runCard = run.length
+    ? `<section class="card"><div class="card-h"><h2>Run (outside agents)</h2><span class="ctx">Orchestrator: start, hand-over and final status</span></div><div class="evs" style="padding:12px 16px">${run.map((e) => evRow(e, m, st, false)).join("")}</div></section>`
+    : "";
+  return `<div class="toolbar"><span class="ctx">Open an agent, then a step, then any call to see the full request and response.</span>
+    <label class="check"><input type="checkbox" data-act="reads" ${st.showReads ? "checked" : ""}> Show reads</label></div>${cards.join("")}${runCard}`;
+}
+
+function vendorsView(m) {
+  if (!m.vendors.length) return `<div class="card empty"><h2>No vendor calls</h2></div>`;
+  return `<section class="card"><div class="table-wrap"><table><thead><tr><th>Vendor</th><th class="r">Calls</th><th class="r">Errors</th><th class="r">Avg time</th><th class="r">Total time</th><th class="r">Credits</th><th>Endpoints</th></tr></thead><tbody>
+    ${m.vendors
+      .map(
+        (v) => `<tr class="click" data-vendor="${esc(v.name)}"><td><b>${esc(v.name)}</b></td><td class="r">${num(v.calls)}</td><td class="r ${v.errors ? "down" : ""}">${num(v.errors)}</td><td class="r">${fmtMs(v.ms / v.calls)}</td><td class="r">${fmtMs(v.ms)}</td>
+      <td class="r">${v.hasCredits ? `${num(v.credits)}${v.creditsLeft != null ? ` <span class="ctx">(${num(v.creditsLeft)} left)</span>` : ""}` : "–"}</td>
+      <td>${[...v.endpoints.entries()].map(([k, n]) => `<div class="mono ctx">${esc(k)} <b>×${n}</b></div>`).join("")}</td></tr>`
+      )
+      .join("")}
+  </tbody></table></div></section><p class="ctx">Click a vendor to see its calls. Firecrawl charges about 1 credit per page; OpenAI costs are estimates from src/config/pricing.ts.</p>`;
+}
+
+function aiView(m, st) {
+  const calls = m.nonStruct.filter((e) => e.type === "llm");
+  if (!calls.length) return `<div class="card empty"><h2>No AI calls</h2></div>`;
+  return `<section class="card"><div class="table-wrap"><table><thead><tr><th>Model</th><th>Call</th><th class="r">Calls</th><th class="r">Tokens in</th><th class="r">Tokens out</th><th class="r">Cost (estimate)</th><th class="r">Total time</th></tr></thead><tbody>
+    ${m.models.map((x) => `<tr><td class="mono">${esc(x.name)}</td><td>${esc(x.op)}</td><td class="r">${num(x.calls)}${x.errors ? ` <span class="down">(${x.errors} failed)</span>` : ""}</td><td class="r">${num(x.tokensIn)}</td><td class="r">${num(x.tokensOut)}</td><td class="r">${money(x.cost)}</td><td class="r">${fmtMs(x.ms)}</td></tr>`).join("")}
+  </tbody></table></div></section>
+  <section class="card"><div class="card-h"><h2>Every AI call</h2><span class="ctx">Open one to read the exact prompt and reply</span></div><div class="evs" style="padding:12px 16px">${calls.map((e) => evRow(e, m, st, true)).join("")}</div></section>`;
+}
+
+function dbView(m) {
+  const s = m.snapshots;
+  let before = `<section class="card"><div class="card-h"><h2>Before and after</h2></div><div class="card-b ctx">This trace has no database snapshot. A full research run records one at the start and the end.</div></section>`;
+  if (s.start || s.end) {
+    const a = s.start?.counts || {};
+    const b = s.end?.counts || {};
+    const names = [...new Set([...Object.keys(a), ...Object.keys(b)])];
+    const wa = s.start?.waiting || {};
+    const wb = s.end?.waiting || {};
+    const diff = (x, y) => (x == null || y == null ? "" : y - x > 0 ? `<span class="up">+${num(y - x)}</span>` : y - x < 0 ? `<span class="down">${num(y - x)}</span>` : `<span class="ctx">0</span>`);
+    const row = (label, x, y) => `<tr><td>${label}</td><td class="r">${x == null ? "–" : num(x)}</td><td class="r">${y == null ? "–" : num(y)}</td><td class="r">${diff(x, y)}</td></tr>`;
+    const kitChanged = JSON.stringify(s.start?.kit) !== JSON.stringify(s.end?.kit);
+    before = `<section class="card"><div class="card-h"><h2>Before and after</h2><span class="ctx">Row counts when the run started and when it ended</span></div><div class="table-wrap"><table>
+      <thead><tr><th>Table</th><th class="r">Before</th><th class="r">After</th><th class="r">Change</th></tr></thead><tbody>
+      ${names.map((n) => row(`<span class="mono">${esc(n)}</span>`, a[n], b[n])).join("")}
+      ${row("Offerings waiting for you", wa.pendingOfferings, wb.pendingOfferings)}${row("Offers waiting for you", wa.pendingOffers, wb.pendingOffers)}${row("Proof waiting for you", wa.pendingProof, wb.pendingProof)}${row("Competitors found by Prodo", wa.discovered, wb.discovered)}
+      </tbody></table></div>
+      ${s.end?.kit ? `<div class="card-b" style="border-top:1px solid var(--border-subtle)">${kitChanged ? `<p style="margin-bottom:10px"><b>Brand kit</b> <span class="chip ok">changed</span></p>${block("Brand kit after the run", s.end.kit)}${block("Brand kit before the run", s.start?.kit)}` : `<p><b>Brand kit</b> <span class="chip">unchanged</span></p>`}</div>` : ""}
+    </section>`;
+  }
+  const tables = m.tables.length
+    ? `<section class="card"><div class="card-h"><h2>Writes by table</h2><span class="ctx">Click a table to see each change</span></div><div class="table-wrap"><table><thead><tr><th>Table</th><th>Changes</th><th class="r">Rows</th><th class="r">Reads</th></tr></thead><tbody>
+      ${m.tables.map((t) => `<tr class="click" data-table="${esc(t.name)}"><td class="mono">${esc(t.name)}</td><td>${Object.entries(t.ops).map(([op, n]) => `<span class="chip" style="margin-right:4px">${esc(op)} ×${n}</span>`).join("") || `<span class="ctx">reads only</span>`}${t.errors ? `<span class="chip bad">${plural(t.errors, "error")}</span>` : ""}</td><td class="r">${t.writes ? num(t.rows) : "–"}</td><td class="r">${num(t.reads)}</td></tr>`).join("")}
+    </tbody></table></div></section>`
+    : "";
+  return before + tables;
+}
+
+const FILTERS = [["all", "All"], ["vendor", "Vendors"], ["ai", "AI"], ["write", "DB writes"], ["read", "DB reads"], ["error", "Errors"]];
+function eventsView(m, st) {
+  const f = st.filter;
+  const q = f.q.trim().toLowerCase();
+  const list = m.nonStruct.filter((e) => {
+    if (f.kind !== "all" && kindOf(e) !== f.kind) return false;
+    if (f.agent !== "all" && (e.agent || "run") !== f.agent) return false;
+    if (f.vendor && e.service !== f.vendor) return false;
+    if (f.table && e.table !== f.table) return false;
+    if (q && !JSON.stringify(e).toLowerCase().includes(q)) return false;
+    return true;
+  });
+  const LIMIT = 400;
+  const scoped = [f.vendor && `vendor ${f.vendor}`, f.table && `table ${f.table}`].filter(Boolean).join(", ");
+  return `<div class="toolbar"><div class="filters">
+      <div class="seg">${FILTERS.map(([k, l]) => `<button data-kind="${k}" class="${f.kind === k ? "on" : ""}">${l}</button>`).join("")}</div>
+      <select class="input" id="agent-pick"><option value="all">All agents</option>${m.agents.map((a) => `<option value="${esc(a.key)}" ${f.agent === a.key ? "selected" : ""}>${esc(a.name)}</option>`).join("")}<option value="run" ${f.agent === "run" ? "selected" : ""}>Run</option></select>
+      <input class="input" id="search" type="search" placeholder="Search URLs, tables, prompts…" value="${esc(f.q)}" style="width:240px">
+    </div><span class="ctx">${plural(list.length, "event")}${scoped ? ` · ${esc(scoped)} <button class="copy" data-act="clear-scope">clear</button>` : ""}</span></div>
+    <div class="evs" style="padding:0">${list.slice(0, LIMIT).map((e) => evRow(e, m, st, true)).join("") || `<div class="card empty"><h2>Nothing matches</h2><p>Try another filter.</p></div>`}
+    ${list.length > LIMIT ? `<p class="ctx">Showing the first ${LIMIT}. Narrow the filters to see the rest.</p>` : ""}</div>`;
+}
+
+function appView(m, st, meta) {
+  COPY.length = 0;
+  if (m.empty) {
+    return `<section class="card empty"><h2>No trace loaded</h2><p>After a research run, load <span class="mono">.logs/research/&lt;run id&gt;.jsonl</span> with “Load trace file”, or run <span class="mono">npm run trace</span>.</p></section>`;
+  }
+  const tabs = [
+    ["agents", "Agents", m.agents.length],
+    ["vendors", "Vendors", m.totals.http],
+    ["ai", "AI", m.totals.llm],
+    ["db", "Database", m.totals.writes],
+    ["events", "All events", m.nonStruct.length],
+  ];
+  const body = { agents: agentsView, vendors: vendorsView, ai: aiView, db: dbView, events: eventsView }[st.tab](m, st);
+  return `${meta?.note ? `<div class="note">${esc(meta.note)}</div>` : ""}${tilesView(m)}${timelineView(m)}
+    <div class="toolbar"><div class="tabs" role="tablist">${tabs.map(([k, l, c]) => `<button role="tab" data-tab="${k}" class="${st.tab === k ? "on" : ""}" aria-selected="${st.tab === k}">${l}<span class="c">${num(c)}</span></button>`).join("")}</div></div>
+    ${body}`;
+}
+/* LOGIC:END */
+
+/* ---------- page wiring ---------- */
+(() => {
+  let raw = [];
+  let meta = null;
+  try {
+    const parsed = JSON.parse(document.getElementById("trace-data").textContent);
+    raw = Array.isArray(parsed) ? parsed : parsed.events || [];
+    meta = Array.isArray(parsed) ? null : parsed.meta || null;
+  } catch {
+    // no embedded trace
+  }
+  const st = { tab: "agents", run: null, openAgents: new Set(), openSteps: new Set(), openEvents: new Set(), showReads: false, filter: { kind: "all", agent: "all", q: "", vendor: null, table: null } };
+  let model = build(raw, null);
+  if (model.agents[0]) st.openAgents.add(model.agents[0].key);
+
+  function render() {
+    document.getElementById("top").innerHTML = topView(model, meta);
+    document.getElementById("app").innerHTML = appView(model, st, meta);
+  }
+  function toast(text) {
+    const el = document.createElement("div");
+    el.className = "toast";
+    el.textContent = text;
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 1800);
+  }
+  function parseText(text) {
+    const trimmed = text.trim();
+    if (trimmed.startsWith("[")) return JSON.parse(trimmed);
+    if (trimmed.startsWith("{") && trimmed.includes('"events"')) return JSON.parse(trimmed).events;
+    return trimmed.split(/\r?\n/).filter(Boolean).flatMap((line) => {
+      try {
+        return [JSON.parse(line)];
+      } catch {
+        return [];
+      }
+    });
+  }
+  function load(text, name) {
+    try {
+      raw = parseText(text);
+      meta = { label: name };
+      model = build(raw, null);
+      st.openAgents = new Set(model.agents[0] ? [model.agents[0].key] : []);
+      st.openSteps.clear();
+      st.openEvents.clear();
+      st.tab = "agents";
+      render();
+      toast(`Loaded ${raw.length.toLocaleString("en")} events`);
+    } catch {
+      toast("That file isn't a trace file");
+    }
+  }
+  const toggle = (set, key) => (set.has(key) ? set.delete(key) : set.add(key));
+
+  document.addEventListener("click", (event) => {
+    const el = event.target.closest("[data-tab],[data-agent],[data-step],[data-ev],[data-copy],[data-act],[data-kind],[data-vendor],[data-table]");
+    if (!el) return;
+    const d = el.dataset;
+    if (d.tab) st.tab = d.tab;
+    else if (d.agent) toggle(st.openAgents, d.agent);
+    else if (d.step) toggle(st.openSteps, d.step);
+    else if (d.ev) toggle(st.openEvents, Number(d.ev));
+    else if (d.kind) st.filter.kind = d.kind;
+    else if (d.vendor) Object.assign(st, { tab: "events" }) && Object.assign(st.filter, { vendor: d.vendor, table: null, kind: "all" });
+    else if (d.table) Object.assign(st, { tab: "events" }) && Object.assign(st.filter, { table: d.table, vendor: null, kind: "all" });
+    else if (d.copy) {
+      const text = COPY[Number(d.copy)] ?? "";
+      navigator.clipboard?.writeText(text).then(() => toast("Copied"), () => toast("Copy isn't allowed here"));
+      return;
+    } else if (d.act === "load") return document.getElementById("file").click();
+    else if (d.act === "clear-scope") Object.assign(st.filter, { vendor: null, table: null });
+    else if (d.act === "reads") return;
+    else return;
+    render();
+  });
+  document.addEventListener("change", (event) => {
+    const t = event.target;
+    if (t.id === "run-pick") {
+      model = build(raw, t.value);
+      st.openAgents = new Set(model.agents[0] ? [model.agents[0].key] : []);
+    } else if (t.id === "agent-pick") st.filter.agent = t.value;
+    else if (t.dataset?.act === "reads") st.showReads = t.checked;
+    else if (t.id === "file" && t.files?.[0]) {
+      const file = t.files[0];
+      file.text().then((text) => load(text, file.name));
+      t.value = "";
+      return;
+    } else return;
+    render();
+  });
+  let searchTimer = null;
+  document.addEventListener("input", (event) => {
+    if (event.target.id !== "search") return;
+    clearTimeout(searchTimer);
+    const value = event.target.value;
+    searchTimer = setTimeout(() => {
+      st.filter.q = value;
+      render();
+      const box = document.getElementById("search");
+      if (box) {
+        box.focus();
+        box.setSelectionRange(value.length, value.length);
+      }
+    }, 250);
+  });
+  window.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    document.body.classList.add("drop");
+  });
+  window.addEventListener("dragleave", () => document.body.classList.remove("drop"));
+  window.addEventListener("drop", (e) => {
+    e.preventDefault();
+    document.body.classList.remove("drop");
+    const file = e.dataTransfer?.files?.[0];
+    if (file) file.text().then((text) => load(text, file.name));
+  });
+  render();
+})();
+</script>

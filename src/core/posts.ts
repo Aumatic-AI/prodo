@@ -4,7 +4,7 @@ export type PostStatus = "draft" | "scheduled" | "publishing" | "published" | "p
 export type TargetStatus = "pending" | "sending" | "published" | "failed";
 
 export interface PostMediaSummary {
-  type: "image" | "video" | "text";
+  type: "image" | "video" | "text" | "carousel";
   storage_key: string | null;
   idea: string | null;
   content: string | null;
@@ -29,6 +29,8 @@ export interface PostTarget {
   provider: string;
   status: TargetStatus;
   provider_ref: string | null;
+  provider_post_id: string | null;
+  published_at: string | null;
   url: string | null;
   error: string | null;
 }
@@ -56,7 +58,7 @@ export async function getPost(db: SupabaseClient, id: string) {
   return data as PostWithTargets;
 }
 
-/** Upload-Post rejects a scheduled_date more than 365 days out. */
+/** Publishing providers reject schedules more than a year out. */
 export const MAX_SCHEDULE_DAYS = 365;
 
 export function validateScheduleDate(publishAt: string): string | null {

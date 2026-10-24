@@ -8,15 +8,15 @@ import { DateTimePicker } from "@/components/ui/DateTimePicker";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { useAccounts } from "@/modules/accounts/hooks/useAccounts";
+import { ConnectAccountButton } from "@/modules/accounts/components/ConnectAccountButton";
 import { useMediaItem } from "@/modules/library/hooks/useMedia";
 import { useCreatePost, usePublishDraft, usePost, useGenerateCaptions, useImproveCaption } from "../hooks/usePosts";
 import { PlatformPreview } from "../components/previews";
-import { defaultProvider } from "@/providers/publishing/registry";
 import { PLATFORMS } from "@/config/platforms";
 import { platformMeta } from "@/modules/dashboard/lib/platforms";
 import { urlFor } from "@/providers/storage/supabase-storage";
 import { cn } from "@/lib/utils";
-import { ArrowLeft, Check, Send, Clock, FileText, Plus, Sparkles } from "lucide-react";
+import { ArrowLeft, Check, Send, Clock, FileText, Sparkles } from "lucide-react";
 
 type WhenOption = "now" | "schedule" | "draft";
 
@@ -115,7 +115,7 @@ export function CreatePostPage() {
       account_id: a.id,
       account_name: a.name,
       caption: getCaptionForPlatform(a.platform),
-      provider: defaultProvider(),
+      provider: a.provider,
     }));
     const publish_at = when === "schedule" ? (scheduleDate ? scheduleDate.toISOString() : null) : null;
 
@@ -171,13 +171,7 @@ export function CreatePostPage() {
             ) : !accounts?.length ? (
               <div className="flex flex-col items-start gap-3">
                 <p className="text-sm text-muted">No accounts connected.</p>
-                <Button
-                  size="sm"
-                  onClick={() => window.open("https://app.upload-post.com", "_blank", "noopener,noreferrer")}
-                >
-                  <Plus className="w-4 h-4" />
-                  Connect account
-                </Button>
+                <ConnectAccountButton className="w-56" />
               </div>
             ) : (
               <div className="space-y-2">
@@ -286,7 +280,8 @@ export function CreatePostPage() {
                     }}
                     caption={activeCaption}
                     mediaUrl={mediaUrl}
-                    mediaType={media?.type}
+                    // No carousel preview yet (Sprint 2); show its cover like an image
+                    mediaType={media?.type === "carousel" ? "image" : media?.type}
                   />
                 </div>
               </div>

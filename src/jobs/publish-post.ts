@@ -3,6 +3,17 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getPost, updatePost } from "@/core/posts";
 import { publisherFor } from "@/providers/publishing/registry";
 import { urlFor } from "@/providers/storage/supabase-storage";
+import type { SupabaseClient } from "@supabase/supabase-js";
+
+async function slideUrls(db: SupabaseClient, mediaId: string): Promise<string[]> {
+  const { data } = await db
+    .from("media_files")
+    .select("storage_key")
+    .eq("media_id", mediaId)
+    .eq("role", "slide")
+    .order("position");
+  return (data ?? []).map((f) => urlFor(process.env.NEXT_PUBLIC_SUPABASE_URL!, f.storage_key));
+}
 
 export const publishPost = inngest.createFunction(
   {
@@ -57,23 +68,22 @@ export const publishPost = inngest.createFunction(
           await db.from("post_targets").update({ status: "sending" }).eq("id", target.id);
 
           const publisher = publisherFor(target.provider);
-          const scheduledDate = isScheduled ? post.publish_at! : undefined;
+          const base = {
+            platform: target.platform,
+            accountId: target.account_id,
+            caption: target.caption || media?.content || "",
+            scheduledDate: isScheduled ? post.publish_at! : undefined,
+          };
 
           let result;
           if (isText) {
-            result = await publisher.publishText({
-              caption: target.caption || media?.content || "",
-              accountId: target.account_id,
-              scheduledDate,
-            });
+            result = await publisher.publishText(base);
+          } else if (media!.type === "video") {
+            result = await publisher.publishVideo({ ...base, videoUrl: mediaUrl! });
+          } else if (media!.type === "carousel" && publisher.publishCarousel) {
+            result = await publisher.publishCarousel({ ...base, imageUrls: await slideUrls(db, media!.id) });
           } else {
-            const method = media!.type === "video" ? "publishVideo" : "publishPhoto";
-            result = await publisher[method]({
-              [media!.type === "video" ? "videoUrl" : "imageUrl"]: mediaUrl!,
-              caption: target.caption,
-              accountId: target.account_id,
-              scheduledDate,
-            } as any);
+            result = await publisher.publishPhoto({ ...base, imageUrl: mediaUrl! });
           }
 
           if (result.success) {

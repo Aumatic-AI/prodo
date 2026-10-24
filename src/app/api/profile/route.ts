@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getProfile, saveProfile } from "@/core/profile";
 import { upload, storageKeyFor } from "@/providers/storage/supabase-storage";
 import { LIMITS } from "@/config/limits";
+import { GOALS } from "@/core/onboarding/options";
 
 export const GET = apiHandler(async () => {
   const db = await createClient();
@@ -19,23 +20,29 @@ export const PUT = apiHandler(async (req: NextRequest) => {
   const fields: Record<string, any> = {};
   const name = formData.get("name");
   const website = formData.get("website");
-  const about = formData.get("about");
+  const description = formData.get("description");
+  const language = formData.get("language");
+  const timezone = formData.get("timezone");
+  const goal = formData.get("primary_goal");
 
   if (typeof name === "string") fields.name = name;
   if (typeof website === "string") fields.website = website || null;
-  if (typeof about === "string") {
-    if (about.length > LIMITS.aboutMaxChars) {
+  if (typeof language === "string" && language) fields.language = language.slice(0, 40);
+  if (typeof timezone === "string") fields.timezone = timezone.slice(0, 60) || null;
+  if (typeof goal === "string") {
+    if (goal && !(GOALS as readonly string[]).includes(goal)) {
+      return NextResponse.json({ error: { code: "VALIDATION_ERROR", message: "Pick a goal from the list" } }, { status: 400 });
+    }
+    fields.primary_goal = goal || null;
+  }
+  if (typeof description === "string") {
+    if (description.length > LIMITS.descriptionMaxChars) {
       return NextResponse.json(
-        { error: { code: "VALIDATION_ERROR", message: `About must be under ${LIMITS.aboutMaxChars} characters` } },
+        { error: { code: "VALIDATION_ERROR", message: `Description must be under ${LIMITS.descriptionMaxChars} characters` } },
         { status: 400 }
       );
     }
-    fields.about = about;
-  }
-
-  const products = formData.get("products");
-  if (typeof products === "string") {
-    try { fields.products = JSON.parse(products); } catch { /* ignore */ }
+    fields.description = description;
   }
 
   const logo = formData.get("logo") as File | null;

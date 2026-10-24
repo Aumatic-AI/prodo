@@ -26,7 +26,9 @@ export default function LoginPage() {
       return;
     }
 
-    router.push("/dashboard");
+    // Back to the page that sent us here; only same-site paths
+    const next = new URLSearchParams(window.location.search).get("next");
+    router.push(next && next.startsWith("/") && !next.startsWith("//") ? next : "/dashboard");
     router.refresh();
   }
 

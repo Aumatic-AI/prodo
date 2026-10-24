@@ -1,5 +1,6 @@
 import type { BusinessProfile } from "@/core/profile";
-import * as OpenAI from "@/providers/ai/openai";
+import { ai } from "@/providers/ai/registry";
+import { parseJson } from "@/lib/json";
 import {
   buildCaptionMetadataPrompt,
   buildImproveCaptionPrompt,
@@ -15,18 +16,15 @@ export async function writeCaptions(params: {
 }): Promise<Record<string, string>> {
   const { system, user } = buildCaptionMetadataPrompt(params.idea, params.profile);
 
-  let response = params.imageUrl
-    ? await OpenAI.generateTextWithImage(user, params.imageUrl, system)
-    : await OpenAI.generateText(user, system);
+  let response = params.imageUrl ? await ai.vision(user, params.imageUrl, system) : await ai.text(user, system);
 
   let meta: CaptionMetadata;
   try {
-    meta = OpenAI.parseJsonResponse(response) as CaptionMetadata;
+    meta = parseJson<CaptionMetadata>(response.data);
   } catch {
-    // The vision call occasionally hedges/refuses instead of returning JSON —
-    // fall back to a text-only call (idea only, no image) rather than hard-failing.
-    response = await OpenAI.generateText(user, system);
-    meta = OpenAI.parseJsonResponse(response) as CaptionMetadata;
+    // Vision sometimes replies without JSON; retry with text only
+    response = await ai.text(user, system);
+    meta = parseJson<CaptionMetadata>(response.data);
   }
 
   return formatPlatformCaptions(meta, params.platforms);
@@ -38,6 +36,6 @@ export async function improveCaption(params: {
   instruction?: string;
 }): Promise<string> {
   const { system, user } = buildImproveCaptionPrompt(params.caption, params.platform, params.instruction);
-  const response = await OpenAI.generateText(user, system);
-  return response.trim();
+  const { data } = await ai.text(user, system);
+  return data.trim();
 }

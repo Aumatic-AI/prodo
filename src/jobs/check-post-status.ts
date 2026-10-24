@@ -3,14 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getPost, updatePost } from "@/core/posts";
 import { publisherFor } from "@/providers/publishing/registry";
 
-/**
- * Upload-Post can fire a scheduled post itself, and can also background-
- * process an "immediate" one (Instagram especially) — either way, publishPost
- * has already moved on by the time the real outcome is known. This closes
- * the loop: sleeps at zero cost until checkAt (the scheduled time, or ~now
- * for an immediate publish), then polls Upload-Post a handful of times to
- * find the real success/fail outcome and the live post URL.
- */
+/** Sleeps until the post is due, then polls the provider for each target's real outcome and live URL. */
 export const checkPostStatus = inngest.createFunction(
   { id: "check-post-status", cancelOn: [{ event: "post/cancelled", match: "data.postId" }] },
   { event: "post/check-status" },
@@ -28,12 +21,17 @@ export const checkPostStatus = inngest.createFunction(
 
         for (const target of pending) {
           const publisher = publisherFor(target.provider);
-          const status = await publisher.getStatus(target.provider_ref!);
+          const status = await publisher.getStatus(target.provider_ref!, target.platform);
 
           if (status.status === "completed") {
             await db
               .from("post_targets")
-              .update({ status: "published", url: status.url || target.url })
+              .update({
+                status: "published",
+                url: status.url || target.url,
+                provider_post_id: status.providerPostId ?? null,
+                published_at: status.publishedAt ?? new Date().toISOString(),
+              })
               .eq("id", target.id);
           } else if (status.status === "failed") {
             await db

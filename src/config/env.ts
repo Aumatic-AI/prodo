@@ -1,21 +1,51 @@
 import { z } from "zod";
 
-const envSchema = z.object({
+// Safe to expose to the browser
+const publicSchema = z.object({
   NEXT_PUBLIC_SUPABASE_URL: z.string().url(),
-  NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1),
-  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),
+  NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: z.string().min(1),
+});
 
+// Server only. Vendor keys are optional so the app boots before every service is set up;
+// the adapter that needs a missing key fails with a plain message.
+const serverSchema = z.object({
+  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),
+  SUPABASE_PROJECT_REF: z.string().min(1).optional(),
+  SUPABASE_ACCESS_TOKEN: z.string().min(1).optional(),
+  SUPABASE_DB_PASSWORD: z.string().min(1).optional(),
+
+  TEST_USER_EMAIL: z.string().email().optional(),
+  TEST_USER_PASSWORD: z.string().min(1).optional(),
+
+  OPENAI_API_KEY: z.string().min(1).optional(),
+  EMBEDDING_MODEL: z.string().min(1).default("text-embedding-3-small"),
+  EMBEDDING_DIMENSIONS: z.coerce.number().int().positive().default(1536),
+  KIE_API_KEY: z.string().min(1).optional(),
+  ELEVENLABS_API_KEY: z.string().min(1).optional(),
+
+  FIRECRAWL_API_KEY: z.string().min(1).optional(),
+  TWELVELABS_API_KEY: z.string().min(1).optional(),
+  SCRAPECREATORS_API_KEY: z.string().min(1).optional(),
+
+  ZERNIO_API_KEY: z.string().min(1).optional(),
   UPLOAD_POST_API_KEY: z.string().min(1).optional(),
   UPLOAD_POST_PROFILE: z.string().min(1).optional(),
 
-  OPENAI_API_KEY: z.string().min(1).optional(),
-  KIE_API_KEY: z.string().min(1).optional(),
-  ELEVENLABS_API_KEY: z.string().min(1).optional(),
+  FFMPEG_WORKER_URL: z.string().url().optional(),
+  FFMPEG_WORKER_SECRET: z.string().min(1).optional(),
 
   INNGEST_EVENT_KEY: z.string().min(1).optional(),
   INNGEST_SIGNING_KEY: z.string().min(1).optional(),
   INNGEST_DEV: z.string().optional(),
 });
 
-export const env = envSchema.parse(process.env);
+const envSchema = publicSchema.merge(serverSchema);
+
+// Empty strings from a copied .env.example count as "not set"
+const raw = Object.fromEntries(
+  Object.entries(process.env).filter(([, v]) => v !== "")
+);
+
+export const env = envSchema.parse(raw);
 export type Env = z.infer<typeof envSchema>;
+export type PublicEnv = z.infer<typeof publicSchema>;

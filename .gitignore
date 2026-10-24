@@ -13,6 +13,7 @@ coverage/
 
 # next.js
 .next/
+.next-build/
 out/
 
 # production
@@ -41,3 +42,6 @@ supabase/.temp/
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# trace logs (TRACE_LOG=1)
+.logs/

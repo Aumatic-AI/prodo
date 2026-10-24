@@ -3,7 +3,7 @@ export const LIMITS = {
   imageMaxBytes: 10 * 1024 * 1024,
   referenceImageMaxBytes: 5 * 1024 * 1024,
   videoMaxBytes: 100 * 1024 * 1024,
-  aboutMaxChars: 1500,
+  descriptionMaxChars: 1500,
   captionMaxChars: 63206,
   fetchTimeoutMs: 60_000,
   downloadTimeoutMs: 5 * 60_000,

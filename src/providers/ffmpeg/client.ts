@@ -1,68 +1,48 @@
 import { env } from "@/config/env";
+import { AppError, notConfigured } from "@/core/errors";
+import { jsonOrThrow, request } from "@/providers/http";
 
-const API_URL = "https://api.upload-post.com/api/uploadposts/ffmpeg";
+// Our own FFmpeg worker (self-hosted on Hostinger). See worker/README.md.
+const SERVICE = "The video renderer";
 
-function getHeaders() {
-  const key = env.UPLOAD_POST_API_KEY;
-  if (!key) throw new Error("UPLOAD_POST_API_KEY is not set (needed for FFmpeg API)");
-  return { "Content-Type": "application/json", Authorization: key };
+export interface RenderJob {
+  /** Storage keys or allowed https URLs. Referenced in args as {input0}, {input1}… */
+  inputs: string[];
+  /** ffmpeg arguments. {output} is the result file. */
+  args: string[];
+  /** Where the worker saves the result in our storage */
+  outputKey: string;
+  contentType?: string;
 }
 
-export interface FFmpegJobStatus {
-  status: "pending" | "finished" | "failed" | "error";
-  url?: string;
+export interface RenderStatus {
+  status: "queued" | "running" | "done" | "failed";
+  outputKey?: string;
   error?: string;
 }
 
-export async function submitJob(opts: {
-  files: string[];
-  command: string;
-  outputExtension?: string;
-}): Promise<string> {
-  const res = await fetch(`${API_URL}/jobs/upload`, {
+function config() {
+  if (!env.FFMPEG_WORKER_URL || !env.FFMPEG_WORKER_SECRET) throw notConfigured(SERVICE);
+  return { base: env.FFMPEG_WORKER_URL.replace(/\/$/, ""), headers: { "x-worker-secret": env.FFMPEG_WORKER_SECRET } };
+}
+
+export async function submitJob(job: RenderJob): Promise<string> {
+  const { base, headers } = config();
+  const res = await request(SERVICE, `${base}/jobs`, {
     method: "POST",
-    headers: getHeaders(),
-    body: JSON.stringify({
-      files: opts.files,
-      full_command: opts.command,
-      output_extension: opts.outputExtension || "mp4",
-    }),
+    headers: { ...headers, "Content-Type": "application/json" },
+    body: JSON.stringify({ contentType: "video/mp4", ...job }),
   });
-  if (!res.ok) throw new Error(`FFmpeg submit failed: ${res.status} ${res.statusText}`);
-  const data = await res.json();
-  if (!data.job_id) throw new Error("FFmpeg API did not return a job_id");
-  return data.job_id;
+  const data = await jsonOrThrow(SERVICE, res, (b) => b?.error);
+  return data.jobId;
 }
 
-export async function checkStatus(jobId: string): Promise<FFmpegJobStatus> {
-  const res = await fetch(`${API_URL}/jobs/${jobId}`, { headers: getHeaders() });
-  if (!res.ok) throw new Error(`FFmpeg status check failed: ${res.status}`);
-
-  const contentType = res.headers.get("content-type") || "";
-  if (!contentType.includes("application/json")) {
-    return { status: "finished", url: res.url };
+export async function getJob(jobId: string): Promise<RenderStatus> {
+  const { base, headers } = config();
+  const res = await request(SERVICE, `${base}/jobs/${encodeURIComponent(jobId)}`, { headers });
+  if (res.status === 404) {
+    // Worker restarted and lost the job
+    throw new AppError("The video renderer lost this job. Try again.", "UNKNOWN", false);
   }
-
-  const text = await res.text();
-  let data;
-  try {
-    data = JSON.parse(text);
-  } catch {
-    return { status: "finished", url: res.url };
-  }
-
-  if (data.status === "finished") {
-    const dlRes = await fetch(`${API_URL}/jobs/${jobId}/download`, { headers: getHeaders() });
-    if (!dlRes.ok) throw new Error("Job finished but download URL retrieval failed");
-    const dlContentType = dlRes.headers.get("content-type") || "";
-    if (!dlContentType.includes("application/json")) return { status: "finished", url: dlRes.url };
-    const dlData = await dlRes.json();
-    return { status: "finished", url: dlData.url || dlData.download_url || dlData.file_url || dlRes.url };
-  }
-
-  return { status: data.status, error: data.error };
-}
-
-export function downloadHeaders() {
-  return getHeaders();
+  return jsonOrThrow(SERVICE, res, (b) => b?.error);
 }
