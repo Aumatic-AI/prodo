@@ -16,6 +16,9 @@ export interface Post {
   status: PostStatus;
   publish_at: string | null;
   created_at: string;
+  /** manual = made on the Posts screen; agent = scheduled by the Publisher from a plan */
+  origin: "manual" | "agent";
+  plan_item_id: string | null;
   media: PostMediaSummary | null;
 }
 
@@ -76,6 +79,8 @@ export async function createPost(
     media_id: string;
     status: PostStatus;
     publish_at?: string | null;
+    origin?: "manual" | "agent";
+    plan_item_id?: string | null;
     targets: {
       platform: string;
       account_id: string;
@@ -91,6 +96,8 @@ export async function createPost(
       media_id: input.media_id,
       status: input.status,
       publish_at: input.publish_at || null,
+      origin: input.origin ?? "manual",
+      plan_item_id: input.plan_item_id ?? null,
     })
     .select()
     .single();

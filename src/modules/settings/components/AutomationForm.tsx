@@ -13,11 +13,13 @@ import { NumberInput, TextInput } from "@/components/kit/inputs";
 import { Select } from "@/components/kit/Select";
 import { TimePicker } from "@/components/kit/TimePicker";
 import { ChoiceCards } from "@/components/kit/choices";
-import { Switch } from "@/components/kit/controls";
+import { Counter, Switch } from "@/components/kit/controls";
+import { PlatformIcon } from "@/components/kit/PlatformIcon";
+import { POSTING_PLATFORMS } from "@/core/onboarding/options";
 import { SaveBar } from "@/components/kit/SaveBar";
 import { Skeleton } from "@/components/kit/Skeleton";
 import { row } from "@/components/kit/styles";
-import { AUTOPILOT_OPTIONS, WEEKDAY_OPTIONS } from "@/modules/onboarding/config";
+import { AUTOPILOT_OPTIONS, POSTING_LABELS, WEEKDAY_OPTIONS } from "@/modules/onboarding/config";
 
 const KEY = ["settings", "automation"];
 
@@ -29,6 +31,7 @@ const fromView = (v: AutomationView): Automation => ({
   approval_timeout_hours: v.approval_timeout_hours,
   monthly_budget_usd: v.monthly_budget_usd,
   notify_email: v.notify_email,
+  posts_per_week: v.posts_per_week,
 });
 
 /** How much the agents do on their own, when they plan, and how much they may spend. */
@@ -103,6 +106,24 @@ export function AutomationForm() {
           <Field label="Time" htmlFor="plan-time">
             <TimePicker id="plan-time" value={form.plan_time} onChange={(plan_time) => set({ plan_time })} />
           </Field>
+        </div>
+      </Card>
+
+      <Card title="Posts per week" description={`The Planner makes this many slots each week (${Object.values(form.posts_per_week).reduce((a, b) => a + b, 0)} in total).`}>
+        <div className="grid grid-cols-1 gap-x-8 md:grid-cols-2">
+          {POSTING_PLATFORMS.map((platform) => (
+            <div key={platform} className="flex items-center justify-between gap-3 border-b border-ob-line py-3">
+              <span className="flex items-center gap-2.5 font-semibold">
+                <PlatformIcon platform={platform} />
+                {POSTING_LABELS[platform]}
+              </span>
+              <Counter
+                label={`${POSTING_LABELS[platform]} posts`}
+                value={form.posts_per_week[platform] ?? 0}
+                onChange={(n) => set({ posts_per_week: { ...form.posts_per_week, [platform]: n } })}
+              />
+            </div>
+          ))}
         </div>
       </Card>
 

@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import sharp from "sharp";
 import type { z } from "zod";
 import { env } from "@/config/env";
 import { LIMITS } from "@/config/limits";
@@ -6,6 +7,7 @@ import { MODELS } from "@/config/models";
 import { tokenCost } from "@/config/pricing";
 import { AppError, notConfigured } from "@/core/errors";
 import { parseJson } from "@/lib/json";
+import { request } from "@/providers/http";
 import type { Result } from "@/providers/usage";
 import { trace, traceLlm } from "@/lib/trace";
 
@@ -62,6 +64,32 @@ async function chat(messages: Message[], model: string, json = false): Promise<R
   }
 }
 
+/**
+ * Images go to OpenAI inline (downloaded and shrunk by us), not as links it must fetch itself:
+ * a slow file host (e.g. an AI provider's temporary files) would otherwise fail the whole call.
+ * An image that can't be downloaded is left out; if none can, the call is retried later.
+ */
+async function inlineImages(urls: string[]): Promise<string[]> {
+  if (!urls.length) return [];
+  const out = await Promise.all(
+    urls.map(async (url) => {
+      if (url.startsWith("data:")) return url;
+      try {
+        const res = await request("Image download", url, {}, 30_000);
+        if (!res.ok) return null;
+        const jpeg = await sharp(Buffer.from(await res.arrayBuffer())).rotate().resize(1280, 1280, { fit: "inside", withoutEnlargement: true }).jpeg({ quality: 85 }).toBuffer();
+        return `data:image/jpeg;base64,${jpeg.toString("base64")}`;
+      } catch {
+        console.warn(`[openai] left out an image that couldn't be downloaded: ${url.slice(0, 120)}`);
+        return null;
+      }
+    })
+  );
+  const images = out.filter((u): u is string => !!u);
+  if (!images.length) throw new AppError("Couldn't load the images to check. Try again.", "PROVIDER_DOWN", true);
+  return images;
+}
+
 function messages(prompt: string, system?: string, images: string[] = []): Message[] {
   const list: Message[] = [];
   if (system) list.push({ role: "system", content: system });
@@ -78,7 +106,7 @@ export function text(prompt: string, system?: string): Promise<Result<string>> {
 }
 
 export function vision(prompt: string, imageUrl: string, system?: string): Promise<Result<string>> {
-  return chat(messages(prompt, system, [imageUrl]), MODELS.vision);
+  return inlineImages([imageUrl]).then((images) => chat(messages(prompt, system, images), MODELS.vision));
 }
 
 export interface StructuredOptions {
@@ -93,9 +121,12 @@ export interface StructuredOptions {
 export async function structured<T>(schema: z.ZodType<T, z.ZodTypeDef, unknown>, prompt: string, opts: StructuredOptions = {}): Promise<Result<T>> {
   const images = opts.images ?? [];
   const model = opts.model ?? (images.length ? MODELS.vision : MODELS.text);
-  const res = await chat(messages(prompt, opts.system, images), model, true);
+  const res = await chat(messages(prompt, opts.system, await inlineImages(images)), model, true);
   const parsed = schema.safeParse(safeParse(res.data));
   if (!parsed.success) {
+    // For whoever reads the server log: which part of the reply didn't fit (never shown to the client)
+    const issue = parsed.error.issues[0];
+    console.warn(`[ai.structured] reply didn't match the schema at "${issue?.path.join(".") || "(root)"}": ${issue?.message}. Reply starts: ${res.data.slice(0, 300)}`);
     throw new AppError("Couldn't read the AI reply. Try again.", "UNKNOWN", true);
   }
   return { data: parsed.data, usage: res.usage };

@@ -13,7 +13,9 @@ All routes except `/health` need the header `x-worker-secret`.
 | `GET /jobs/:id` | `{ status: queued \| running \| done \| failed, outputKey?, error? }` |
 
 - `inputs`: storage keys in the `media` bucket, or `https` URLs on our Supabase host or a host in `ALLOWED_INPUT_HOSTS`. Anything else is rejected.
-- `args`: ffmpeg arguments as a list. `{input0}`…`{inputN}` and `{output}` are replaced with local file paths. No shell is used.
+- `args`: ffmpeg arguments as a list. `{input0}`…`{inputN}` and `{output}` are replaced with local file paths, and `{dir}` with the job's own folder (burned-in captions use `subtitles={inputN}:fontsdir={dir}` so libass finds the brand font that was downloaded as an input). No shell is used.
+- Inputs that aren't media (a `.ass` captions file, a `.ttf` font) are downloaded like any other input and only referenced inside the filter.
+- The image includes `fonts-dejavu-core` as a fallback font for captions.
 - Two jobs run at a time, each with a 10 minute limit. Temp files are deleted after every job. Finished jobs are forgotten after an hour.
 
 ## Deploy on a Hostinger VPS
@@ -27,7 +29,7 @@ All routes except `/health` need the header `x-worker-secret`.
 
 In the app's env set `FFMPEG_WORKER_URL=https://ffmpeg.yourdomain.com` and `FFMPEG_WORKER_SECRET` to the same secret.
 
-Update after a code change: `git pull && docker compose up -d --build`.
+Update after a code change: `git pull && docker compose up -d --build`. **Sprint 2 changed the worker** (`{dir}` and the fallback font), so redeploy it once.
 
 ## Run locally
 

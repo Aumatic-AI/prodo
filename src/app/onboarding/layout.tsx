@@ -12,7 +12,7 @@ export const metadata = { title: "Set up Prodo" };
 export default async function OnboardingLayout({ children }: { children: ReactNode }) {
   const session = await getSession();
   if (!session) redirect("/login");
-  if (session.business.onboardingStatus === "done") redirect("/dashboard");
+  if (session.business.onboardingStatus === "done") redirect("/week");
 
   const draft = await getOnboardingDraft();
 

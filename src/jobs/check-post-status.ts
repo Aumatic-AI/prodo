@@ -1,6 +1,7 @@
 import { inngest } from "./client";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPost, updatePost } from "@/core/posts";
+import { notify } from "@/core/notifications/notify";
 import { publisherFor } from "@/providers/publishing/registry";
 
 /** Sleeps until the post is due, then polls the provider for each target's real outcome and live URL. */
@@ -55,6 +56,24 @@ export const checkPostStatus = inngest.createFunction(
       const allFailed = targets?.every((t: any) => t.status === "failed");
       const finalStatus = allPublished ? "published" : allFailed ? "failed" : "partial";
       await updatePost(db, event.data.postId, { status: finalStatus });
+
+      // A post the Publisher made: its plan slot follows, and a failure is reported
+      const { data: post } = await db.from("posts").select("plan_item_id").eq("id", event.data.postId).single();
+      if (post?.plan_item_id) {
+        await db
+          .from("plan_items")
+          .update({ status: allFailed ? "failed" : "published", error: allFailed ? "Publishing failed on every account. Open the post for details." : null })
+          .eq("id", post.plan_item_id);
+      }
+      if (finalStatus !== "published") {
+        await notify(db, {
+          kind: "post_failed",
+          title: allFailed ? "A post couldn't be published" : "A post was only partly published",
+          body: "Open it in Posts to see which account failed and why.",
+          link: `/posts/${event.data.postId}`,
+          email: true,
+        });
+      }
     });
 
     return { postId: event.data.postId };

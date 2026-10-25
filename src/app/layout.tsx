@@ -1,6 +1,7 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Plus_Jakarta_Sans } from "next/font/google";
 import "@/styles/globals.css";
+import { THEME_SCRIPT } from "@/lib/theme-script";
 import { Providers } from "./providers";
 
 const geist = Geist({
@@ -21,8 +22,16 @@ const jakarta = Plus_Jakarta_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "Prodo",
-  description: "Create and publish social media content with AI",
+  title: { default: "Prodo", template: "%s · Prodo" },
+  description: "Your autonomous content team: Prodo learns your brand, then plans, makes and publishes on-brand posts every week.",
+  applicationName: "Prodo",
+};
+
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#2f45c5" },
+    { media: "(prefers-color-scheme: dark)", color: "#0f1115" },
+  ],
 };
 
 export default function RootLayout({
@@ -31,7 +40,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${geist.variable} ${geistMono.variable} ${jakarta.variable}`}>
+    // The theme script sets class="dark" before React loads, so html attributes differ on purpose
+    <html lang="en" className={`${geist.variable} ${geistMono.variable} ${jakarta.variable}`} suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+      </head>
       <body>
         <Providers>{children}</Providers>
       </body>

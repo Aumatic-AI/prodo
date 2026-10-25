@@ -1,59 +1,36 @@
 "use client";
 
-import { Heart, MessageCircle, Send, Bookmark, Ellipsis } from "lucide-react";
+import { Bookmark, Ellipsis, Heart, MessageCircle, Send } from "lucide-react";
 import { Avatar } from "./Avatar";
+import { Caption } from "./Caption";
+import { MediaFrame } from "./MediaFrame";
 import type { PlatformPreviewProps } from "./types";
 
-export function InstagramPreview({ account, caption, mediaUrl, mediaType }: PlatformPreviewProps) {
-  const handle = account.displayName.replace(/^@/, "");
-
+export function InstagramPreview({ account, caption, mediaUrls, mediaType }: PlatformPreviewProps) {
+  const handle = account.displayName.replace(/^@/, "").replace(/\s+/g, "").toLowerCase();
   return (
-    <div
-      className="rounded-sm overflow-hidden mx-auto"
-      style={{ maxWidth: 380, backgroundColor: "#fff", border: "1px solid #dbdbdb" }}
-    >
+    <div className="mx-auto w-full max-w-[380px] overflow-hidden rounded-xl border border-neutral-200 bg-white text-neutral-900 shadow-ob-sm">
       <div className="flex items-center gap-2.5 px-3 py-2.5">
-        <div style={{ padding: 2, borderRadius: "9999px", border: "1px solid #dbdbdb" }}>
-          <Avatar src={account.avatarUrl} name={handle} size={28} />
-        </div>
-        <p className="flex-1 text-sm font-semibold truncate" style={{ color: "#262626" }}>
-          {handle}
-        </p>
-        <Ellipsis className="w-4 h-4" style={{ color: "#262626" }} />
+        <span className="rounded-full bg-linear-to-tr from-amber-400 via-pink-500 to-purple-600 p-[2px]">
+          <Avatar src={account.avatarUrl} name={handle} size={30} className="ring-2 ring-white" />
+        </span>
+        <span className="flex-1 truncate text-[13.5px] font-semibold">{handle}</span>
+        <Ellipsis size={18} />
       </div>
-
-      <div className="relative bg-black/5" style={{ aspectRatio: "1 / 1" }}>
-        {mediaUrl ? (
-          mediaType === "video" ? (
-            <video src={mediaUrl} controls className="w-full h-full" style={{ objectFit: "cover" }} />
-          ) : (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={mediaUrl} alt="" className="w-full h-full" style={{ objectFit: "cover" }} />
-          )
-        ) : null}
-      </div>
-
+      <MediaFrame urls={mediaUrls} type={mediaType} aspect={mediaType === "video" ? "9 / 16" : "4 / 5"} dots="below" />
       <div className="flex items-center gap-3.5 px-3 pt-2.5">
-        <Heart className="w-6 h-6" style={{ color: "#262626" }} />
-        <MessageCircle className="w-6 h-6 scale-x-[-1]" style={{ color: "#262626" }} />
-        <Send className="w-6 h-6" style={{ color: "#262626" }} />
-        <Bookmark className="w-6 h-6 ml-auto" style={{ color: "#262626" }} />
+        <Heart size={22} />
+        <MessageCircle size={22} className="-scale-x-100" />
+        <Send size={22} />
+        <Bookmark size={22} className="ml-auto" />
       </div>
-
-      <p className="px-3 pt-2 text-sm font-semibold" style={{ color: "#262626" }}>
-        1,204 likes
-      </p>
-
+      <p className="m-0 px-3 pt-2 text-[13.5px] font-semibold">1,204 likes</p>
       {caption && (
-        <p className="px-3 pt-1 text-sm whitespace-pre-wrap" style={{ color: "#262626" }}>
-          <span className="font-semibold mr-1.5">{handle}</span>
-          {caption}
-        </p>
+        <div className="px-3 pt-1 text-[13.5px] leading-snug">
+          <Caption text={caption} prefix={handle} lines={2} />
+        </div>
       )}
-
-      <p className="px-3 pt-1.5 pb-3 text-xs uppercase" style={{ color: "#8e8e8e" }}>
-        2 hours ago
-      </p>
+      <p className="m-0 px-3 pb-3 pt-1.5 text-[11px] uppercase tracking-wide text-neutral-400">Just now</p>
     </div>
   );
 }

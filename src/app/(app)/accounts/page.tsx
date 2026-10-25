@@ -1,5 +1,6 @@
-import { AccountsPage } from "@/modules/accounts/pages/AccountsPage";
+import { redirect } from "next/navigation";
 
+// Connected accounts live in Settings now
 export default function Page() {
-  return <AccountsPage />;
+  redirect("/settings?tab=accounts");
 }

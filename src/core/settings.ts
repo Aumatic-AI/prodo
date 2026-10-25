@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
-import { monthSpend } from "@/agents/budget";
+import { monthSpend } from "@/core/spend";
+import { POSTING_PLATFORMS } from "@/core/onboarding/options";
 
 // How the agents behave (app_settings), edited on Settings → Automation.
 
@@ -20,6 +21,10 @@ export const automationSchema = z.object({
     .refine((v) => v === "" || /^\S+@\S+\.\S+$/.test(v), "Enter an email address")
     .transform((v) => v || null)
     .nullable(),
+  /** Posts per week per platform (business_profile.posting_prefs.platforms): the Planner's slot count */
+  posts_per_week: z
+    .record(z.enum(POSTING_PLATFORMS), z.number().int().min(0).max(21))
+    .refine((v) => Object.values(v).some((n) => n > 0), "Plan at least one post a week"),
 });
 export type Automation = z.infer<typeof automationSchema>;
 
@@ -29,8 +34,13 @@ export interface AutomationView extends Automation {
 }
 
 export async function getAutomation(db: SupabaseClient): Promise<AutomationView> {
-  const [{ data, error }, spent] = await Promise.all([db.from("app_settings").select("*").eq("id", 1).single(), monthSpend(db)]);
+  const [{ data, error }, spent, profile] = await Promise.all([
+    db.from("app_settings").select("*").eq("id", 1).single(),
+    monthSpend(db),
+    db.from("business_profile").select("posting_prefs").eq("id", 1).single(),
+  ]);
   if (error) throw error;
+  const posting = (profile.data?.posting_prefs?.platforms ?? {}) as Record<string, number>;
   return {
     autopilot_mode: data.autopilot_mode,
     paused: data.paused,
@@ -39,12 +49,20 @@ export async function getAutomation(db: SupabaseClient): Promise<AutomationView>
     approval_timeout_hours: data.approval_timeout_hours,
     monthly_budget_usd: Number(data.monthly_budget_usd),
     notify_email: data.notify_email,
+    posts_per_week: Object.fromEntries(POSTING_PLATFORMS.map((p) => [p, Number(posting[p] ?? 0)])) as Automation["posts_per_week"],
     spentThisMonth: Math.round(spent * 100) / 100,
   };
 }
 
 export async function saveAutomation(db: SupabaseClient, input: Automation): Promise<AutomationView> {
-  const { error } = await db.from("app_settings").update(input).eq("id", 1);
+  const { posts_per_week, ...settings } = input;
+  const { error } = await db.from("app_settings").update(settings).eq("id", 1);
   if (error) throw error;
+  const { data: profile } = await db.from("business_profile").select("posting_prefs").eq("id", 1).single();
+  const { error: prefsError } = await db
+    .from("business_profile")
+    .update({ posting_prefs: { ...(profile?.posting_prefs ?? {}), platforms: posts_per_week } })
+    .eq("id", 1);
+  if (prefsError) throw prefsError;
   return getAutomation(db);
 }

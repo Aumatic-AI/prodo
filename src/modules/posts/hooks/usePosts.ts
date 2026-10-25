@@ -2,6 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api-client";
+import type { Media } from "@/core/media";
 import type { PostWithTargets } from "@/core/posts";
 
 export function usePost(id: string) {
@@ -85,6 +86,17 @@ export function useDeletePost() {
   return useMutation({
     mutationFn: (id: string) => apiFetch(`/api/posts/${id}`, { method: "DELETE" }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["posts"] }),
+  });
+}
+
+/** The media a post is made from, with carousel slides when the API sends them. */
+export type PostMedia = Media & { files?: { role: string; position: number; storage_key: string }[] };
+
+export function usePostMedia(id: string | null) {
+  return useQuery<PostMedia>({
+    queryKey: ["media-item", id],
+    queryFn: () => apiFetch(`/api/media/${id}`),
+    enabled: !!id,
   });
 }
 

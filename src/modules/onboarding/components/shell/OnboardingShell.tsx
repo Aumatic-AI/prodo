@@ -8,6 +8,7 @@ import { useSession } from "@/stores/SessionStoreProvider";
 import { useOnboarding } from "../../store/OnboardingStoreProvider";
 import { useUnsavedSteps } from "../../hooks/useUnsavedSteps";
 import { container } from "@/components/kit/styles";
+import { Logo } from "@/components/kit/Logo";
 import { Stepper } from "./Stepper";
 
 /** Top bar, stepper and the page. Warns before leaving with unsaved edits. */
@@ -29,12 +30,7 @@ export function OnboardingShell({ children }: { children: ReactNode }) {
     <>
       <header className="sticky top-0 z-20 border-b border-ob-line bg-ob-surface/90 backdrop-blur-md">
         <div className={cn(container, "flex items-center justify-between gap-4 py-3")}>
-          <div className="flex items-center gap-2.5 text-lg font-extrabold tracking-tight">
-            <span className="grid size-[30px] place-items-center rounded-ob bg-ob-dark text-[15px] text-ob-on-dark" aria-hidden="true">
-              P
-            </span>
-            Prodo
-          </div>
+          <Logo />
           <div className="flex items-center gap-3.5">
             {!submitted && (
               <span className="hidden items-center gap-1.5 text-[13px] text-ob-muted sm:inline-flex" aria-live="polite">

@@ -1,128 +1,65 @@
 "use client";
 
 import { useState } from "react";
-import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
-import { Dropdown } from "@/components/ui/Dropdown";
-import { Switch } from "@/components/ui/Switch";
-import { SegmentedControl } from "@/components/ui/SegmentedControl";
-import { useGenerateMedia, useUploadReferenceImage } from "../../hooks/useMedia";
+import { Field } from "@/components/kit/Field";
+import { Switch } from "@/components/kit/controls";
+import type { Upload } from "@/core/onboarding/schemas";
 import { useProfile } from "@/modules/settings/hooks/useProfile";
-import { useOfferings } from "@/modules/settings/hooks/useOfferings";
+import { useGenerateMedia } from "../../hooks/useMedia";
+import { AspectPicker } from "./AspectPicker";
+import { FormFooter } from "./FormFooter";
 import { IdeaField } from "./IdeaField";
-import { ReferenceImagePicker } from "./ReferenceImagePicker";
-import { ASPECT_RATIOS } from "@/config/video-options";
+import { NO_PRODUCT, ProductPicker, productFields } from "./ProductPicker";
+import { ReferencePhoto } from "./ReferencePhoto";
+import type { Ratio } from "./options";
 
-export function ImageTab({ onSuccess }: { onSuccess: () => void }) {
+export function ImageTab({ onDone }: { onDone: () => void }) {
   const [idea, setIdea] = useState("");
-  const [aspectRatio, setAspectRatio] = useState("1:1");
+  const [ratio, setRatio] = useState<Ratio>("4:5");
   const [useLogo, setUseLogo] = useState(true);
-  const [product, setProduct] = useState("");
-  const [customProduct, setCustomProduct] = useState("");
-  const [refFile, setRefFile] = useState<File | null>(null);
-  const [refPreview, setRefPreview] = useState<string | null>(null);
-
+  const [product, setProduct] = useState(NO_PRODUCT);
+  const [reference, setReference] = useState<Upload[]>([]);
   const generate = useGenerateMedia();
-  const uploadRef = useUploadReferenceImage();
   const { data: profile } = useProfile();
   const hasLogo = !!profile?.logo_key;
 
-  const { data: offerings } = useOfferings();
-  const products = (offerings || []).map((o) => ({ value: o.id, label: o.name }));
-
-  // A saved offering is sent by id; "Other" is sent as free text
-  const offeringId = product && product !== "__other__" ? product : undefined;
-  const productName = product === "__other__" ? customProduct.trim() || undefined : undefined;
-
-  function handleRefSelect(file: File | null) {
-    if (refPreview) URL.revokeObjectURL(refPreview);
-    setRefFile(file);
-    setRefPreview(file ? URL.createObjectURL(file) : null);
-  }
-
-  async function handleCreate() {
-    let referenceImageKey: string | undefined;
-    if (refFile) {
-      const result = await uploadRef.mutateAsync(refFile);
-      referenceImageKey = result.key;
-    }
-
+  async function submit() {
     await generate.mutateAsync({
       type: "image",
-      idea,
-      aspect_ratio: aspectRatio,
-      use_logo: useLogo,
-      offering_id: offeringId,
-      product_name: productName,
-      reference_image_key: referenceImageKey,
+      idea: idea.trim(),
+      aspect_ratio: ratio,
+      use_logo: hasLogo && useLogo,
+      reference_image_key: reference[0]?.key,
+      ...productFields(product),
     });
-    onSuccess();
+    onDone();
   }
 
   return (
-    <div className="space-y-5">
-      <IdeaField
-        value={idea}
-        onChange={setIdea}
-        format="image"
-        placeholder="A vibrant lifestyle photo showcasing your brand in action..."
-        required
-      />
-
-      <SegmentedControl
-        label="Aspect ratio"
-        options={ASPECT_RATIOS}
-        value={aspectRatio}
-        onChange={setAspectRatio}
-      />
-
-      {products.length > 0 && (
-        <div>
-          <Dropdown
-            label="Product"
-            options={[
-              ...products,
-              { value: "__other__", label: "Other" },
-            ]}
-            value={product}
-            onChange={(v) => { setProduct(v); if (v !== "__other__") setCustomProduct(""); }}
-            placeholder="Select a product..."
-          />
-          {product === "__other__" && (
-            <Input
-              className="mt-2"
-              placeholder="Enter product or service name..."
-              value={customProduct}
-              onChange={(e) => setCustomProduct(e.target.value)}
-            />
-          )}
-        </div>
-      )}
-
+    <div className="flex flex-col gap-6">
+      <IdeaField value={idea} onChange={setIdea} format="image" placeholder="e.g. Our iced latte on a sunny café table, morning light, fresh and inviting" />
+      <Field label="Size">
+        <AspectPicker value={ratio} onChange={setRatio} />
+      </Field>
+      <ProductPicker value={product} onChange={setProduct} />
+      <ReferencePhoto value={reference} onChange={setReference} hint="A real photo of the product or place keeps the image true to life." />
       {hasLogo && (
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-medium text-text">Add business logo</span>
-          <Switch checked={useLogo} onCheckedChange={setUseLogo} />
+        <div className="flex items-center justify-between gap-4 rounded-ob-md border border-ob-line bg-ob-surface px-4 py-3">
+          <span className="flex flex-col">
+            <span className="text-sm font-semibold">Add your logo</span>
+            <span className="text-[13px] text-ob-muted">Placed by our code in the corner, never redrawn by the AI.</span>
+          </span>
+          <Switch checked={useLogo} onChange={setUseLogo} label={useLogo ? "On" : "Off"} />
         </div>
       )}
-
-      <ReferenceImagePicker preview={refPreview} onSelect={handleRefSelect} />
-
-      <div className="flex justify-end gap-3 pt-2">
-        <Button
-          onClick={handleCreate}
-          loading={uploadRef.isPending || generate.isPending}
-          disabled={!idea.trim() || uploadRef.isPending || generate.isPending}
-        >
-          Generate Image
-        </Button>
-      </div>
-
-      {(uploadRef.error || generate.error) && (
-        <p className="text-sm text-danger bg-danger-bg rounded-lg px-3 py-2">
-          {uploadRef.error?.message || generate.error?.message}
-        </p>
-      )}
+      <FormFooter
+        note="Takes about a minute. You can close this window."
+        label="Generate image"
+        busy={generate.isPending}
+        disabled={!idea.trim()}
+        error={generate.error?.message}
+        onSubmit={() => submit().catch(() => undefined)}
+      />
     </div>
   );
 }

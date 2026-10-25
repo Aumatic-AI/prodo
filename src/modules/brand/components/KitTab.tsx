@@ -13,6 +13,7 @@ import type { BrandKit, KitInput } from "@/core/brand/kit";
 import { BLACK, readablePairs, WHITE } from "@/lib/color";
 import { cn } from "@/lib/utils";
 import { useKit, useSaveKit } from "../hooks/useResource";
+import { LayoutPicker } from "./LayoutPicker";
 
 const COLORS = [
   ["primary", "Primary", "Buttons and highlights"],
@@ -52,6 +53,7 @@ const toForm = (k: BrandKit): KitInput => ({
   fonts: { heading: k.fonts.heading, body: k.fonts.body },
   photo_style: k.photo_style,
   layout_style: k.layout_style,
+  template_ids: k.template_ids ?? [],
 });
 
 /** Colours, fonts, logo versions and visual style. Saving works out the readable colour pairs again. */
@@ -164,6 +166,10 @@ export function KitTab() {
             <TextArea id="layout-style" rows={5} value={form.layout_style ?? ""} onValueChange={(v) => setForm({ ...form, layout_style: v || null })} />
           </Field>
         </div>
+      </Card>
+
+      <Card title="Ad layouts" description="Which designs the agents may use for image ads. None picked means all four.">
+        <LayoutPicker value={form.template_ids} onChange={(template_ids) => setForm({ ...form, template_ids })} colors={c} />
       </Card>
 
       <SaveBar

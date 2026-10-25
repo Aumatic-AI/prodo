@@ -1,211 +1,94 @@
 "use client";
 
 import { useState } from "react";
-import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
-import { Dropdown } from "@/components/ui/Dropdown";
-import { SegmentedControl } from "@/components/ui/SegmentedControl";
-import { Tabs } from "@/components/ui/Tabs";
-import { VoiceExplorerModal } from "@/components/global/VoiceExplorerModal";
-import { useGenerateMedia, useUploadReferenceImage } from "../../hooks/useMedia";
-import { useOfferings } from "@/modules/settings/hooks/useOfferings";
+import { Field } from "@/components/kit/Field";
+import { Select } from "@/components/kit/Select";
+import { ChoiceCards, Pills } from "@/components/kit/choices";
+import { row } from "@/components/kit/styles";
+import type { Upload } from "@/core/onboarding/schemas";
+import { useProfile } from "@/modules/settings/hooks/useProfile";
+import { useGenerateMedia } from "../../hooks/useMedia";
+import { AspectPicker } from "./AspectPicker";
+import { FormFooter } from "./FormFooter";
 import { IdeaField } from "./IdeaField";
-import { ReferenceImagePicker } from "./ReferenceImagePicker";
-import {
-  ASPECT_RATIOS,
-  DURATIONS,
-  AUDIO_STYLES,
-  CHARACTERS,
-  LANGUAGES,
-} from "@/config/video-options";
-import { Mic } from "lucide-react";
+import { NO_PRODUCT, ProductPicker, hasProduct, productFields } from "./ProductPicker";
+import { ReferencePhoto } from "./ReferencePhoto";
+import { VoiceField, type VoiceChoice } from "./VoiceField";
+import { AUDIO, CHARACTERS, DURATIONS, LANGUAGES, languageFor, type Ratio } from "./options";
 
-export function VideoTab({ onSuccess }: { onSuccess: () => void }) {
-  const [idea, setIdea] = useState("");
-  const [aspectRatio, setAspectRatio] = useState("9:16");
-  const [duration, setDuration] = useState("30");
-  const [product, setProduct] = useState("");
-  const [customProduct, setCustomProduct] = useState("");
-  const [audioStyle, setAudioStyle] = useState("Voiceover");
-  const [voiceId, setVoiceId] = useState("");
-  const [voiceName, setVoiceName] = useState("");
-  const [character, setCharacter] = useState("female");
-  const [language, setLanguage] = useState("en");
-  const [showVoiceModal, setShowVoiceModal] = useState(false);
-  const [refFile, setRefFile] = useState<File | null>(null);
-  const [refPreview, setRefPreview] = useState<string | null>(null);
-
+export function VideoTab({ onDone }: { onDone: () => void }) {
+  const { data: profile } = useProfile();
   const generate = useGenerateMedia();
-  const uploadRef = useUploadReferenceImage();
 
-  function handleRefSelect(file: File | null) {
-    if (refPreview) URL.revokeObjectURL(refPreview);
-    setRefFile(file);
-    setRefPreview(file ? URL.createObjectURL(file) : null);
-  }
+  const [idea, setIdea] = useState("");
+  const [ratio, setRatio] = useState<Ratio>("9:16");
+  const [duration, setDuration] = useState<"15" | "30" | "45">("30");
+  const [product, setProduct] = useState(NO_PRODUCT);
+  const [audio, setAudio] = useState<"Voiceover" | "No Voice">("Voiceover");
+  const [character, setCharacter] = useState<"female" | "male">("female");
+  const [language, setLanguage] = useState<string | null>(null);
+  const [voice, setVoice] = useState<VoiceChoice | null>(null);
+  const [reference, setReference] = useState<Upload[]>([]);
 
-  const { data: offerings } = useOfferings();
-  const products = (offerings || []).map((o) => ({ value: o.id, label: o.name }));
+  // Start from the brand's saved voice and language until the user picks
+  const brandVoice = profile?.voice_id ? { id: profile.voice_id, name: String(profile.onboarding?.voiceName ?? "Brand voice") } : null;
+  const chosenVoice = voice ?? brandVoice;
+  const chosenLanguage = language ?? languageFor(profile?.language);
+  const withVoice = audio === "Voiceover";
 
-  // A saved offering is sent by id; "Other" is sent as free text
-  const offeringId = product && product !== "__other__" ? product : undefined;
-  const productName = product === "__other__" ? customProduct.trim() || undefined : undefined;
-
-  async function handleCreate() {
-    let referenceImageKey: string | undefined;
-    if (refFile) {
-      const result = await uploadRef.mutateAsync(refFile);
-      referenceImageKey = result.key;
-    }
-
-    const hasVoice = audioStyle === "Voiceover";
-
+  async function submit() {
     await generate.mutateAsync({
       type: "video",
-      idea,
-      aspect_ratio: aspectRatio,
-      duration_sec: parseInt(duration),
-      offering_id: offeringId,
-      product_name: productName,
-      audio_style: audioStyle,
-      voice_id: hasVoice ? voiceId || undefined : undefined,
-      voice_name: hasVoice ? voiceName || undefined : undefined,
-      character: hasVoice ? character : undefined,
-      language,
-      reference_image_key: referenceImageKey,
+      idea: idea.trim(),
+      aspect_ratio: ratio,
+      duration_sec: Number(duration),
+      audio_style: audio,
+      voice_id: withVoice ? chosenVoice?.id : undefined,
+      voice_name: withVoice ? chosenVoice?.name : undefined,
+      character: withVoice ? character : undefined,
+      language: chosenLanguage,
+      reference_image_key: reference[0]?.key,
+      ...productFields(product),
     });
-    onSuccess();
+    onDone();
   }
 
+  const missing = !idea.trim() ? "Add your idea" : !hasProduct(product) ? "Pick a product or service" : withVoice && !chosenVoice ? "Pick a voice" : null;
+
   return (
-    <div className="space-y-5">
-      <IdeaField
-        value={idea}
-        onChange={setIdea}
-        format="video"
-        placeholder="A short testimonial-style video about your product's impact..."
-        required
-      />
-
-      <div className="grid grid-cols-2 gap-4">
-        <SegmentedControl
-          label="Aspect ratio"
-          options={ASPECT_RATIOS}
-          value={aspectRatio}
-          onChange={setAspectRatio}
-        />
-        <Dropdown
-          label="Duration"
-          options={DURATIONS}
-          value={duration}
-          onChange={setDuration}
-        />
+    <div className="flex flex-col gap-6">
+      <IdeaField value={idea} onChange={setIdea} format="video" placeholder="e.g. A quick before-and-after showing how our cleaning service transforms a messy kitchen" />
+      <ProductPicker value={product} onChange={setProduct} required />
+      <Field label="Size">
+        <AspectPicker value={ratio} onChange={setRatio} />
+      </Field>
+      <div className={row}>
+        <Field label="Length">
+          <Pills options={DURATIONS} value={duration} onChange={setDuration} label="Length" />
+        </Field>
+        <Field label="Language" htmlFor="language">
+          <Select id="language" value={chosenLanguage} onValueChange={setLanguage} options={LANGUAGES} />
+        </Field>
       </div>
-
-      <div>
-        <Dropdown
-          label="Product"
-          required
-          options={[
-            ...products,
-            { value: "__other__", label: "Other" },
-          ]}
-          value={product}
-          onChange={(v) => { setProduct(v); if (v !== "__other__") setCustomProduct(""); }}
-          placeholder="Select a product..."
-        />
-        {product === "__other__" && (
-          <Input
-            className="mt-2"
-            placeholder="Enter product or service name..."
-            value={customProduct}
-            onChange={(e) => setCustomProduct(e.target.value)}
-          />
-        )}
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <p className="text-sm font-medium text-text mb-2">Audio style</p>
-          <Tabs
-            tabs={AUDIO_STYLES.map((s) => ({ value: s.value, label: s.label }))}
-            value={audioStyle}
-            onChange={setAudioStyle}
-          />
-        </div>
-
-        {audioStyle === "Voiceover" && (
-          <div>
-            <p className="text-sm font-medium text-text mb-2">
-              Voice<span className="text-danger"> *</span>
-            </p>
-            <button
-              type="button"
-              onClick={() => setShowVoiceModal(true)}
-              className={`flex items-center gap-3 w-full rounded-lg border transition-colors ${
-                voiceId ? "border-default hover:border-strong" : "border-danger"
-              }`}
-              style={{ padding: "10px 14px", backgroundColor: "var(--color-page)" }}
-            >
-              <Mic className="w-4 h-4 text-secondary" />
-              <span className={voiceName ? "text-sm text-text" : "text-sm text-secondary"}>
-                {voiceName || "Choose a voice..."}
-              </span>
-            </button>
-          </div>
-        )}
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        {audioStyle === "Voiceover" && (
-          <Dropdown
-            label="Character"
-            options={CHARACTERS}
-            value={character}
-            onChange={setCharacter}
-          />
-        )}
-        <Dropdown
-          label="Language"
-          options={LANGUAGES}
-          value={language}
-          onChange={setLanguage}
-        />
-      </div>
-
-      <ReferenceImagePicker
-        preview={refPreview}
-        onSelect={handleRefSelect}
-        hint="Upload a product or person photo to keep it consistent across every scene."
-      />
-
-      <div className="flex justify-end gap-3 pt-2">
-        <Button
-          onClick={handleCreate}
-          loading={uploadRef.isPending || generate.isPending}
-          disabled={
-            !idea.trim() ||
-            (!offeringId && !productName) ||
-            (audioStyle === "Voiceover" && !voiceId) ||
-            uploadRef.isPending ||
-            generate.isPending
-          }
-        >
-          Generate Video
-        </Button>
-      </div>
-
-      {(uploadRef.error || generate.error) && (
-        <p className="text-sm text-danger bg-danger-bg rounded-lg px-3 py-2">
-          {uploadRef.error?.message || generate.error?.message}
-        </p>
+      <Field label="Sound">
+        <ChoiceCards options={AUDIO} value={audio} onChange={setAudio} label="Sound" />
+      </Field>
+      {withVoice && (
+        <>
+          <VoiceField value={chosenVoice} onChange={setVoice} languageCode={profile?.language ?? "en"} />
+          <Field label="Who appears on screen">
+            <Pills options={CHARACTERS} value={character} onChange={setCharacter} label="Who appears on screen" />
+          </Field>
+        </>
       )}
-
-      <VoiceExplorerModal
-        open={showVoiceModal}
-        onOpenChange={setShowVoiceModal}
-        selectedVoiceId={voiceId}
-        onSelectVoice={(id, name) => { setVoiceId(id); setVoiceName(name); }}
+      <ReferencePhoto value={reference} onChange={setReference} hint="A product or person photo keeps them the same in every scene." />
+      <FormFooter
+        note={missing ?? "Takes about 5–10 minutes. You can close this window."}
+        label="Generate video"
+        busy={generate.isPending}
+        disabled={!!missing}
+        error={generate.error?.message}
+        onSubmit={() => submit().catch(() => undefined)}
       />
     </div>
   );

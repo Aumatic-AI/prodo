@@ -33,6 +33,15 @@ const serverSchema = z.object({
 
   FFMPEG_WORKER_URL: z.string().url().optional(),
   FFMPEG_WORKER_SECRET: z.string().min(1).optional(),
+  /** Where videos are put together: "worker" or "upload-post". Unset = the worker when it's configured, else Upload-Post */
+  RENDERER: z.enum(["worker", "upload-post"]).optional(),
+
+  /** Email (Resend). Nothing is sent unless EMAIL_ENABLED=1; until then emails are only logged */
+  RESEND_API_KEY: z.string().min(1).optional(),
+  EMAIL_FROM: z.string().min(3).optional(),
+  EMAIL_ENABLED: z.string().optional(),
+  /** Public address of the app, for links in emails */
+  APP_URL: z.string().url().optional(),
 
   INNGEST_EVENT_KEY: z.string().min(1).optional(),
   INNGEST_SIGNING_KEY: z.string().min(1).optional(),

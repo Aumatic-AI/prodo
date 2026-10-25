@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { apiHandler } from "@/lib/api-handler";
 import { createClient } from "@/lib/supabase/server";
 import { automationSchema, getAutomation, saveAutomation } from "@/core/settings";
+import { inngest } from "@/jobs/client";
 
 // Autopilot mode, weekly plan time, approval timeout, budget, pause and notification email
 export const GET = apiHandler(async () => {
@@ -11,5 +12,12 @@ export const GET = apiHandler(async () => {
 
 export const PUT = apiHandler(async (req: NextRequest) => {
   const db = await createClient();
-  return NextResponse.json(await saveAutomation(db, automationSchema.parse(await req.json())));
+  const input = automationSchema.parse(await req.json());
+  const { data: before } = await db.from("app_settings").select("paused").eq("id", 1).single();
+  const saved = await saveAutomation(db, input);
+  // Pausing also holds posts already scheduled with the provider; resuming schedules them again
+  if (before && before.paused !== input.paused) {
+    await inngest.send({ name: "settings/paused-changed", data: { paused: input.paused } });
+  }
+  return NextResponse.json(saved);
 });

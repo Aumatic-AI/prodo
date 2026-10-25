@@ -13,7 +13,7 @@ export function BibleStep() {
 
   function onApproved() {
     updateBusiness({ onboardingStatus: "done" });
-    router.replace("/dashboard");
+    router.replace("/week");
     router.refresh();
   }
 

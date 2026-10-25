@@ -137,9 +137,13 @@ async function runJob(job: Job): Promise<void> {
     );
     const output = join(dir, `output${extname(job.outputKey) || ".mp4"}`);
 
-    // {input0}…{inputN} and {output} become local file paths
+    // {input0}…{inputN} and {output} become local file paths; {dir} is the job's folder
+    // (subtitles find the brand fonts there with fontsdir={dir})
     const args = job.args.map((arg) =>
-      arg.replace(/\{input(\d+)\}/g, (_, n) => localInputs[Number(n)] ?? "").replace(/\{output\}/g, output)
+      arg
+        .replace(/\{input(\d+)\}/g, (_, n) => localInputs[Number(n)] ?? "")
+        .replace(/\{output\}/g, output)
+        .replace(/\{dir\}/g, dir)
     );
 
     await runFfmpeg(args);

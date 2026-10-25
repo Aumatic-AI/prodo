@@ -1,4 +1,5 @@
 import { AppError } from "@/core/errors";
+import { stripLabelsDeep } from "@/lib/labels";
 import type { BibleContent, BiblePersona, BiblePillar, Claim, OfferStackItem } from "@/core/brand/bible";
 import type { Audience, BibleCore, RawClaim } from "@/prompts/agents/brand-bible";
 import type { SourceBook } from "./sources";
@@ -93,7 +94,8 @@ export function assembleBible(core: BibleCore, audience: Audience, book: SourceB
   }));
 
   return {
-    content: {
+    // Labels like [C10] are for our source tracking only; the client never sees them
+    content: stripLabelsDeep({
       positioning,
       value_prop: valueProp,
       tone_guide: {
@@ -108,7 +110,7 @@ export function assembleBible(core: BibleCore, audience: Audience, book: SourceB
       personas,
       pillars,
       note,
-    },
+    }),
     dropped,
   };
 }

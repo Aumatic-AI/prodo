@@ -1,4 +1,5 @@
 import { inngest } from "./client";
+import { adoptFinishedMedia } from "@/core/plans/plans";
 import { toInngestError } from "./to-inngest-error";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getMedia, markReady, markFailed, productNameFor, type Media } from "@/core/media";
@@ -9,8 +10,13 @@ import { buildVideoScriptPrompt, sceneCountForDuration } from "@/prompts/video-s
 import { buildScenesPrompt } from "@/prompts/video-scenes";
 import { withVideoReferenceInstruction } from "@/prompts/image";
 import { ai } from "@/providers/ai/registry";
-import { getJob } from "@/providers/ffmpeg/client";
-import { submitSceneStitchJob } from "@/providers/ffmpeg/stitch-scenes";
+import { assertVideoReady, getJob } from "@/providers/ffmpeg/client";
+import { submitComposeJob } from "@/providers/ffmpeg/compose-video";
+import { renderPng } from "@/creative/render";
+import { CANVAS, type CanvasRatio } from "@/creative/sizes";
+import { buildAss } from "@/creative/subtitles";
+import { EndCard } from "@/creative/templates/carousel";
+import { loadTheme } from "@/creative/theme";
 import { storageKeyFor, upload, urlFor } from "@/providers/storage/supabase-storage";
 import { NonRetriableError } from "inngest";
 
@@ -59,6 +65,9 @@ export const generateVideo = inngest.createFunction(
     // Every step turns AppErrors into retry / stop for Inngest
     const run = <T>(id: string, fn: () => Promise<T>) => step.run(id, () => fn().catch(toInngestError));
 
+    // Before anything is paid for: the video renderer must be connected
+    await run("check-video-setup", () => assertVideoReady());
+
     const media = await step.run("load-media", () => getMedia(db, event.data.mediaId));
     if (!media.idea) throw new NonRetriableError("No idea provided");
 
@@ -70,6 +79,9 @@ export const generateVideo = inngest.createFunction(
     const referenceUrl = media.reference_image_key
       ? urlFor(process.env.NEXT_PUBLIC_SUPABASE_URL!, media.reference_image_key)
       : undefined;
+    // The size picked in Create content; scenes are shot portrait, square or landscape and cropped to fit
+    const canvas = CANVAS[(media.aspect_ratio as CanvasRatio) ?? "9:16"] ?? CANVAS["9:16"];
+    const shotRatio = canvas.ratio === "16:9" ? "16:9" : canvas.ratio === "1:1" ? "1:1" : "9:16";
 
     // 1. Script, one line per scene
     const script = await run("write-script", async () => {
@@ -94,12 +106,12 @@ export const generateVideo = inngest.createFunction(
     // 3. Voice per line, so each scene knows its real spoken length
     const voices = await run("generate-voice", async () => {
       if (!media.voice_id) return null;
-      const result: { key: string; durationSec: number }[] = [];
+      const result: { key: string; durationSec: number; words: { word: string; start: number; end: number }[] }[] = [];
       for (let i = 0; i < script.length; i++) {
         const { data } = await ai.voice(script[i], media.voice_id!, ai.languageCode(media.language));
         const key = `audio/${media.id}/voice-${i}.mp3`;
         await upload(db, key, data.buffer, "audio/mpeg");
-        result.push({ key, durationSec: data.durationSec });
+        result.push({ key, durationSec: data.durationSec, words: data.words });
       }
       // Track the files so they are cleaned up with the media
       await db.from("media_files").delete().eq("media_id", media.id).eq("role", "voice");
@@ -115,7 +127,7 @@ export const generateVideo = inngest.createFunction(
       const list: SceneImage[] = [];
       for (const s of scenes) {
         const prompt = referenceUrl ? withVideoReferenceInstruction(s.prompt) : s.prompt;
-        const { data: taskId } = await ai.image.create(prompt, "9:16", referenceUrl ? [referenceUrl] : []);
+        const { data: taskId } = await ai.image.create(prompt, shotRatio, referenceUrl ? [referenceUrl] : []);
         list.push({ taskId, url: null, scene: s.scene, prompt: s.prompt, videoScenario: s.video_scenario, retried: false });
       }
       return list;
@@ -132,7 +144,7 @@ export const generateVideo = inngest.createFunction(
           if (status.state !== "fail") continue;
           // One retry without the reference image, then give up
           if (img.retried) throw ai.task.error(status, `scene ${img.scene} image`);
-          img.taskId = (await ai.image.create(img.prompt, "9:16")).data;
+          img.taskId = (await ai.image.create(img.prompt, shotRatio)).data;
           img.retried = true;
         }
         return images;
@@ -152,7 +164,7 @@ export const generateVideo = inngest.createFunction(
         // Seedance makes 4–15s; the stitch freezes the last frame for any extra
         const kieDuration = Math.min(15, Math.max(4, Math.ceil(targetDuration)));
         const prompt = `${img.videoScenario} ${CLIP_STYLE}`;
-        const { data: taskId } = await ai.video.create(prompt, img.url!, "9:16", kieDuration);
+        const { data: taskId } = await ai.video.create(prompt, img.url!, shotRatio, kieDuration);
         list.push({ taskId, url: null, scene: img.scene, prompt, imageUrl: img.url!, kieDuration, targetDuration, retried: false });
       }
       return list;
@@ -168,7 +180,7 @@ export const generateVideo = inngest.createFunction(
           if (status.state === "success") clip.url = ai.task.resultUrl(status);
           if (status.state !== "fail") continue;
           if (clip.retried) throw ai.task.error(status, `scene ${clip.scene} clip`);
-          clip.taskId = (await ai.video.create(clip.prompt, clip.imageUrl, "9:16", clip.kieDuration)).data;
+          clip.taskId = (await ai.video.create(clip.prompt, clip.imageUrl, shotRatio, clip.kieDuration)).data;
           clip.retried = true;
         }
         return clips;
@@ -178,13 +190,48 @@ export const generateVideo = inngest.createFunction(
     }
     if (!clipsDone) throw new NonRetriableError("Making the scene clips took too long. Try again.");
 
-    // 6. Stitch on our worker; it saves the result straight to storage
+    // 6. Captions (from the voice's word timings), end card and music drawn by our code, then one
+    // ffmpeg run on our worker that saves the result straight to storage
     const outputKey = storageKeyFor("video", media.id);
-    const renderId = await run("stitch", () =>
-      submitSceneStitchJob({
+    const sceneDurations = clips.map((c) => c.targetDuration);
+    const parts = await run("video-parts", async () => {
+      const theme = await loadTheme(db);
+      const starts = sceneDurations.map((_, i) => sceneDurations.slice(0, i).reduce((a, b) => a + b, 0));
+      const words = (voices ?? []).flatMap((v, i) => v.words.map((w) => ({ word: w.word, start: starts[i] + w.start, end: starts[i] + w.end })));
+      let subtitlesKey: string | null = null;
+      if (words.length) {
+        subtitlesKey = `videos/${media.id}/captions.ass`;
+        const ass = buildAss({ canvas, words, font: theme.fonts.heading, highlight: theme.accent.bg, highlightText: theme.accent.text });
+        await upload(db, subtitlesKey, Buffer.from(ass, "utf8"), "text/plain");
+      }
+      const endCardKey = `videos/${media.id}/end-card.png`;
+      await upload(db, endCardKey, await renderPng(EndCard({ canvas, theme, cta: "Learn more", line: null }), canvas, theme), "image/png");
+      const font = theme.fontFiles.find((f) => f.family === theme.fonts.heading && f.weight >= 700) ?? theme.fontFiles[0];
+      // Videos without a voice get a music bed so they aren't silent
+      let musicKey: string | null = null;
+      if (!voices) {
+        const total = sceneDurations.reduce((a, b) => a + b, 0) + 2.5;
+        const music = await ai.music("Upbeat, modern instrumental background music for a short social media video, no vocals.", Math.ceil(total)).catch(() => null);
+        if (music) {
+          musicKey = `audio/${media.id}/music.mp3`;
+          await upload(db, musicKey, music.data, "audio/mpeg");
+          await db.from("media_files").insert({ media_id: media.id, role: "music", storage_key: musicKey });
+        }
+      }
+      return { subtitlesKey, endCardKey, fontKeys: font ? [font.key] : [], musicKey };
+    });
+
+    const renderId = await run("compose", () =>
+      submitComposeJob({
+        width: canvas.width,
+        height: canvas.height,
         clipUrls: clips.map((c) => c.url!),
-        clipDurations: clips.map((c) => c.targetDuration),
-        audioKeys: voices ? clips.map((c) => voices[c.scene - 1].key) : null,
+        sceneDurations,
+        voiceKeys: voices ? clips.map((c) => voices[c.scene - 1].key) : null,
+        musicKey: parts.musicKey,
+        subtitlesKey: parts.subtitlesKey,
+        fontKeys: parts.fontKeys,
+        endCardKey: parts.endCardKey,
         outputKey,
       })
     );
@@ -202,7 +249,11 @@ export const generateVideo = inngest.createFunction(
     }
     if (!rendered) throw new NonRetriableError("Putting the video together took too long. Try again.");
 
-    await step.run("finalize", () => markReady(db, media.id, outputKey));
+    await step.run("finalize", async () => {
+      await markReady(db, media.id, outputKey);
+      // A planned post's media made here: the post picks it up (as needing a look)
+      await adoptFinishedMedia(db, media.id);
+    });
     return { success: true, mediaId: media.id };
   }
 );
