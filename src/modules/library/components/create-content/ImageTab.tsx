@@ -8,6 +8,7 @@ import { Switch } from "@/components/ui/Switch";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { useGenerateMedia, useUploadReferenceImage } from "../../hooks/useMedia";
 import { useProfile } from "@/modules/settings/hooks/useProfile";
+import { useOfferings } from "@/modules/settings/hooks/useOfferings";
 import { IdeaField } from "./IdeaField";
 import { ReferenceImagePicker } from "./ReferenceImagePicker";
 import { ASPECT_RATIOS } from "@/config/video-options";
@@ -26,11 +27,12 @@ export function ImageTab({ onSuccess }: { onSuccess: () => void }) {
   const { data: profile } = useProfile();
   const hasLogo = !!profile?.logo_key;
 
-  const products: { value: string; label: string }[] = (profile as any)?.products
-    ? (profile as any).products.map((p: any) => ({ value: typeof p === "string" ? p : p.name, label: typeof p === "string" ? p : p.name }))
-    : [];
+  const { data: offerings } = useOfferings();
+  const products = (offerings || []).map((o) => ({ value: o.id, label: o.name }));
 
-  const resolvedProduct = product === "__other__" ? customProduct : product;
+  // A saved offering is sent by id; "Other" is sent as free text
+  const offeringId = product && product !== "__other__" ? product : undefined;
+  const productName = product === "__other__" ? customProduct.trim() || undefined : undefined;
 
   function handleRefSelect(file: File | null) {
     if (refPreview) URL.revokeObjectURL(refPreview);
@@ -50,7 +52,8 @@ export function ImageTab({ onSuccess }: { onSuccess: () => void }) {
       idea,
       aspect_ratio: aspectRatio,
       use_logo: useLogo,
-      product: resolvedProduct || undefined,
+      offering_id: offeringId,
+      product_name: productName,
       reference_image_key: referenceImageKey,
     });
     onSuccess();

@@ -5,10 +5,16 @@ export type ErrorType =
   | "CONTENT_BLOCKED"
   | "ACCOUNT_DISCONNECTED"
   | "INVALID_INPUT"
+  | "NOT_CONFIGURED"
+  | "BUDGET_REACHED"
+  | "PAUSED"
   | "TIMEOUT"
   | "UNKNOWN";
 
 export class AppError extends Error {
+  /** Per-field messages for forms, keyed by path like "products.0.name" */
+  fields?: Record<string, string>;
+
   constructor(
     message: string,
     public type: ErrorType,
@@ -18,6 +24,10 @@ export class AppError extends Error {
     super(message);
     this.name = "AppError";
   }
+}
+
+export function notConfigured(service: string): AppError {
+  return new AppError(`${service} isn't set up correctly. Please contact your admin.`, "NOT_CONFIGURED", false);
 }
 
 export function userMessage(err: unknown): string {

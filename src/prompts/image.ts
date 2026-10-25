@@ -7,8 +7,8 @@ export function buildImagePrompt(
   product?: string
 ): string {
   return `${idea}.${
-    profile?.about ? `We are creating an ad for Business ${profile.name}:
-    ${profile.about}.` : ""
+    profile?.description ? `We are creating an ad for Business ${profile.name}:
+    ${profile.description}.` : ""
   } ${
     hasReferenceImage ? " Use the reference image as guidance for the final result." : ""
   }${

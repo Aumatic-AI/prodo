@@ -1,5 +1,6 @@
-import type { Publisher, PublishResult } from "./types";
+import type { ConnectedAccount, PublishResult, PublishTarget, Publisher } from "./types";
 import { AppError } from "@/core/errors";
+import { request } from "@/providers/http";
 
 const BASE_URL = "https://api.upload-post.com/api";
 
@@ -45,17 +46,17 @@ async function get<T>(path: string, params?: Record<string, string | undefined>)
       if (v !== undefined) url.searchParams.set(k, v);
     }
   }
-  const res = await fetch(url.toString(), { headers: authHeader() });
+  const res = await request("Upload-Post", url.toString(), { headers: authHeader() });
   return parseOrThrow(res);
 }
 
 async function postForm<T>(path: string, form: FormData): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`, { method: "POST", headers: authHeader(), body: form });
+  const res = await request("Upload-Post", `${BASE_URL}${path}`, { method: "POST", headers: authHeader(), body: form });
   return parseOrThrow(res);
 }
 
 async function del<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`, { method: "DELETE", headers: authHeader() });
+  const res = await request("Upload-Post", `${BASE_URL}${path}`, { method: "DELETE", headers: authHeader() });
   return parseOrThrow(res);
 }
 
@@ -99,39 +100,33 @@ function toResult(data: any, accountId: string): PublishResult {
   };
 }
 
+// Legacy provider: kept so posts made before Zernio still show their status.
+// Here the account id is the platform name.
 export class UploadPostPublisher implements Publisher {
-  async publishPhoto(params: {
-    imageUrl: string;
-    caption: string;
-    accountId: string;
-    scheduledDate?: string;
-  }): Promise<PublishResult> {
-    const form = buildBaseForm(params.accountId, params.caption, params.scheduledDate);
+  id = "upload-post";
+
+  async publishPhoto(params: PublishTarget & { imageUrl: string }): Promise<PublishResult> {
+    const form = buildBaseForm(params.platform, params.caption, params.scheduledDate);
     form.append("photos[]", params.imageUrl);
     const data = await postForm<any>("/upload_photos", form);
-    return toResult(data, params.accountId);
+    return toResult(data, params.platform);
   }
 
-  async publishVideo(params: {
-    videoUrl: string;
-    caption: string;
-    accountId: string;
-    scheduledDate?: string;
-  }): Promise<PublishResult> {
-    const form = buildBaseForm(params.accountId, params.caption, params.scheduledDate);
+  async publishVideo(params: PublishTarget & { videoUrl: string }): Promise<PublishResult> {
+    const form = buildBaseForm(params.platform, params.caption, params.scheduledDate);
     form.append("video", params.videoUrl);
     const data = await postForm<any>("/upload", form);
-    return toResult(data, params.accountId);
+    return toResult(data, params.platform);
   }
 
-  async publishText(params: {
-    caption: string;
-    accountId: string;
-    scheduledDate?: string;
-  }): Promise<PublishResult> {
-    const form = buildBaseForm(params.accountId, params.caption, params.scheduledDate);
+  async publishText(params: PublishTarget): Promise<PublishResult> {
+    const form = buildBaseForm(params.platform, params.caption, params.scheduledDate);
     const data = await postForm<any>("/upload_text", form);
-    return toResult(data, params.accountId);
+    return toResult(data, params.platform);
+  }
+
+  async getConnectUrl(): Promise<string | null> {
+    return "https://app.upload-post.com";
   }
 
   async getStatus(providerRef: string) {
@@ -165,7 +160,7 @@ export class UploadPostPublisher implements Publisher {
     return { success: data?.success ?? true };
   }
 
-  async listAccounts() {
+  async listAccounts(): Promise<ConnectedAccount[]> {
     const username = profileUsername();
     const data = await get<any>(`/uploadposts/users/${encodeURIComponent(username)}`);
     const socialAccounts: Record<string, any> = data?.profile?.social_accounts || {};
@@ -176,6 +171,7 @@ export class UploadPostPublisher implements Publisher {
         id: platform,
         platform,
         name: value.display_name || value.handle || username,
+        provider: this.id,
         avatarUrl: value.social_images,
         profileUrl: profileUrlFor(platform, value.handle),
       }));

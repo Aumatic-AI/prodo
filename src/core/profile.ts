@@ -1,8 +1,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export interface Product {
-  name: string;
-  description?: string;
+export type BusinessType = "product" | "service";
+export type PrimaryGoal = "awareness" | "leads" | "sales" | "bookings" | "followers";
+export type OnboardingStatus = "not_started" | "collecting" | "analyzing" | "review" | "done";
+
+export interface Compliance {
+  avoid_words: string[];
+  forbidden_claims: string[];
+  disclaimers: string[];
 }
 
 export interface BusinessProfile {
@@ -10,8 +15,25 @@ export interface BusinessProfile {
   name: string;
   logo_key: string | null;
   website: string | null;
-  about: string;
-  products: Product[];
+  description: string;
+  business_type: BusinessType | null;
+  language: string;
+  timezone: string | null;
+  countries: string[];
+  primary_goal: PrimaryGoal | null;
+  social_urls: Record<string, string>;
+  cta_links: Record<string, string>;
+  /** Sliders 0–100: formal, playful, bold, technical */
+  tone: Record<string, number>;
+  liked_brands: string[];
+  compliance: Compliance;
+  /** {platforms: {instagram: 4, …}, formats: […]} */
+  posting_prefs: Record<string, unknown>;
+  voice_id: string | null;
+  music_mood: string | null;
+  onboarding: Record<string, unknown>;
+  onboarding_status: OnboardingStatus;
+  updated_at: string;
 }
 
 export async function getProfile(db: SupabaseClient): Promise<BusinessProfile | null> {
@@ -25,7 +47,7 @@ export async function getProfile(db: SupabaseClient): Promise<BusinessProfile | 
 
 export async function saveProfile(
   db: SupabaseClient,
-  fields: Partial<Omit<BusinessProfile, "id">>
+  fields: Partial<Omit<BusinessProfile, "id" | "updated_at">>
 ): Promise<BusinessProfile> {
   const { data, error } = await db
     .from("business_profile")

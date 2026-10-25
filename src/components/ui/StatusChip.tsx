@@ -2,6 +2,7 @@ import { cn } from "@/lib/utils";
 
 const styles: Record<string, string> = {
   ready: "bg-success-bg text-success border-success-border",
+  approved: "bg-success-bg text-success border-success-border",
   generating: "bg-info-bg text-info border-info-border",
   published: "bg-success-bg text-success border-success-border",
   scheduled: "bg-primary-subtle text-primary border-primary-border",

@@ -1,31 +1,23 @@
 "use client";
 
-import { Button } from "@/components/ui/Button";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { AccountCard } from "../components/AccountCard";
+import { ConnectAccountButton } from "../components/ConnectAccountButton";
 import { useAccounts } from "../hooks/useAccounts";
-import { Plus, Users } from "lucide-react";
+import { Users } from "lucide-react";
 
 export function AccountsPage() {
   const { data: accounts, isLoading, error, refetch } = useAccounts();
-
-  function handleConnect() {
-    window.open("https://app.upload-post.com", "_blank", "noopener,noreferrer");
-  }
 
   return (
     <div>
       <div className="flex items-start justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-text">Accounts</h1>
-          <p className="mt-1 text-sm text-muted">Your connected social accounts, live from Upload-Post.</p>
+          <p className="mt-1 text-sm text-muted">Your connected social accounts.</p>
         </div>
-        <Button size="sm" onClick={handleConnect}>
-          <Plus className="w-4 h-4" />
-          Connect account
-        </Button>
+        <ConnectAccountButton className="w-56" />
       </div>
 
       {isLoading ? (
@@ -43,13 +35,11 @@ export function AccountsPage() {
       ) : error ? (
         <ErrorState message="Failed to load accounts" onRetry={refetch} />
       ) : !accounts?.length ? (
-        <EmptyState
-          icon={Users}
-          title="No accounts connected"
-          description="Connect your social accounts on Upload-Post to start publishing."
-          actionLabel="Connect account"
-          onAction={handleConnect}
-        />
+        <div className="flex flex-col items-center justify-center py-16 border border-dashed border-default rounded-xl">
+          <Users className="w-8 h-8 text-secondary mb-2" />
+          <p className="text-sm text-muted">No accounts connected</p>
+          <p className="text-xs text-secondary mt-1">Use Connect account above to add one.</p>
+        </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {accounts.map((account) => (

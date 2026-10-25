@@ -8,7 +8,7 @@ import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { Tabs } from "@/components/ui/Tabs";
 import { VoiceExplorerModal } from "@/components/global/VoiceExplorerModal";
 import { useGenerateMedia, useUploadReferenceImage } from "../../hooks/useMedia";
-import { useProfile } from "@/modules/settings/hooks/useProfile";
+import { useOfferings } from "@/modules/settings/hooks/useOfferings";
 import { IdeaField } from "./IdeaField";
 import { ReferenceImagePicker } from "./ReferenceImagePicker";
 import {
@@ -37,7 +37,6 @@ export function VideoTab({ onSuccess }: { onSuccess: () => void }) {
 
   const generate = useGenerateMedia();
   const uploadRef = useUploadReferenceImage();
-  const { data: profile } = useProfile();
 
   function handleRefSelect(file: File | null) {
     if (refPreview) URL.revokeObjectURL(refPreview);
@@ -45,11 +44,12 @@ export function VideoTab({ onSuccess }: { onSuccess: () => void }) {
     setRefPreview(file ? URL.createObjectURL(file) : null);
   }
 
-  const products: { value: string; label: string }[] = (profile as any)?.products
-    ? (profile as any).products.map((p: any) => ({ value: typeof p === "string" ? p : p.name, label: typeof p === "string" ? p : p.name }))
-    : [];
+  const { data: offerings } = useOfferings();
+  const products = (offerings || []).map((o) => ({ value: o.id, label: o.name }));
 
-  const resolvedProduct = product === "__other__" ? customProduct : product;
+  // A saved offering is sent by id; "Other" is sent as free text
+  const offeringId = product && product !== "__other__" ? product : undefined;
+  const productName = product === "__other__" ? customProduct.trim() || undefined : undefined;
 
   async function handleCreate() {
     let referenceImageKey: string | undefined;
@@ -65,7 +65,8 @@ export function VideoTab({ onSuccess }: { onSuccess: () => void }) {
       idea,
       aspect_ratio: aspectRatio,
       duration_sec: parseInt(duration),
-      product: resolvedProduct || undefined,
+      offering_id: offeringId,
+      product_name: productName,
       audio_style: audioStyle,
       voice_id: hasVoice ? voiceId || undefined : undefined,
       voice_name: hasVoice ? voiceName || undefined : undefined,
@@ -184,7 +185,7 @@ export function VideoTab({ onSuccess }: { onSuccess: () => void }) {
           loading={uploadRef.isPending || generate.isPending}
           disabled={
             !idea.trim() ||
-            !resolvedProduct.trim() ||
+            (!offeringId && !productName) ||
             (audioStyle === "Voiceover" && !voiceId) ||
             uploadRef.isPending ||
             generate.isPending
