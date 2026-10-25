@@ -374,3 +374,40 @@ body {
     @apply font-sans;
   }
 }
+/* ─── Dark theme ───────────────────────────────────────────────── */
+/* <html class="dark"> (set by the account menu, remembered per browser) swaps the ob-* colours.
+   Contrast is kept at WCAG AA: in dark mode the primary is lighter and text on it is dark. */
+
+html.dark {
+  color-scheme: dark;
+  /* Older page tokens (body background behind everything) */
+  --color-page: #0f1115;
+  --color-text: #eceef2;
+  --color-ob-bg: #0f1115;
+  --color-ob-surface: #171a20;
+  --color-ob-sunken: #12151a;
+  --color-ob-ink: #eceef2;
+  --color-ob-ink-soft: #d4d7de;
+  --color-ob-muted: #a3a9b5;
+  --color-ob-faint: #737a88;
+  --color-ob-line: #272c35;
+  --color-ob-line-strong: #3b424e;
+  --color-ob-primary: #7b8cf5;
+  --color-ob-primary-hover: #93a1f8;
+  --color-ob-primary-ink: #b8c2fb;
+  --color-ob-primary-soft: #1d2340;
+  --color-ob-on-primary: #0f1115;
+  --color-ob-focus: rgb(123 140 245 / 0.3);
+  --color-ob-success: #4cc38a;
+  --color-ob-success-soft: #11261b;
+  --color-ob-warn: #f0a35a;
+  --color-ob-warn-soft: #2b1e10;
+  --color-ob-danger: #f2766b;
+  --color-ob-danger-soft: #2d1513;
+  --color-ob-dark: #08090c;
+  --color-ob-on-dark: #ffffff;
+  --color-ob-on-dark-soft: #c9cdd6;
+  --shadow-ob-xs: 0 1px 2px rgb(0 0 0 / 0.35);
+  --shadow-ob-sm: 0 1px 3px rgb(0 0 0 / 0.45), 0 1px 2px rgb(0 0 0 / 0.3);
+  --shadow-ob-md: 0 12px 32px rgb(0 0 0 / 0.55), 0 2px 6px rgb(0 0 0 / 0.35);
+}

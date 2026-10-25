@@ -1,42 +1,35 @@
 "use client";
 
-import { MessageCircle, Repeat2, Heart, BarChart2, Share } from "lucide-react";
+import { BarChart2, Heart, MessageCircle, Repeat2, Share } from "lucide-react";
 import { Avatar } from "./Avatar";
+import { Caption } from "./Caption";
+import { MediaFrame } from "./MediaFrame";
 import type { PlatformPreviewProps } from "./types";
 
-export function XPreview({ account, caption, mediaUrl, mediaType }: PlatformPreviewProps) {
+export function XPreview({ account, caption, mediaUrls, mediaType }: PlatformPreviewProps) {
+  const handle = account.displayName.replace(/\s+/g, "").toLowerCase();
   return (
-    <div
-      className="rounded-2xl overflow-hidden mx-auto p-3"
-      style={{ maxWidth: 420, backgroundColor: "#000", color: "#fff", border: "1px solid #2f3336" }}
-    >
+    <div className="mx-auto w-full max-w-[440px] rounded-xl border border-neutral-200 bg-white p-3.5 text-neutral-900 shadow-ob-sm">
       <div className="flex items-start gap-2.5">
         <Avatar src={account.avatarUrl} name={account.displayName} size={40} />
-        <div className="flex-1 min-w-0">
-          <p className="text-sm">
-            <span className="font-bold">{account.displayName}</span>{" "}
-            <span style={{ color: "#71767b" }}>· 1m</span>
+        <div className="min-w-0 flex-1">
+          <p className="m-0 truncate text-[14.5px]">
+            <span className="font-bold">{account.displayName}</span> <span className="text-neutral-500">@{handle} · 1m</span>
           </p>
-
-          {caption && <p className="mt-0.5 text-sm whitespace-pre-wrap">{caption}</p>}
-
-          {mediaUrl && (
-            <div className="mt-2.5 rounded-2xl overflow-hidden" style={{ border: "1px solid #2f3336" }}>
-              {mediaType === "video" ? (
-                <video src={mediaUrl} controls className="w-full" />
-              ) : (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={mediaUrl} alt="" className="w-full" />
-              )}
+          {caption && (
+            <div className="mt-0.5 text-[14.5px] leading-snug">
+              <Caption text={caption} lines={4} linkClass="text-sky-600" />
             </div>
           )}
-
-          <div className="flex items-center justify-between mt-3" style={{ maxWidth: "80%", color: "#71767b" }}>
-            <MessageCircle className="w-[18px] h-[18px]" />
-            <Repeat2 className="w-[18px] h-[18px]" />
-            <Heart className="w-[18px] h-[18px]" />
-            <BarChart2 className="w-[18px] h-[18px]" />
-            <Share className="w-[18px] h-[18px]" />
+          {mediaType !== "text" && mediaUrls.length > 0 && (
+            <MediaFrame urls={mediaUrls} type={mediaType} aspect={mediaType === "video" ? "9 / 16" : "16 / 10"} className="mt-2.5 overflow-hidden rounded-2xl border border-neutral-200" />
+          )}
+          <div className="mt-3 flex max-w-[88%] items-center justify-between text-neutral-500">
+            <MessageCircle size={17} />
+            <Repeat2 size={17} />
+            <Heart size={17} />
+            <BarChart2 size={17} />
+            <Share size={17} />
           </div>
         </div>
       </div>

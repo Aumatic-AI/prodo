@@ -62,12 +62,16 @@ export const visualIdentityAnalyst = defineResearchAgent("visual_identity_analys
   const kit = await task(
     "save-colours-and-fonts",
     async () => {
-      const colors = pickColors(logo?.analysis.palette ?? [], design?.colors ?? []);
-      const fonts = {
-        heading: design?.fonts.heading ?? null,
-        body: design?.fonts.body ?? null,
-        found: design?.fonts.all ?? [],
-      };
+      // Colours and fonts the client set by hand in Brand → Brand kit stay theirs
+      const { data: current } = await db().from("brand_kit").select("colors, fonts").eq("id", 1).single();
+      const colors = current?.colors?.manual ? current.colors : pickColors(logo?.analysis.palette ?? [], design?.colors ?? []);
+      const fonts = current?.fonts?.manual
+        ? current.fonts
+        : {
+            heading: design?.fonts.heading ?? null,
+            body: design?.fonts.body ?? null,
+            found: design?.fonts.all ?? [],
+          };
       const { error } = await db()
         .from("brand_kit")
         .update({

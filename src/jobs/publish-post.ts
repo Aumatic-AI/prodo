@@ -4,6 +4,7 @@ import { getPost, updatePost } from "@/core/posts";
 import { publisherFor } from "@/providers/publishing/registry";
 import { urlFor } from "@/providers/storage/supabase-storage";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { platformMeta } from "@/config/platforms";
 
 async function slideUrls(db: SupabaseClient, mediaId: string): Promise<string[]> {
   const { data } = await db
@@ -13,6 +14,19 @@ async function slideUrls(db: SupabaseClient, mediaId: string): Promise<string[]>
     .eq("role", "slide")
     .order("position");
   return (data ?? []).map((f) => urlFor(process.env.NEXT_PUBLIC_SUPABASE_URL!, f.storage_key));
+}
+
+/** The size each platform shows best: a rendition made for it, else the main file. */
+async function sizedUrls(db: SupabaseClient, media: { id: string; storage_key: string | null; aspect_ratio: string | null }): Promise<(platform: string) => string | null> {
+  const { data } = await db.from("media_files").select("storage_key, aspect_ratio").eq("media_id", media.id).eq("role", "rendition");
+  const base = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  return (platform) => {
+    const wanted = platformMeta(platform).aspectRatios;
+    const sizes = [{ key: media.storage_key, ratio: media.aspect_ratio }, ...(data ?? []).map((f) => ({ key: f.storage_key, ratio: f.aspect_ratio }))];
+    const best = wanted.map((r) => sizes.find((s) => s.ratio === r && s.key)).find(Boolean);
+    const key = best?.key ?? media.storage_key;
+    return key ? urlFor(base, key) : null;
+  };
 }
 
 export const publishPost = inngest.createFunction(
@@ -54,9 +68,13 @@ export const publishPost = inngest.createFunction(
       return;
     }
 
-    const mediaUrl = media?.storage_key
-      ? urlFor(process.env.NEXT_PUBLIC_SUPABASE_URL!, media.storage_key)
-      : null;
+    // Each platform gets the size it shows best (renditions made by the Producer)
+    const urlForPlatform: Record<string, string | null> = media?.storage_key
+      ? await step.run("pick-sizes", async () => {
+          const pick = await sizedUrls(db, media);
+          return Object.fromEntries(post.post_targets.map((t) => [t.platform, pick(t.platform)]));
+        })
+      : {};
 
     // Submit every target. Upload-Post can background-process even an
     // "immediate" publish (Instagram especially), so a successful submission
@@ -68,6 +86,7 @@ export const publishPost = inngest.createFunction(
           await db.from("post_targets").update({ status: "sending" }).eq("id", target.id);
 
           const publisher = publisherFor(target.provider);
+          const mediaUrl = urlForPlatform[target.platform] ?? null;
           const base = {
             platform: target.platform,
             accountId: target.account_id,

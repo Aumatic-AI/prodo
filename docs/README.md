@@ -31,7 +31,8 @@ Inngest dev server (background jobs): `npx inngest-cli@latest dev` at `http://lo
 - **Inngest** (background jobs, agents, weekly cron)
 - **Tailwind CSS v4** (design tokens in `src/styles/globals.css`)
 - **TanStack Query** (data fetching + cache)
-- Vendors through adapters: OpenAI, Kie, ElevenLabs, Zernio, Twelve Labs, Firecrawl, ScrapeCreators, Upload-Post (legacy)
+- Vendors through adapters: OpenAI, Kie, ElevenLabs, Zernio, Twelve Labs, Firecrawl, ScrapeCreators, Resend (email, off until `EMAIL_ENABLED=1`), Google Fonts (brand fonts for our renders), Upload-Post (legacy)
+- **Satori** (`next/og`): our own renderer for ad layouts, carousel slides and video end cards (`src/creative/`)
 - **FFmpeg worker** (`worker/`): our own render service on a Hostinger VPS (Docker + Caddy). See `worker/README.md`
 
 ## Architecture
@@ -42,18 +43,23 @@ One repo, one deploy per client. Not multi-tenant: each client gets their own Su
 
 | Tab | What it does |
 |---|---|
-| **Dashboard** | Account and post performance |
+| **This week** (`/week`, home) | The week's plan on a board, approval inbox ("Needs you"), the theme and pillar mix, live agent activity, "Create an ad", "Plan this week"; click any post for its preview, reasons, brief, captions, QA scores and steps |
+| **Performance** | Results from post metrics: weekly report, KPIs, reach over time, platforms, top posts, what's working (learnings), followers |
+| **Activity** | Every agent step across the app, filterable |
+| **Costs** | The month's AI spend vs budget, by agent, day, asset and weekly plan |
 | **Media** | Create images and videos with AI, or upload your own |
 | **Posts** | Create a post from media, pick accounts, write captions, publish or schedule |
-| **Calendar** | Month view of scheduled and published posts |
+| **Calendar** | Month and week views of posts, planned slots and key dates, with the day's agenda, stats, "Up next" and "Add a date" |
 | **Brand** | Brand Hub: Brand Bible (versions, approve), offerings, offers, proof, photos and videos, personas, pillars, competitors, brand kit; "Refresh brand" |
-| **Settings** | Business profile, automation (autopilot, plan time, budget, pause), connected accounts |
-| **Onboarding** | Wizard (basics, products or services, style, accounts, review) → live research by agents 1–4 at `/onboarding/progress` → Brand Bible review and approval at `/onboarding/bible` → dashboard |
+| **Settings** | Business profile, automation (autopilot, plan day and time, posts per week, budget, pause, notification email), connected accounts |
+| **Onboarding** | Wizard (basics, products or services, style, accounts, review) → live research by agents 1–4 at `/onboarding/progress` → Brand Bible review and approval at `/onboarding/bible` → This week (the first plan starts on approval) |
 
 ### Key ideas
 
 - **Provider adapters**: every vendor sits behind `src/providers/`. Swapping one touches only that folder.
 - **Agents**: Inngest functions, one step per outside call, every step logged with its cost in `agent_runs`. A monthly budget cap and a pause switch stop all agent spending.
+- **Weekly loop**: Planner → Creative Director → QA Gate 1 → Producer → QA Gate 2 → client approval (or full autopilot) → Publisher. See `docs/technical.md` → Weekly loop.
+- **Notifications**: in-app bell, plus email through Resend. Emails are built and logged but not sent until `EMAIL_ENABLED=1`.
 - **Facts only**: every claim in an ad traces to a stored fact or the client's own answer.
 - **Storage keys, not URLs**: only `supabase-storage.ts` builds URLs.
 - **Errors**: vendor error → adapter → `AppError` → Inngest retry or stop → plain message on the DB row → screen shows it.

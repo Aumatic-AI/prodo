@@ -1,4 +1,5 @@
 import { inngest } from "./client";
+import { adoptFinishedMedia } from "@/core/plans/plans";
 import { toInngestError } from "./to-inngest-error";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getMedia, markReady, markFailed, productNameFor, type Media } from "@/core/media";
@@ -78,7 +79,11 @@ export const generateImage = inngest.createFunction(
       }
     });
 
-    await step.run("finalize", () => markReady(db, media.id, storageKey));
+    await step.run("finalize", async () => {
+      await markReady(db, media.id, storageKey);
+      // A planned post's media made here: the post picks it up (as needing a look)
+      await adoptFinishedMedia(db, media.id);
+    });
     return { success: true, mediaId: media.id };
   }
 );

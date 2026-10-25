@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { cn } from "@/lib/utils";
 
 interface AvatarProps {
   src?: string;
@@ -9,42 +10,19 @@ interface AvatarProps {
   className?: string;
 }
 
+/** Account picture, or the first letter on a soft background when there's none (or it fails to load). */
 export function Avatar({ src, name, size = 40, className }: AvatarProps) {
   const [errored, setErrored] = useState(false);
   const initial = name.replace(/^@/, "").charAt(0).toUpperCase() || "?";
+  const style = { width: size, height: size, fontSize: size * 0.4 };
 
   if (src && !errored) {
-    return (
-      // eslint-disable-next-line @next/next/no-img-element, jsx-a11y/alt-text
-      <img
-        src={src}
-        width={size}
-        height={size}
-        onError={() => setErrored(true)}
-        className={className}
-        style={{ width: size, height: size, borderRadius: "9999px", objectFit: "cover" }}
-      />
-    );
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={src} alt="" onError={() => setErrored(true)} className={cn("shrink-0 rounded-full object-cover", className)} style={style} />;
   }
-
   return (
-    <div
-      className={className}
-      style={{
-        width: size,
-        height: size,
-        borderRadius: "9999px",
-        backgroundColor: "#8b8f98",
-        color: "#fff",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        fontSize: size * 0.4,
-        fontWeight: 700,
-        flexShrink: 0,
-      }}
-    >
+    <span className={cn("grid shrink-0 place-items-center rounded-full bg-ob-primary-soft font-bold text-ob-primary", className)} style={style} aria-hidden="true">
       {initial}
-    </div>
+    </span>
   );
 }

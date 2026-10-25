@@ -2,7 +2,8 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 // Reachable without a session. /api/inngest is signed by Inngest itself.
-const PUBLIC_PATHS = ["/login", "/api/auth/callback", "/api/inngest"];
+// apple-icon has no file extension, so the matcher below doesn't skip it
+const PUBLIC_PATHS = ["/login", "/api/auth/callback", "/api/inngest", "/apple-icon"];
 
 function isPublic(pathname: string) {
   return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
@@ -53,7 +54,7 @@ export async function middleware(request: NextRequest) {
 
   if (user && pathname.startsWith("/login")) {
     const url = request.nextUrl.clone();
-    url.pathname = "/dashboard";
+    url.pathname = "/week";
     url.search = "";
     return NextResponse.redirect(url);
   }

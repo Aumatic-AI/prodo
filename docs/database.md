@@ -1,6 +1,6 @@
 # Database Schema
 
-27 tables + one storage bucket, from the **Prodo Data Model** spec (https://claude.ai/artifact/UdFPf3uWR3RRThUyuy9aH3), plus the additions in 0014–0015 listed below (see "Changes since the Data Model"). Migrations live in `supabase/migrations/`, applied in order:
+27 tables + one storage bucket, from the **Prodo Data Model** spec (https://claude.ai/artifact/UdFPf3uWR3RRThUyuy9aH3), plus the additions in 0014–0016 listed below (see "Changes since the Data Model"). Migrations live in `supabase/migrations/`, applied in order:
 
 | Migration | What |
 |---|---|
@@ -12,6 +12,7 @@
 | `0013_zernio_default_provider.sql` | `post_targets.provider` defaults to `zernio` |
 | `0014_zernio_profile.sql` | `app_settings.zernio_profile_id` (each client's own Zernio profile) |
 | `0015_research_agents.sql` | Research agents (1.8): `offerings`/`offers` `source_id` + `verified`, `competitors.source`, `learnings` dimension `baseline`, `agent_runs.run_id`, `set_research_state()` |
+| `0016_weekly_loop.sql` | Weekly loop and learning loop (Sprint 2): `plan_items.status` `ready`, `content_plans.approval_due_at` + `error`, notification email columns, storage types `text/plain` + `font/ttf`, `match_recent_hooks()`, `weekly_reports` |
 
 ### Changes since the Data Model
 
@@ -26,6 +27,16 @@ The Data Model artifact predates these; this file is the current truth.
 | `app_settings.zernio_profile_id` | Each client gets its own Zernio profile, created automatically |
 | `set_research_state(path, value)` | Research agents running in parallel update `business_profile.onboarding.research` with one atomic statement each (service role only) |
 | `calendar_events.source = 'serp'`, `brand_sources.kind = 'serp'` | Still allowed but unused: SerpAPI was replaced by ScrapeCreators |
+| `plan_items.status` allows `ready` (0016) | A post that passed both QA gates and waits for the client. `needs_review` stays for posts QA still failed after two redos |
+| `content_plans.approval_due_at`, `content_plans.error` (0016) | When full autopilot approves by itself; the plain reason a plan stopped |
+| `notifications.email_status` (`none|pending|sent|skipped|failed`), `email_to`, `email_error`, `emailed_at` (0016) | Every notification can also be emailed. `skipped` while sending is off (`EMAIL_ENABLED` unset) |
+| `match_recent_hooks(query_embedding, since, match_count)` (0016) | The Creative Director swaps a hook that is too close (similarity ≥ 0.9) to one used in the last 60 days |
+| Storage allows `text/plain` and `font/ttf` (0016) | Caption files (.ass) and brand fonts for the video renderer |
+| `weekly_reports` table (0016) | The Performance Analyst's weekly report: `week_start` (unique), `headline`, `summary`, `next_week` text[], `stats` jsonb. RLS like every table |
+| `brand_kit.colors.manual`, `brand_kit.fonts.manual` (jsonb keys) | Set when the client edits colours or fonts; research runs keep them |
+| `brand_kit.template_ids` now used | The ad layouts the brand uses (Brand kit); empty = all |
+| `calendar_events.source = 'system'` now used | Public holidays added by the monthly refresh |
+| `content_plans.strategy.adhoc` (jsonb key, no migration) | A week made only to hold single ads ("Create an ad"); the weekly Planner still plans it and keeps them |
 
 Never edit an applied migration; add a new one.
 
@@ -163,7 +174,7 @@ select * from match_brand_chunks(query_embedding, match_count => 8, filter => '{
 ## Planning & creative
 
 ### `content_plans` — new
-`id`, `week_start` (unique), `brand_bible_id`, `status` (`planning`\|`producing`\|`review`\|`approved`\|`scheduled`\|`done`\|`failed`), `strategy` (`{theme, mix, rationale}`), `approved_at`.
+`id`, `week_start` (unique, a Monday), `brand_bible_id`, `status` (`planning`\|`producing`\|`review`\|`approved`\|`scheduled`\|`done`\|`failed`), `strategy` (`{theme, rationale, mix: [{pillarId, name, target, planned}], events, adhoc}`), `approved_at`, `approval_due_at` (full autopilot, 0016), `error` (0016).
 
 ### `plan_items` — new
 The core table: one row per slot with every creative decision.
@@ -185,7 +196,7 @@ The core table: one row per slot with every creative decision.
 | `brief_score`, `qa_score` | numeric | QA Gate 1 and Gate 2 |
 | `qa_report` | jsonb | |
 | `attempts` | smallint | Regeneration count (max 2) |
-| `status` | text | `planned` \| `briefed` \| `producing` \| `qa` \| `needs_review` \| `approved` \| `rejected` \| `scheduled` \| `published` \| `failed` |
+| `status` | text | `planned` → `briefed` → `producing` → `ready` (passed both QA gates, 0016) or `needs_review` → `approved` → `scheduled` → `published`; or `rejected` (skipped by the client), `failed`. `qa` is allowed but unused |
 | `selected_media_id` | uuid | The asset that passed QA |
 | `error` | text | Plain message |
 
@@ -241,7 +252,7 @@ One row per target per day for the first 30 days: `post_target_id`, `captured_on
 One row per agent step: `agent`, `run_id` (groups one workflow run, e.g. one onboarding research), `plan_id`, `plan_item_id`, `media_id`, `inngest_run_id`, `status` (`running`\|`done`\|`failed`), `summary` (shown in the activity feed), `input`, `output`, `model`, `tokens_in`, `tokens_out`, `cost_usd`, `duration_ms`, `error`, `created_at`. Powers the activity feed, cost per ad and the monthly budget stop.
 
 ### `notifications` — new
-`kind`, `title`, `body`, `link`, `read_at`, `created_at`.
+`kind` (`plan_ready`, `ad_ready`, `item_needs_review`, `plan_scheduled`, `post_failed`, `agent_stopped`, `budget_reached`), `title`, `body`, `link` (app path), `read_at`, `created_at`, plus `email_status`, `email_to`, `email_error`, `emailed_at` (0016).
 
 ## Foreign keys (29)
 
@@ -289,6 +300,11 @@ Public read (Kie, Zernio and Twelve Labs fetch files by URL); insert, update and
 | `logo/variants/<timestamp>-on-light.png`, `-on-dark.png` | Logo versions made by the Visual Identity Analyst (`brand_kit.logo_variants`) |
 | `brand/photos/…`, `brand/videos/…` | Photos and videos uploaded in onboarding (`brand_assets`) |
 | `reference/…` | Reference images for generation |
+| `images/YYYY/MM/<media-id>/<ratio>-r<round>.png` | Agent image ads (main size and renditions) |
+| `carousels/YYYY/MM/<media-id>/slide-<n>-r<round>.png` | Carousel slides (`media_files` role `slide`) |
+| `videos/YYYY/MM/<media-id>/…` | Agent videos per size, their `.ass` captions and end cards |
+| `audio/<media-id>/voice-<n>.mp3`, `music.mp3` | Voice-over per scene and the music bed |
+| `fonts/<family>-<weight>.ttf` | Brand fonts from Google Fonts, kept for our renderers |
 
 ## What's NOT stored
 

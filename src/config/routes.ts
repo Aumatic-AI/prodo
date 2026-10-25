@@ -1,5 +1,6 @@
 export const ROUTES = {
-  dashboard: "/dashboard",
+  home: "/week",
+  week: "/week",
   media: "/media",
   posts: "/posts",
   postsNew: "/posts/new",
@@ -8,4 +9,7 @@ export const ROUTES = {
   brand: "/brand",
   brandTab: (tab: string) => `/brand?tab=${tab}`,
   settings: "/settings",
+  performance: "/performance",
+  activity: "/activity",
+  costs: "/costs",
 } as const;

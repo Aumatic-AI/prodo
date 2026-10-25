@@ -56,11 +56,11 @@ export type Database = {
           output: Json | null
           plan_id: string | null
           plan_item_id: string | null
+          run_id: string | null
           status: string
           summary: string | null
           tokens_in: number | null
           tokens_out: number | null
-          run_id: string | null
         }
         Insert: {
           agent: string
@@ -76,11 +76,11 @@ export type Database = {
           output?: Json | null
           plan_id?: string | null
           plan_item_id?: string | null
+          run_id?: string | null
           status?: string
           summary?: string | null
           tokens_in?: number | null
           tokens_out?: number | null
-          run_id?: string | null
         }
         Update: {
           agent?: string
@@ -96,11 +96,11 @@ export type Database = {
           output?: Json | null
           plan_id?: string | null
           plan_item_id?: string | null
+          run_id?: string | null
           status?: string
           summary?: string | null
           tokens_in?: number | null
           tokens_out?: number | null
-          run_id?: string | null
         }
         Relationships: [
           {
@@ -455,8 +455,8 @@ export type Database = {
           id: string
           name: string
           social_urls: Json
-          website: string | null
           source: string
+          website: string | null
         }
         Insert: {
           analysis?: Json | null
@@ -465,8 +465,8 @@ export type Database = {
           id?: string
           name: string
           social_urls?: Json
-          website?: string | null
           source?: string
+          website?: string | null
         }
         Update: {
           analysis?: Json | null
@@ -475,8 +475,8 @@ export type Database = {
           id?: string
           name?: string
           social_urls?: Json
-          website?: string | null
           source?: string
+          website?: string | null
         }
         Relationships: []
       }
@@ -515,27 +515,33 @@ export type Database = {
       }
       content_plans: {
         Row: {
+          approval_due_at: string | null
           approved_at: string | null
           brand_bible_id: string | null
           created_at: string
+          error: string | null
           id: string
           status: string
           strategy: Json
           week_start: string
         }
         Insert: {
+          approval_due_at?: string | null
           approved_at?: string | null
           brand_bible_id?: string | null
           created_at?: string
+          error?: string | null
           id?: string
           status?: string
           strategy?: Json
           week_start: string
         }
         Update: {
+          approval_due_at?: string | null
           approved_at?: string | null
           brand_bible_id?: string | null
           created_at?: string
+          error?: string | null
           id?: string
           status?: string
           strategy?: Json
@@ -824,6 +830,10 @@ export type Database = {
         Row: {
           body: string | null
           created_at: string
+          email_error: string | null
+          email_status: string
+          email_to: string | null
+          emailed_at: string | null
           id: string
           kind: string
           link: string | null
@@ -833,6 +843,10 @@ export type Database = {
         Insert: {
           body?: string | null
           created_at?: string
+          email_error?: string | null
+          email_status?: string
+          email_to?: string | null
+          emailed_at?: string | null
           id?: string
           kind: string
           link?: string | null
@@ -842,6 +856,10 @@ export type Database = {
         Update: {
           body?: string | null
           created_at?: string
+          email_error?: string | null
+          email_status?: string
+          email_to?: string | null
+          emailed_at?: string | null
           id?: string
           kind?: string
           link?: string | null
@@ -867,9 +885,9 @@ export type Database = {
           price: number | null
           price_model: string | null
           priority: number
+          source_id: string | null
           updated_at: string
           url: string | null
-          source_id: string | null
           verified: boolean
         }
         Insert: {
@@ -888,9 +906,9 @@ export type Database = {
           price?: number | null
           price_model?: string | null
           priority?: number
+          source_id?: string | null
           updated_at?: string
           url?: string | null
-          source_id?: string | null
           verified?: boolean
         }
         Update: {
@@ -909,12 +927,20 @@ export type Database = {
           price?: number | null
           price_model?: string | null
           priority?: number
+          source_id?: string | null
           updated_at?: string
           url?: string | null
-          source_id?: string | null
           verified?: boolean
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "offerings_source_id_fkey"
+            columns: ["source_id"]
+            isOneToOne: false
+            referencedRelation: "brand_sources"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       offers: {
         Row: {
@@ -925,10 +951,10 @@ export type Database = {
           ends_at: string | null
           id: string
           offering_id: string | null
+          source_id: string | null
           starts_at: string | null
           title: string
           updated_at: string
-          source_id: string | null
           verified: boolean
         }
         Insert: {
@@ -939,10 +965,10 @@ export type Database = {
           ends_at?: string | null
           id?: string
           offering_id?: string | null
+          source_id?: string | null
           starts_at?: string | null
           title: string
           updated_at?: string
-          source_id?: string | null
           verified?: boolean
         }
         Update: {
@@ -953,10 +979,10 @@ export type Database = {
           ends_at?: string | null
           id?: string
           offering_id?: string | null
+          source_id?: string | null
           starts_at?: string | null
           title?: string
           updated_at?: string
-          source_id?: string | null
           verified?: boolean
         }
         Relationships: [
@@ -965,6 +991,13 @@ export type Database = {
             columns: ["offering_id"]
             isOneToOne: false
             referencedRelation: "offerings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "offers_source_id_fkey"
+            columns: ["source_id"]
+            isOneToOne: false
+            referencedRelation: "brand_sources"
             referencedColumns: ["id"]
           },
         ]
@@ -1367,15 +1400,41 @@ export type Database = {
           },
         ]
       }
+      weekly_reports: {
+        Row: {
+          created_at: string
+          headline: string
+          id: string
+          next_week: string[]
+          stats: Json
+          summary: string
+          week_start: string
+        }
+        Insert: {
+          created_at?: string
+          headline: string
+          id?: string
+          next_week?: string[]
+          stats?: Json
+          summary: string
+          week_start: string
+        }
+        Update: {
+          created_at?: string
+          headline?: string
+          id?: string
+          next_week?: string[]
+          stats?: Json
+          summary?: string
+          week_start?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      set_research_state: {
-        Args: { path: string[]; value: Json }
-        Returns: undefined
-      }
       match_brand_chunks: {
         Args: { filter?: Json; match_count?: number; query_embedding: string }
         Returns: {
@@ -1385,6 +1444,18 @@ export type Database = {
           similarity: number
           source_id: string
         }[]
+      }
+      match_recent_hooks: {
+        Args: { match_count?: number; query_embedding: string; since: string }
+        Returns: {
+          id: string
+          similarity: number
+          text: string
+        }[]
+      }
+      set_research_state: {
+        Args: { path: string[]; value: Json }
+        Returns: undefined
       }
     }
     Enums: {

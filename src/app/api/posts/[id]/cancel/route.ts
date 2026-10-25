@@ -31,6 +31,12 @@ export const POST = apiHandler(async (_req: NextRequest, { params }: { params: P
 
   await cancelPost(db, id);
 
+  // A post from the plan: the slot goes back to approved, ready to schedule again from This week
+  if (post.plan_item_id) {
+    await db.from("plan_items").update({ status: "approved", error: "Schedule cancelled in Posts" }).eq("id", post.plan_item_id);
+    await db.from("posts").delete().eq("id", id);
+  }
+
   // Cancels the dangling check-post-status run (it's sleeping until the
   // original publish_at) so it can't wake later and overwrite this post's
   // now-reverted draft status based on stale target state.

@@ -1,104 +1,137 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/Button";
-import { Tabs } from "@/components/ui/Tabs";
-import { MediaGrid } from "../components/MediaGrid";
-import { MediaDetailModal } from "../components/MediaDetailModal";
-import { CreateContentModal } from "../components/create-content/CreateContentModal";
-import { ConfirmModal } from "@/components/ui/ConfirmModal";
-import { useMedia, useDeleteMedia, useRetryMedia } from "../hooks/useMedia";
-import { Plus } from "lucide-react";
-import type { Media, MediaType } from "@/core/media";
-import { urlFor } from "@/providers/storage/supabase-storage";
+import { Plus, SearchX } from "lucide-react";
+import { Alert } from "@/components/kit/Alert";
+import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
+import { EmptyState } from "@/components/kit/EmptyState";
+import { PageHeader } from "@/components/kit/PageHeader";
+import { Skeleton } from "@/components/kit/Skeleton";
+import { button } from "@/components/kit/styles";
+import { useDeleteMedia, useMedia, useRetryMedia } from "../hooks/useMedia";
+import { MediaGrid, gridClass } from "../components/MediaGrid";
+import { MediaToolbar, type MediaFilters, type TypeFilter } from "../components/MediaToolbar";
+import { MediaDetailModal } from "../components/detail/MediaDetailModal";
+import { CreateContentModal, type CreateTab } from "../components/create-content/CreateContentModal";
+import { QuickStart } from "../components/QuickStart";
+import type { MediaListItem } from "../types";
 
-const TABS = [
-  { value: "all", label: "All" },
-  { value: "image", label: "Images" },
-  { value: "video", label: "Videos" },
-  { value: "text", label: "Text" },
-];
+const NO_FILTERS: MediaFilters = { type: "all", status: "all", search: "" };
 
+/** Media library: everything made or uploaded, ready to post. */
 export function MediaPage() {
   const router = useRouter();
-  const [tab, setTab] = useState("all");
-  const [showCreate, setShowCreate] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
-  const [openMedia, setOpenMedia] = useState<Media | null>(null);
+  const { data: media, isLoading, error } = useMedia();
+  const retry = useRetryMedia();
+  const remove = useDeleteMedia();
 
-  const filterType = tab === "all" ? undefined : (tab as MediaType);
-  const { data: media, isLoading, error, refetch } = useMedia(filterType);
-  const deleteMutation = useDeleteMedia();
-  const retryMutation = useRetryMedia();
+  const [filters, setFilters] = useState<MediaFilters>(NO_FILTERS);
+  const [createTab, setCreateTab] = useState<CreateTab | null>(null);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<MediaListItem | null>(null);
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const openMediaUrl = openMedia?.storage_key ? urlFor(supabaseUrl, openMedia.storage_key) : null;
+  const all = useMemo(() => media ?? [], [media]);
+  // Read the open item from the list, so its status stays live
+  const open = all.find((m) => m.id === openId) ?? null;
+
+  const counts = useMemo(() => {
+    const c: Record<TypeFilter, number> = { all: all.length, image: 0, video: 0, carousel: 0, text: 0 };
+    for (const m of all) c[m.type] += 1;
+    return c;
+  }, [all]);
+
+  const shown = useMemo(() => {
+    const q = filters.search.trim().toLowerCase();
+    return all
+      .filter((m) => filters.type === "all" || m.type === filters.type)
+      .filter((m) => filters.status === "all" || m.status === filters.status)
+      .filter((m) => !q || [m.idea, m.content, m.product_name].some((s) => s?.toLowerCase().includes(q)))
+      .sort((a, b) => b.created_at.localeCompare(a.created_at));
+  }, [all, filters]);
+
+  const createPost = (m: MediaListItem) => router.push(`/posts/new?media=${m.id}`);
+  const generating = counts.all ? all.filter((m) => m.status === "generating").length : 0;
 
   return (
-    <div>
-      {/* Header */}
-      <div className="flex items-start justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-text">Media</h1>
-          <p className="mt-1 text-sm text-muted">Create images, videos, and text posts with AI, or upload your own.</p>
+    <div className="mx-auto flex max-w-[1400px] flex-col gap-6">
+      <PageHeader
+        eyebrow="Content"
+        title="Media"
+        description={generating ? `${generating} being made right now. They appear here when ready.` : "Images, videos, carousels and text, made by you or by Prodo, ready to post."}
+        actions={
+          <button type="button" className={button()} onClick={() => setCreateTab("image")}>
+            <Plus size={17} /> Create
+          </button>
+        }
+      />
+
+      {error ? (
+        <Alert tone="error">{error.message}</Alert>
+      ) : isLoading ? (
+        <div className={gridClass}>
+          {Array.from({ length: 10 }).map((_, i) => (
+            <Skeleton key={i} className="aspect-[4/5] rounded-ob-lg" />
+          ))}
         </div>
-        <Button size="sm" onClick={() => setShowCreate(true)}>
-          <Plus className="w-4 h-4" />
-          Create
-        </Button>
-      </div>
+      ) : !all.length ? (
+        <QuickStart onStart={setCreateTab} />
+      ) : (
+        <>
+          <MediaToolbar value={filters} onChange={setFilters} counts={counts} />
+          {shown.length ? (
+            <MediaGrid
+              media={shown}
+              onOpen={(m) => setOpenId(m.id)}
+              onCreatePost={createPost}
+              onRetry={(id) => retry.mutate(id)}
+              retryingId={retry.isPending ? (retry.variables ?? null) : null}
+              onDelete={setDeleting}
+            />
+          ) : (
+            <EmptyState
+              icon={SearchX}
+              title="Nothing matches"
+              description="Try another type or status, or clear the search."
+              action={
+                <button type="button" className={button({ variant: "secondary", size: "sm" })} onClick={() => setFilters(NO_FILTERS)}>
+                  Clear filters
+                </button>
+              }
+            />
+          )}
+        </>
+      )}
 
-      {/* Content card */}
-      <div className="bg-surface rounded-xl border border-default shadow-xs p-6">
-        <div className="mb-6">
-          <Tabs tabs={TABS} value={tab} onChange={setTab} />
-        </div>
+      {createTab && <CreateContentModal initialTab={createTab} onClose={() => setCreateTab(null)} />}
 
-        <MediaGrid
-          media={media}
-          isLoading={isLoading}
-          error={error}
-          onRefetch={refetch}
-          onOpen={(item) => setOpenMedia(item)}
-          onRetry={(id) => retryMutation.mutate(id)}
-          retryingId={retryMutation.isPending ? (retryMutation.variables ?? null) : null}
-          onDelete={(id) => setDeleteTarget(id)}
-        />
-      </div>
-
-      {/* Create modal */}
-      <CreateContentModal open={showCreate} onOpenChange={setShowCreate} />
-
-      {/* Detail modal */}
       <MediaDetailModal
-        media={openMedia}
-        mediaUrl={openMediaUrl}
-        onClose={() => setOpenMedia(null)}
-        onCreatePost={() => {
-          if (openMedia) router.push(`/posts/new?media=${openMedia.id}`);
-          setOpenMedia(null);
+        media={open}
+        onClose={() => setOpenId(null)}
+        onCreatePost={createPost}
+        onRetry={(m) => {
+          retry.mutate(m.id);
+          setOpenId(null);
         }}
-        onDelete={() => {
-          if (openMedia) setDeleteTarget(openMedia.id);
-          setOpenMedia(null);
+        onDelete={(m) => {
+          setOpenId(null);
+          setDeleting(m);
         }}
       />
 
-      <ConfirmModal
-        open={!!deleteTarget}
-        onOpenChange={() => setDeleteTarget(null)}
-        title="Delete media"
-        description="This will permanently delete this media item. Posts using it won't be affected."
+      <ConfirmDialog
+        open={!!deleting}
+        onOpenChange={(o) => !o && setDeleting(null)}
+        title="Delete this media?"
+        description={<p className="m-0">The file is removed for good. Media used by a post can&apos;t be deleted; delete the post first.</p>}
         confirmLabel="Delete"
-        variant="danger"
-        loading={deleteMutation.isPending}
-        error={deleteMutation.error?.message || null}
+        danger
+        busy={remove.isPending}
+        error={remove.error?.message}
         onConfirm={async () => {
-          if (deleteTarget) {
-            await deleteMutation.mutateAsync(deleteTarget);
-            setDeleteTarget(null);
-          }
+          if (!deleting) return;
+          // A failure stays in the dialog (remove.error)
+          await remove.mutateAsync(deleting.id).then(() => setDeleting(null), () => undefined);
         }}
       />
     </div>

@@ -45,15 +45,3 @@ export async function getProfile(db: SupabaseClient): Promise<BusinessProfile | 
   return data;
 }
 
-export async function saveProfile(
-  db: SupabaseClient,
-  fields: Partial<Omit<BusinessProfile, "id" | "updated_at">>
-): Promise<BusinessProfile> {
-  const { data, error } = await db
-    .from("business_profile")
-    .upsert({ id: 1, ...fields }, { onConflict: "id" })
-    .select()
-    .single();
-  if (error) throw error;
-  return data;
-}

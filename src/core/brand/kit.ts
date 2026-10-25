@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { BLACK, readablePairs, WHITE, type TextPair } from "@/lib/color";
+import { TEMPLATE_IDS } from "@/core/creative/brief";
 
 // The brand kit the Visual Identity Analyst builds and the client can override.
 
@@ -14,6 +15,8 @@ export const kitSchema = z.object({
   fonts: z.object({ heading: z.string().trim().max(80).nullable(), body: z.string().trim().max(80).nullable() }),
   photo_style: z.string().trim().max(1000).nullable(),
   layout_style: z.string().trim().max(1000).nullable(),
+  /** Ad layouts this brand uses; empty = all of them */
+  template_ids: z.array(z.enum(TEMPLATE_IDS)).max(TEMPLATE_IDS.length).default([]),
 });
 export type KitInput = z.infer<typeof kitSchema>;
 
@@ -33,6 +36,7 @@ export async function getKit(db: SupabaseClient): Promise<BrandKit> {
     logo_variants: data.logo_variants ?? {},
     photo_style: data.photo_style,
     layout_style: data.layout_style,
+    template_ids: (data.template_ids ?? []).filter((t: string) => (TEMPLATE_IDS as readonly string[]).includes(t)),
     updated_at: data.updated_at,
   };
 }
@@ -51,13 +55,17 @@ export async function saveKit(db: SupabaseClient, input: KitInput): Promise<Bran
     ],
     [WHITE, BLACK, c.text, c.bg]
   );
+  // Colours or fonts the client changed are theirs: later research runs keep them
+  const sameColors = (["primary", "secondary", "accent", "bg", "text"] as const).every((k) => current.colors[k] === c[k]);
+  const sameFonts = current.fonts.heading === input.fonts.heading && current.fonts.body === input.fonts.body;
   const { error } = await db
     .from("brand_kit")
     .update({
-      colors: { ...current.colors, ...c, pairs },
-      fonts: { ...current.fonts, ...input.fonts },
+      colors: { ...current.colors, ...c, pairs, ...(sameColors ? {} : { manual: true }) },
+      fonts: { ...current.fonts, ...input.fonts, ...(sameFonts ? {} : { manual: true }) },
       photo_style: input.photo_style,
       layout_style: input.layout_style,
+      template_ids: input.template_ids,
     })
     .eq("id", 1);
   if (error) throw error;

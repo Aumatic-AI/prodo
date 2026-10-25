@@ -135,6 +135,21 @@ export async function startRefresh(db: SupabaseClient, lastActivityAt: string | 
   return next;
 }
 
+/**
+ * Runs only some agents again: the Visual Identity Analyst after a logo change, the Social & Market
+ * Analyst every month. The others show as done. Returns null when a research is already running.
+ */
+export async function startPartialRefresh(db: SupabaseClient, agents: ResearchAgent[]): Promise<ResearchState | null> {
+  const { research } = await readResearch(db);
+  if (research?.state === "running" && !isStale(research, null)) return null;
+  const next = newResearch();
+  for (const agent of RESEARCH_AGENTS) {
+    if (!agents.includes(agent)) next.agents[agent] = { state: "done", summary: "Not part of this refresh" };
+  }
+  await writeResearch(db, next);
+  return next;
+}
+
 /** "Regenerate with a note": queues the Strategist again on the latest research. */
 export async function startRegenerate(db: SupabaseClient): Promise<ResearchState> {
   const { research } = await readResearch(db);

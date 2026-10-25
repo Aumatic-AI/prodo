@@ -16,19 +16,21 @@ Those pages fill their tables from inline JavaScript. Read the raw HTML, not jus
 
 ### Status
 
-Sprint 1 in progress on branch `sprint-1`. Don't commit unless the user asks.
-- Done and verified: 1.1 baseline, 1.2 security, 1.3 full schema (migrations 0009–0012 applied, `src/types/database.ts` generated). 0013–0015 applied by the user on 2026-10-24.
-- Code written: 1.4 (error chain, registry, `agentStep`, budget guard), 1.5 (Zernio), 1.6 (FFmpeg worker). Their smoke tests wait on vendor keys, migrations 0013–0015 and the worker deploy.
-- Done: 1.7 onboarding wizard.
-- Code written: 1.8 research agents 1–3 (`src/agents/*`), `onboarding-run`, progress screen `/onboarding/progress`, retry. Needs migration 0015, then a real run. Pure logic checked offline (`npm run smoke scripts/check/research-logic.ts`).
-- Code written: 1.9 Brand Strategist (`src/agents/brand-strategist/`) and the Bible review (`/onboarding/bible`, Brand → Brand Bible); 1.10 Brand Hub (`/brand`, `src/modules/brand/`) and Settings (profile, automation, accounts). Offline checks: 19 pass. No real end-to-end run yet.
-- Next: 1.11 docs, full run for both test brands, sprint report, pull request.
+Branch `sprint-1` (now also holds Sprint 2 work). Don't commit unless the user asks.
+- Sprint 1: 1.1–1.10 built. Left for 1.11: FFmpeg worker env vars + smoke test, a full run for both test brands, sprint report, PR.
+- Sprint 2 (phases 2–4 of the Blueprint) code written 2026-10-25: Planner (5), Creative Director (6), Producer upgrade (7: Satori ad layouts, carousels, video with captions/music/end card/renditions), QA Critic (8, both gates with targeted redo), Publisher (9, three autopilot modes), weekly cron, This week board + approval inbox, "Create an ad", notifications (in-app + email, sending off). Offline checks pass (`scripts/check/weekly-logic.ts`); no real run yet. **Needs migration 0016** and a worker redeploy.
+- UI: every screen uses the kit (`src/components/ui` was deleted). The Dashboard was removed (it was built for Upload-Post); a new one comes with the learning loop.
+- Code written 2026-10-25 (round 2): agent 10 Performance Analyst (daily metrics and followers, weekly learnings, hook scores, weekly report), Performance / Activity / Costs screens, logo change → Visual Identity Analyst, client colour and font edits protected, monthly refresh (public holidays + Social & Market Analyst), pause holds scheduled posts, ad layouts per brand, mobile app shell, "make again with a note" in Media. Dropped on purpose: app theme from the client's brand kit.
 
-Migrations were applied by pasting them into the Supabase SQL Editor, not `supabase db push`, so the CLI's history doesn't know them. Before the first `db push`, run `npx supabase migration repair --status applied 0001 0002 0003 0004 0005 0006 0007 0008 0009 0010 0011 0012 0013 0014 0015`.
+Migrations were applied by pasting them into the Supabase SQL Editor, not `supabase db push`, so the CLI's history doesn't know them. Before the first `db push`, run `npx supabase migration repair --status applied 0001 0002 0003 0004 0005 0006 0007 0008 0009 0010 0011 0012 0013 0014 0015` (add 0016 once the user has run it).
 
 **Deviation from the plan:** SerpAPI is replaced by ScrapeCreators (no Google Trends or Maps reviews for now). See `docs/technical.md` → Brand research.
 
-**Deviation from the plan:** the FFmpeg worker (`worker/`) runs on a **Hostinger VPS** with Docker + Caddy, not Railway. See `worker/README.md`.
+**Deviation from the plan:** the Dashboard tab is removed for now; `/week` (This week) is home.
+
+**Deviation from the plan:** email notifications are built (Resend) but only logged until `EMAIL_ENABLED=1`.
+
+**Deviation from the plan:** the FFmpeg worker (`worker/`) runs on a **Hostinger VPS** with Docker + Caddy, not Railway. See `worker/README.md`. Until it's set up, videos render on Upload-Post's FFmpeg API (`providers/ffmpeg/backends/upload-post.ts`); the client switches to the worker by itself once `FFMPEG_WORKER_URL` and `FFMPEG_WORKER_SECRET` are set.
 
 ## Commands
 
@@ -39,6 +41,8 @@ npm run lint             # ESLint
 npx tsc --noEmit         # Typecheck — run after every change
 npx tsc -p worker        # Typecheck the FFmpeg worker
 npm run trace            # Report of the latest research run (TRACE_LOG=1 in .env.local); -- --follow for live lines
+npm run smoke scripts/check/weekly-logic.ts      # Offline checks: Planner slots, brief checks, captions, compose args (also research-logic.ts, learning-logic.ts)
+npm run smoke scripts/check/render-samples.tsx <dir>   # Render every ad layout, slide and end card to PNGs to look at
 npm run smoke scripts/smoke/openai.ts   # One real call to a vendor (kie, elevenlabs, firecrawl, scrapecreators, twelvelabs, zernio, ffmpeg-worker, agent-step)
 ```
 
@@ -55,7 +59,10 @@ No test suite yet. Inngest dev server at `http://localhost:8288` (`INNGEST_DEV=1
 - `src/modules/<module>/components/`, `hooks/` — per-module code
 - Nav entries in `src/config/navigation.ts`, routes in `src/config/routes.ts`
 - **Design kit: `src/components/kit/`** (the onboarding look, used app-wide): `styles.ts` (`button` cva, `control`, `card`, `row`…), `Field`, `inputs` (TextInput, NumberInput, TextArea), `Select`, `MultiSelect`, `DatePicker`, `TimePicker`, `choices` (Pills, ChoiceCards), `controls` (Switch, Slider, Counter), `TagInput`, `Modal`, `ConfirmDialog`, `Card`, `PageHeader`, `SectionNav`, `SaveBar`, `Badge`, `Alert`, `EmptyState`, `Skeleton`, uploaders (`LogoUploader`, `MediaUploader`, `useUpload`), `PlatformIcon`. New UI uses only the kit.
-- `src/components/ui/` is the old design, still used by Dashboard, Media, Posts and Calendar until they are redone. Don't use it in new code.
+- Theme: light by default, dark via `<html class="dark">` (`html.dark` in `globals.css` swaps every `ob-*` token). The choice lives in the account menu (bottom of the sidebar), is remembered per browser (`src/lib/theme.ts`) and applied before paint (`theme-script.ts` in the root layout). Use `ob-*` tokens only, so both themes work.
+- Sidebar: tabs, then Notifications (page `/notifications`, unread count) and Settings, then the account menu (theme, Settings, Log out). The collapse control is the round button on the sidebar's edge.
+- Old `src/components/ui/` is gone. `components/kit/Logo.tsx` holds the logo (`LogoMark`, `Logo`); `components/layout/NavContent.tsx` the shared navigation and account menu.
+- `src/modules/week/` is This week (home); `src/modules/calendar/`, `library/` (Media), `posts/` were rebuilt on the kit.
 - The app shell (`(app)/layout.tsx`, `components/layout/Sidebar.tsx`) already uses the kit look: `font-ob`, `bg-ob-bg`, `ob-*` tokens.
 
 ### State
@@ -66,7 +73,7 @@ No test suite yet. Inngest dev server at `http://localhost:8288` (`INNGEST_DEV=1
 
 ### Onboarding gate
 
-`(app)/layout.tsx` redirects to `/onboarding` until `business_profile.onboarding_status = 'done'`. `onboarding/layout.tsx` redirects to `/dashboard` once it is. Both read the cached session, so the check adds no API calls.
+`(app)/layout.tsx` redirects to `/onboarding` until `business_profile.onboarding_status = 'done'`. `onboarding/layout.tsx` redirects to `/week` (home) once it is. Both read the cached session, so the check adds no API calls.
 
 ### Onboarding module (`src/modules/onboarding/`)
 
@@ -92,7 +99,7 @@ All external services go through adapters in `src/providers/`. Never import a ve
 - `providers/publishing/` — `Publisher` interface; `registry.ts` maps provider → implementation. Default `zernio`; `upload-post` stays registered so old rows resolve
 - `providers/analytics/` — `Analytics` interface, `zernio.ts` (post metrics, past posts, follower stats)
 - `providers/crawl/firecrawl.ts`, `providers/social/scrapecreators.ts` (search, ad libraries, public profiles and posts), `providers/video-understanding/twelvelabs.ts`
-- `providers/ffmpeg/` — client for our worker; `stitch-scenes.ts` builds an ffmpeg argument list (never a shell string)
+- `providers/ffmpeg/` — `client.ts` (worker or Upload-Post backend), `compose-video.ts` builds the ffmpeg argument list (never a shell string)
 - `providers/storage/supabase-storage.ts` — the only file that builds URLs from storage keys
 
 ### Agents
@@ -104,7 +111,7 @@ Layout: one folder per agent (`src/agents/website-analyst/`, `visual-identity/`,
 - **Brand research** (onboarding + "Refresh brand"): 1 Website Analyst, 2 Visual Identity Analyst, 3 Social & Market Analyst (parallel) → 4 Brand Strategist → Brand Bible draft → client approves (`brand/approved`)
 - **Weekly loop** (Sprint 2): 5 Planner → 6 Creative Director → 8 QA Gate 1 → 7 Producer → 8 QA Gate 2 → 9 Publisher → 10 Performance Analyst → learnings feed the Planner
 
-Sprint 1 builds agents 1–4 only. Do not build Planner, Creative Director, Producer upgrade, QA Critic, Publisher autopilot or Performance Analyst yet — their tables exist, their features don't.
+All ten agents are built (agent 10, the Performance Analyst, is in `src/agents/performance-analyst/`). The weekly loop lives in `src/agents/planner`, `creative-director`, `qa-critic`, `producer`, `publisher` and `src/agents/weekly` (one slot end to end, cron, review, auto-approve); see `docs/technical.md` → Weekly loop. Our renderer is `src/creative/` (Satori layouts, captions); never let the image model draw text.
 
 ### Facts only
 
@@ -138,7 +145,7 @@ npx supabase db push --linked
 npx supabase gen types typescript --project-id <PROJECT_REF> --schema public > src/types/database.ts
 ```
 
-Never append `2>&1` to the types command — stderr noise breaks the generated file. Never edit an applied migration; always add a new one.
+Never append `2>&1` to the types command — stderr noise breaks the generated file. In PowerShell, `>` writes UTF-16, which breaks lint and the build; use `npx supabase gen types typescript --project-id <PROJECT_REF> --schema public | Out-File -Encoding utf8 src/types/database.ts`. Never edit an applied migration; always add a new one.
 
 ### Schema rules
 
@@ -161,9 +168,9 @@ Never append `2>&1` to the types command — stderr noise breaks the generated f
 
 ## Styling
 
-Design tokens in `src/styles/globals.css`. Never hardcode colors — use the token utility classes (`bg-primary`, `text-muted`, `border-default`, etc.).
+Design tokens in `src/styles/globals.css`. The whole app uses the `ob-*` tokens (`bg-ob-primary`, `text-ob-muted`, `border-ob-line`, `rounded-ob-lg`, `shadow-ob-xs`) and Plus Jakarta Sans (`font-ob`). Never hardcode colors; platform brand colours come only from `src/config/platforms.ts` (`platformMeta`). The older tokens (`bg-primary`, `text-muted`, `--color-primary: #0078D4`…) are no longer used by any screen.
 
-Primary color (`--color-primary: #0078D4`) is for buttons and active tab backgrounds only. Page background is `--color-page` (light gray), cards are `--color-surface` (white) with `shadow-xs` and `border-default`.
+Page background is `bg-ob-bg`, cards are `bg-ob-surface` with `border-ob-line` and `shadow-ob-xs` (kit `Card`).
 
 Use Tailwind classes directly; don't add CSS files. New tokens go in a `@theme` block in `globals.css`, so they become utilities.
 

@@ -1,5 +1,7 @@
 import { redirect } from "next/navigation";
+import { MobileTopBar } from "@/components/layout/MobileTopBar";
 import { Sidebar } from "@/components/layout/Sidebar";
+import { SplashScreen } from "@/components/layout/SplashScreen";
 import { getSession } from "@/core/session";
 import { SessionStoreProvider } from "@/stores/SessionStoreProvider";
 
@@ -12,13 +14,17 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <SessionStoreProvider session={session}>
       {/* Same look as onboarding: ob-* colours and the Plus Jakarta font */}
+      {/* Covers the first load while the first screens' data is fetched */}
+      <SplashScreen />
       <div className="min-h-screen bg-ob-bg font-ob text-[15px] text-ob-ink antialiased">
         <Sidebar />
         <main
-          className="min-h-screen"
-          style={{ marginLeft: "var(--sidebar-current-width, var(--sidebar-width))", transition: "margin-left 200ms ease" }}
+          className="min-h-screen min-w-0"
+          style={{ marginLeft: "var(--sidebar-current-width, 0px)", transition: "margin-left 200ms ease" }}
         >
-          <div className="px-5 py-8 sm:px-8 lg:px-10">{children}</div>
+          {/* Phones and tablets: top bar with the menu drawer (the sidebar is desktop only) */}
+          <MobileTopBar />
+          <div className="overflow-x-clip px-4 py-6 sm:px-8 sm:py-8 lg:px-10">{children}</div>
         </main>
       </div>
     </SessionStoreProvider>

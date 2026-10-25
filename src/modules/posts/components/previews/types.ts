@@ -3,10 +3,13 @@ export interface PreviewAccount {
   avatarUrl?: string;
 }
 
+export type PreviewMediaType = "image" | "video" | "text" | "carousel";
+
 export interface PlatformPreviewProps {
-  platform: "facebook" | "instagram" | "linkedin" | "twitter" | "tiktok";
+  platform: string;
   account: PreviewAccount;
   caption: string;
-  mediaUrl?: string | null;
-  mediaType?: "image" | "video" | "text";
+  /** One URL, or every slide of a carousel in order */
+  mediaUrls: string[];
+  mediaType?: PreviewMediaType;
 }
