@@ -10,6 +10,7 @@ import { useUnsavedSteps } from "../../hooks/useUnsavedSteps";
 import { container } from "@/components/kit/styles";
 import { Logo } from "@/components/kit/Logo";
 import { Stepper } from "./Stepper";
+import { AccountButton } from "./AccountButton";
 
 /** Top bar, stepper and the page. Warns before leaving with unsaved edits. */
 export function OnboardingShell({ children }: { children: ReactNode }) {
@@ -43,6 +44,7 @@ export function OnboardingShell({ children }: { children: ReactNode }) {
               </span>
             )}
             {businessName && <span className="hidden text-[13px] text-ob-muted md:inline">{businessName}</span>}
+            <AccountButton />
           </div>
         </div>
         {!submitted && <Stepper />}

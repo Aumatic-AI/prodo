@@ -32,7 +32,9 @@ export const getSession = cache(async (): Promise<(Omit<Session, "business"> & {
   if (!user) return null;
 
   // RLS returns only this user's own business
-  const { data: profile } = await db.from("business_profile").select("business_id, name, logo_key, onboarding_status").maybeSingle();
+  const { data: profile, error } = await db.from("business_profile").select("business_id, name, logo_key, onboarding_status").maybeSingle();
+  // A failed read is an error, never "no business" (that would sign the user out)
+  if (error) throw error;
 
   return {
     user: { id: user.id, email: user.email ?? "" },

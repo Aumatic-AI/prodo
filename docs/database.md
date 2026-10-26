@@ -14,6 +14,7 @@
 | `0015_research_agents.sql` | Research agents (1.8): `offerings`/`offers` `source_id` + `verified`, `competitors.source`, `learnings` dimension `baseline`, `agent_runs.run_id`, `set_research_state()` |
 | `0016_weekly_loop.sql` | Weekly loop and learning loop (Sprint 2): `plan_items.status` `ready`, `content_plans.approval_due_at` + `error`, notification email columns, storage types `text/plain` + `font/ttf`, `match_recent_hooks()`, `weekly_reports` |
 | `0017_multi_tenant.sql` | One login = one business: `businesses`, `business_id` on every table, settings rows per business, per-business unique rules, foreign keys inside one business, `own_business` RLS, search functions per business, storage folder per business, a business for every login (see Multi-tenant below) |
+| `0018_drop_leftover_policies.sql` | Drops every policy on the business tables except `own_business` (and old ones on the media bucket), whatever their names: leftover allow-all policies on `business_profile`, `media`, `posts`, `post_targets` let every login see every business there |
 
 ### Changes since the Data Model
 

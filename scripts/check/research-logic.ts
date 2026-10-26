@@ -10,6 +10,7 @@ import { pickColors } from "@/agents/visual-identity/palette";
 import { analyzeLogo } from "@/agents/visual-identity/logo";
 import { scorePosts, splitTopBottom, median } from "@/agents/social-market/baseline";
 import { handleFromUrl, domainOf } from "@/providers/social/handles";
+import { findSocialLinks } from "@/agents/social-market/website-socials";
 import { pageFactsSchema } from "@/prompts/agents/website-facts";
 import type { SocialPost } from "@/providers/social/types";
 import { assembleBible, normaliseShares, usesBannedWord } from "@/agents/brand-strategist/checks";
@@ -278,6 +279,31 @@ await check("brand kit pairs are recomputed and readable", () => {
   );
   assert.equal(pairs.find((p) => p.name === "accent")?.text, "#111111");
   assert.ok(pairs.every((p) => p.ratio >= 4.5));
+});
+
+await check("findSocialLinks: profile links from a footer, not share buttons or posts", () => {
+  const html = `
+    <a href="https://www.facebook.com/sharer/sharer.php?u=x">Share</a>
+    <a href="https://twitter.com/intent/tweet?text=hi">Tweet</a>
+    <a href="https://www.instagram.com/p/C123abc/">A post</a>
+    <footer>
+      <a href="https://www.instagram.com/repeatless.official/?utm_source=site">IG</a>
+      <a href='https://m.facebook.com/Repeatless/'>FB</a>
+      <a href="https://www.linkedin.com/company/repeatless">in</a>
+      <a href="https://www.youtube.com/@repeatless">YT</a>
+      <a href="https://www.tiktok.com/@repeatless">TT</a>
+      <a href="https://x.com/repeatless">X</a>
+      <a href="/about">About</a>
+    </footer>`;
+  const links = findSocialLinks(html);
+  assert.equal(links.instagram, "https://instagram.com/repeatless.official");
+  assert.equal(links.facebook, "https://facebook.com/Repeatless");
+  assert.equal(links.linkedin, "https://linkedin.com/company/repeatless");
+  assert.equal(links.youtube, "https://youtube.com/@repeatless");
+  assert.equal(links.tiktok, "https://tiktok.com/@repeatless");
+  assert.equal(links.twitter, "https://x.com/repeatless");
+  assert.equal(links.pinterest, undefined);
+  assert.equal(handleFromUrl("instagram", links.instagram), "repeatless.official");
 });
 
 console.log(`\n${passed} checks passed`);

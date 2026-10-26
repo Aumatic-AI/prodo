@@ -22,6 +22,7 @@ import {
 } from "./competitors";
 import { analyzeVideo, MAX_COMPETITOR_VIDEOS, MAX_OWN_VIDEOS, saveHooks, type AnalyzedVideo, type HookPost, type VideoToAnalyze } from "./hooks";
 import { ownSources, readOwnPlatform, type PlatformResult } from "./own-posts";
+import { fillSocialsFromWebsite } from "./website-socials";
 
 // Agent 3 · Social & Market Analyst
 // Learns what already works for the client and for competitors.
@@ -35,6 +36,20 @@ export const socialMarketAnalyst = defineResearchAgent("social_market_analyst", 
   const country = ctx.countries[0];
 
   // ---- The client's own posts ----
+  // Profiles the client left empty: taken from their website when it links to them
+  const fromWebsite =
+    (await optional(
+      task(
+        "socials-from-website",
+        () => fillSocialsFromWebsite(db(), ctx.website, ctx.socials),
+        (r) => {
+          const names = Object.keys(r);
+          return names.length ? `Found ${names.join(", ")} on the website and added ${names.length === 1 ? "it" : "them"} to the profile` : "No new social profiles on the website";
+        }
+      )
+    )) ?? {};
+  const socials = { ...ctx.socials, ...fromWebsite };
+
   const accounts = await task(
     "list-connected-accounts",
     async () => (await optional(publisherFor().listAccounts(db()))) ?? [],
@@ -42,7 +57,7 @@ export const socialMarketAnalyst = defineResearchAgent("social_market_analyst", 
   );
 
   const platforms = (
-    await inGroups(ownSources(accounts, ctx.socials), PARALLEL, (source, i) =>
+    await inGroups(ownSources(accounts, socials), PARALLEL, (source, i) =>
       optional(
         task(
           `own-posts-${i}`,
