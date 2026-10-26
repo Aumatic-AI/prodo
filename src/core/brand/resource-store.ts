@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { AppError } from "@/core/errors";
-import { remove as removeFile } from "@/providers/storage/supabase-storage";
+import { assertOwnKey, businessIdOf } from "@/core/business";
+import { removeFiles } from "@/providers/storage/remove-files";
 import { RESOURCES, resourceSchema, type ResourceDef, type ResourceKey, type ResourceRow } from "./resources";
 
 // Reads and writes Brand Hub lists using the definitions in resources.ts.
@@ -42,6 +43,8 @@ export async function listResource(db: SupabaseClient, key: ResourceKey, opts: {
 
 export async function createResource(db: SupabaseClient, key: ResourceKey, body: unknown): Promise<ResourceRow> {
   const values = resourceSchema(key, "create").parse(body);
+  // A brand photo or video: only a file the business uploaded itself
+  if (typeof values.storage_key === "string") assertOwnKey(await businessIdOf(db), values.storage_key);
   const { data, error } = await db.from(def(key).table).insert(toDb(key, values)).select("*").single();
   if (error) throw error;
   return fromDb(key, data);
@@ -72,5 +75,5 @@ export async function removeResource(db: SupabaseClient, key: ResourceKey, id: s
   }
   const { data, error } = await db.from(d.table).delete().eq("id", id).select("*").maybeSingle();
   if (error) throw error;
-  if (key === "assets" && data?.storage_key) await removeFile(db, data.storage_key).catch(() => undefined);
+  if (key === "assets" && data?.storage_key) await removeFiles(data.business_id, [data.storage_key]).catch(() => undefined);
 }

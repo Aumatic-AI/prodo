@@ -1,5 +1,4 @@
 import { env } from "@/config/env";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { publisherFor } from "@/providers/publishing/registry";
 import { urlFor } from "@/providers/storage/supabase-storage";
 import { optional } from "@/agents/run";
@@ -31,15 +30,14 @@ import { ownSources, readOwnPlatform, type PlatformResult } from "./own-posts";
 
 const PARALLEL = 3;
 
-export const socialMarketAnalyst = defineResearchAgent("social_market_analyst", async ({ ctx, task }) => {
-  const db = () => createAdminClient();
+export const socialMarketAnalyst = defineResearchAgent("social_market_analyst", async ({ db, ctx, task }) => {
   const brief = businessBrief(ctx);
   const country = ctx.countries[0];
 
   // ---- The client's own posts ----
   const accounts = await task(
     "list-connected-accounts",
-    async () => (await optional(publisherFor().listAccounts())) ?? [],
+    async () => (await optional(publisherFor().listAccounts(db()))) ?? [],
     (r) => (r.length ? `${r.length} connected account${r.length === 1 ? "" : "s"}` : "No connected accounts; reading public profiles instead")
   );
 

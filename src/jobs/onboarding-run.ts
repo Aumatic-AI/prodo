@@ -1,5 +1,5 @@
 import { inngest } from "./client";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { businessDb } from "@/lib/supabase/business";
 import { userMessage } from "@/core/errors";
 import { PARALLEL_AGENTS, RESEARCH_AGENTS, STRATEGIST, readResearch, setAgentState, setResearchState, type ResearchAgent } from "@/core/onboarding/research";
 import { websiteAnalyst } from "@/agents/website-analyst";
@@ -7,6 +7,7 @@ import { visualIdentityAnalyst } from "@/agents/visual-identity";
 import { socialMarketAnalyst } from "@/agents/social-market";
 import { brandStrategist } from "@/agents/brand-strategist";
 import { snapshot, trace } from "@/lib/trace";
+import { ownRow } from "@/lib/supabase/own-row";
 
 const AGENT_FUNCTIONS = {
   website_analyst: websiteAnalyst,
@@ -25,17 +26,19 @@ type Outcome = { agent: ResearchAgent; ok: true } | { agent: ResearchAgent; ok: 
 export const onboardingRun = inngest.createFunction(
   {
     id: "onboarding-run",
-    concurrency: [{ limit: 1 }],
+    concurrency: [{ limit: 1, key: "event.data.businessId" }],
     retries: 1,
     onFailure: async ({ error, event }) => {
+      const { businessId } = event.data.event.data;
       trace.scope({ runId: event.data.event.data.runId }, () => trace.emit("run-end", { status: "failed", error: error.message }));
-      const db = createAdminClient();
+      const db = businessDb(businessId);
       await setResearchState(db, ["state"], "failed");
       await setResearchState(db, ["error"], error.message || "Research stopped unexpectedly. Try again.");
     },
   },
   { event: "onboarding/started" },
   async ({ event, step }) => {
+    const { businessId } = event.data;
     const { runId } = event.data;
     const requested: ResearchAgent[] = event.data.agents ?? [...RESEARCH_AGENTS];
     // Inngest runs step callbacks outside this context, so each traced step sets it itself
@@ -50,14 +53,14 @@ export const onboardingRun = inngest.createFunction(
         "trace-start",
         traced(async () => {
           trace.emit("run-start", { agents: requested, attempt: event.data.attempt });
-          await snapshot(createAdminClient(), "start");
+          await snapshot(businessDb(businessId), "start");
         })
       );
     }
 
     const run = (agent: ResearchAgent): Promise<Outcome> =>
       step
-        .invoke(`run-${agent}`, { function: AGENT_FUNCTIONS[agent], data: { runId }, timeout: "45m" })
+        .invoke(`run-${agent}`, { function: AGENT_FUNCTIONS[agent], data: { businessId, runId }, timeout: "45m" })
         .then(() => ({ agent, ok: true as const }))
         .catch((err: unknown) => ({ agent, ok: false as const, error: userMessage(err) }));
 
@@ -70,7 +73,7 @@ export const onboardingRun = inngest.createFunction(
     return step.run(
       "finish",
       traced(async () => {
-        const db = createAdminClient();
+        const db = businessDb(businessId);
         const now = new Date().toISOString();
 
         if (failed.length) {
@@ -89,7 +92,7 @@ export const onboardingRun = inngest.createFunction(
         await setResearchState(db, ["finishedAt"], now);
         await setResearchState(db, ["state"], "done");
         // During onboarding: on to the Brand Bible review. After onboarding ("Refresh brand"), status stays done.
-        const { error } = await db.from("business_profile").update({ onboarding_status: "review" }).eq("id", 1).neq("onboarding_status", "done");
+        const { error } = await ownRow(db.from("business_profile").update({ onboarding_status: "review" })).neq("onboarding_status", "done");
         if (error) throw error;
         await snapshot(db, "end");
         trace.emit("run-end", { status: "done" });
@@ -101,13 +104,14 @@ export const onboardingRun = inngest.createFunction(
 
 /** "Regenerate with a note": the Strategist writes a new draft from the same research. */
 export const regenerateBible = inngest.createFunction(
-  { id: "regenerate-bible", concurrency: [{ limit: 1 }], retries: 0 },
+  { id: "regenerate-bible", concurrency: [{ limit: 1, key: "event.data.businessId" }], retries: 0 },
   { event: "brand/regenerate" },
   async ({ event, step }) => {
+    const { businessId } = event.data;
     await step.run("trace-start", () =>
       trace.scope({ runId: event.data.runId }, () => trace.emit("run-start", { agents: ["brand_strategist"], note: event.data.note }))
     );
-    await step.invoke("run-brand-strategist", { function: brandStrategist, data: { runId: event.data.runId, note: event.data.note }, timeout: "20m" });
+    await step.invoke("run-brand-strategist", { function: brandStrategist, data: { businessId, runId: event.data.runId, note: event.data.note }, timeout: "20m" });
     return { status: "done" };
   }
 );

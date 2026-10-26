@@ -46,7 +46,7 @@ export async function loadCreativeContext(db: SupabaseClient, itemId: string): P
   const item = await getItem(db, itemId);
   const [plan, bible] = await Promise.all([getPlan(db, item.plan_id), approvedBible(db)]);
   const [profile, persona, pillar, offering, offer, proof, assets, kit, hooks] = await Promise.all([
-    db.from("business_profile").select("*").eq("id", 1).single(),
+    db.from("business_profile").select("*").single(),
     item.persona_id ? db.from("personas").select("*").eq("id", item.persona_id).maybeSingle() : Promise.resolve({ data: null, error: null }),
     item.pillar_id ? db.from("content_pillars").select("name, description").eq("id", item.pillar_id).maybeSingle() : Promise.resolve({ data: null, error: null }),
     item.offering_id ? db.from("offerings").select("*").eq("id", item.offering_id).eq("active", true).maybeSingle() : Promise.resolve({ data: null, error: null }),
@@ -58,7 +58,7 @@ export async function loadCreativeContext(db: SupabaseClient, itemId: string): P
       .or(item.offering_id ? `offering_id.is.null,offering_id.eq.${item.offering_id}` : "offering_id.is.null")
       .limit(12),
     db.from("brand_assets").select("id, kind, ai_description, offering_id, storage_key, tags").neq("kind", "reference_video").neq("kind", "doc").limit(40),
-    db.from("brand_kit").select("photo_style, template_ids").eq("id", 1).single(),
+    db.from("brand_kit").select("photo_style, template_ids").single(),
     db.from("hook_library").select("text").order("created_at", { ascending: false }).limit(25),
   ]);
   for (const r of [profile, persona, pillar, offering, offer, proof, assets, kit, hooks]) if (r.error) throw r.error;

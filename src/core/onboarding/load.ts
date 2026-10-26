@@ -27,8 +27,8 @@ function byOffering<T extends { offering_id: string | null }>(rows: T[], offerin
 /** Builds the full wizard draft from the database. One round of parallel queries. */
 export async function loadOnboarding(db: SupabaseClient): Promise<OnboardingDraft> {
   const [profileRes, settingsRes, offeringsRes, offersRes, proofRes, assetsRes, datesRes, competitorsRes] = await Promise.all([
-    db.from("business_profile").select("*").eq("id", 1).single(),
-    db.from("app_settings").select("*").eq("id", 1).single(),
+    db.from("business_profile").select("*").single(),
+    db.from("app_settings").select("*").single(),
     db.from("offerings").select("*").eq("active", true).order("priority", { ascending: false }).order("created_at"),
     db.from("offers").select("*").eq("active", true).order("created_at"),
     // Only confirmed proof: facts the agents found wait for the client in the Brand Bible review

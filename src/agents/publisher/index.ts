@@ -2,7 +2,7 @@ import { inngest } from "@/jobs/client";
 import { userMessage } from "@/core/errors";
 import { notify } from "@/core/notifications/notify";
 import { getItem, getPlan, setPlanStatus, updateItem } from "@/core/plans/plans";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { businessDb } from "@/lib/supabase/business";
 import { publisherFor } from "@/providers/publishing/registry";
 import { optional } from "@/agents/run";
 import { taskFor } from "@/agents/weekly/task";
@@ -18,9 +18,9 @@ export const publishPlan = inngest.createFunction(
   { id: "agent-publisher-plan", retries: 2, concurrency: [{ limit: 1, key: "event.data.planId" }] },
   { event: "plan/approved" },
   async ({ event, step }) => {
-    const { planId } = event.data;
-    const db = () => createAdminClient();
-    const task = taskFor(step, "publisher", { planId });
+    const { businessId, planId } = event.data;
+    const db = () => businessDb(businessId);
+    const task = taskFor(step, "publisher", { businessId, planId });
 
     const itemIds = await step.run("approved-slots", async () => {
       const { data, error } = await db().from("plan_items").select("id").eq("plan_id", planId).eq("status", "approved").order("slot_at");
@@ -29,11 +29,11 @@ export const publishPlan = inngest.createFunction(
     });
     if (!itemIds.length) return { scheduled: 0 };
 
-    const accounts = await task("read-accounts", () => publisherFor().listAccounts(), (r) => `Found ${r.length} connected accounts`);
+    const accounts = await task("read-accounts", () => publisherFor().listAccounts(db()), (r) => `Found ${r.length} connected accounts`);
 
     const results: (Scheduled | null)[] = [];
     for (const itemId of itemIds) {
-      const one = taskFor(step, "publisher", { planId, itemId });
+      const one = taskFor(step, "publisher", { businessId, planId, itemId });
       const res = await optional(
         one(
           `schedule-${itemId}`,
@@ -50,7 +50,7 @@ export const publishPlan = inngest.createFunction(
         )
       );
       results.push(res);
-      if (res?.postId) await step.sendEvent(`publish-${itemId}`, { name: "post/publish", id: `post-${res.postId}`, data: { postId: res.postId } });
+      if (res?.postId) await step.sendEvent(`publish-${itemId}`, { name: "post/publish", id: `post-${res.postId}`, data: { businessId, postId: res.postId } });
     }
 
     const scheduled = results.filter((r) => r?.postId).length;
@@ -75,10 +75,10 @@ export const publishItem = inngest.createFunction(
   { id: "agent-publisher-item", retries: 2, concurrency: [{ limit: 1, key: "event.data.itemId" }] },
   { event: "plan-item/approved" },
   async ({ event, step }) => {
-    const { itemId } = event.data;
-    const db = () => createAdminClient();
+    const { businessId, itemId } = event.data;
+    const db = () => businessDb(businessId);
     const item = await step.run("load-slot", () => getItem(db(), itemId));
-    const task = taskFor(step, "publisher", { planId: item.plan_id, itemId });
+    const task = taskFor(step, "publisher", { businessId, planId: item.plan_id, itemId });
 
     const res = await task(
       "schedule",
@@ -92,7 +92,7 @@ export const publishItem = inngest.createFunction(
       },
       (r) => `Scheduled for ${new Date(r.publishAt!).toUTCString().slice(0, 22)} on ${r.platforms.join(", ")}`
     );
-    if (res.postId) await step.sendEvent("publish", { name: "post/publish", id: `post-${res.postId}`, data: { postId: res.postId } });
+    if (res.postId) await step.sendEvent("publish", { name: "post/publish", id: `post-${res.postId}`, data: { businessId, postId: res.postId } });
     return res;
   }
 );

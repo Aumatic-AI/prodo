@@ -1,6 +1,6 @@
 # Prodo
 
-Autonomous AI ad and content system for one client. Onboarding teaches Prodo the brand: agents read the client's website, visuals, socials and competitors, and write a Brand Bible the client approves. After that, agents plan, produce, publish and learn from posts every week. Clients can still create media and posts by hand.
+Autonomous AI ad and content system for many businesses, one login each. Onboarding teaches Prodo a business's brand: agents read its website, visuals, socials and competitors, and write a Brand Bible the client approves. After that, agents plan, produce, publish and learn from posts every week. Clients can still create media and posts by hand.
 
 Specs (claude.ai artifacts): [Agent Blueprint](https://claude.ai/artifact/FdBQTmEf44xghnbi2hua4a) · [Data Model](https://claude.ai/artifact/UdFPf3uWR3RRThUyuy9aH3) · [Sprint 1 Plan](https://claude.ai/artifact/M2fkyDrYFMJfb1g5uUMndu) · [Onboarding Flow](https://claude.ai/artifact/WC3T6r1WKqkMzabU56euX6)
 
@@ -37,7 +37,7 @@ Inngest dev server (background jobs): `npx inngest-cli@latest dev` at `http://lo
 
 ## Architecture
 
-One repo, one deploy per client. Not multi-tenant: each client gets their own Supabase project, Vercel project, Inngest environment and env vars. Same code, separate data.
+One repo, one deploy for every business (multi-tenant). **One login = one business**: each login has its own brand, plans, media, posts, connected accounts (its own Zernio profile), budget and files, and never sees another's. Every table has `business_id`; RLS keeps logged-in users to their own business, and agents and jobs use `businessDb(businessId)`. See `docs/technical.md` → Multi-tenant.
 
 ### Tabs
 
@@ -64,11 +64,19 @@ One repo, one deploy per client. Not multi-tenant: each client gets their own Su
 - **Storage keys, not URLs**: only `supabase-storage.ts` builds URLs.
 - **Errors**: vendor error → adapter → `AppError` → Inngest retry or stop → plain message on the DB row → screen shows it.
 
-See `docs/technical.md` for the full rules and `docs/database.md` for all 27 tables.
+See `docs/technical.md` for the full rules and `docs/database.md` for every table.
 
 ## Deployment
 
-One Vercel project + one Supabase project + one Inngest environment per client. Set all env vars from `.env.example` (never `INNGEST_DEV` in production). Never share an Inngest environment between clients.
+One Vercel project + one Supabase project + one Inngest environment for all businesses. Set all env vars from `.env.example` (never `INNGEST_DEV` in production).
+
+### Adding a business
+
+1. Supabase → Authentication → Users → **Add user** (email and password, or send an invite).
+2. The database creates the login's business and its settings rows by itself (notification email = the login's email).
+3. The person logs in and goes through onboarding; Prodo researches their brand and they approve their Brand Bible.
+
+Keep **Allow new users to sign up** off (Supabase → Authentication → Sign In / Providers), so nobody can create a business through the Auth API. Deleting a login keeps its business and data; nobody can open them until the business gets a new owner.
 
 ```bash
 npm run build    # production build

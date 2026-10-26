@@ -9,6 +9,7 @@ export type ErrorType =
   | "BUDGET_REACHED"
   | "PAUSED"
   | "TIMEOUT"
+  | "UNAUTHORIZED"
   | "UNKNOWN";
 
 export class AppError extends Error {
@@ -25,6 +26,9 @@ export class AppError extends Error {
     this.name = "AppError";
   }
 }
+
+/** A login that isn't linked to a business (one login = one business) */
+export const NO_BUSINESS_MESSAGE = "This login isn't linked to a business yet. Ask your admin to check the account.";
 
 export function notConfigured(service: string): AppError {
   return new AppError(`${service} isn't set up correctly. Please contact your admin.`, "NOT_CONFIGURED", false);

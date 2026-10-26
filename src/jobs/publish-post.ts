@@ -1,5 +1,5 @@
 import { inngest } from "./client";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { businessDb } from "@/lib/supabase/business";
 import { getPost, updatePost } from "@/core/posts";
 import { publisherFor } from "@/providers/publishing/registry";
 import { urlFor } from "@/providers/storage/supabase-storage";
@@ -35,7 +35,8 @@ export const publishPost = inngest.createFunction(
     retries: 3,
     concurrency: [{ limit: 1, key: "event.data.postId" }],
     onFailure: async ({ event }) => {
-      const db = createAdminClient();
+      const { businessId } = event.data.event.data;
+      const db = businessDb(businessId);
       const postId = event.data.event.data.postId;
       const msg = event.data.error?.message || "Publishing failed";
       await db.from("posts").update({ status: "failed" }).eq("id", postId);
@@ -48,7 +49,8 @@ export const publishPost = inngest.createFunction(
   },
   { event: "post/publish" },
   async ({ event, step }) => {
-    const db = createAdminClient();
+    const { businessId } = event.data;
+    const db = businessDb(businessId);
     const post = await step.run("load-post", () => getPost(db, event.data.postId));
 
     const isScheduled = !!post.publish_at && new Date(post.publish_at).getTime() > Date.now();
@@ -76,6 +78,12 @@ export const publishPost = inngest.createFunction(
         })
       : {};
 
+    // The accounts this business has connected right now: a target is only sent when its account is
+    // one of them (rows can be edited, so the job checks again before posting anything)
+    const connected = await step.run("connected-accounts", async () =>
+      (await publisherFor().listAccounts(db)).map((a) => `${a.provider}:${a.id}`)
+    );
+
     // Submit every target. Upload-Post can background-process even an
     // "immediate" publish (Instagram especially), so a successful submission
     // here only means "accepted" — it stays "pending" until the follow-up
@@ -83,6 +91,9 @@ export const publishPost = inngest.createFunction(
     for (const target of post.post_targets) {
       await step.run(`publish-${target.id}`, async () => {
         try {
+          if (!connected.includes(`${target.provider}:${target.account_id}`)) {
+            throw new Error("This account isn't connected to your business anymore. Reconnect it on Accounts, then retry.");
+          }
           await db.from("post_targets").update({ status: "sending" }).eq("id", target.id);
 
           const publisher = publisherFor(target.provider);
@@ -136,7 +147,7 @@ export const publishPost = inngest.createFunction(
 
     await step.sendEvent("queue-status-check", {
       name: "post/check-status",
-      data: { postId: post.id, checkAt: isScheduled ? post.publish_at! : new Date().toISOString() },
+      data: { businessId, postId: post.id, checkAt: isScheduled ? post.publish_at! : new Date().toISOString() },
     });
   }
 );

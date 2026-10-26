@@ -31,7 +31,7 @@ export interface ResearchContext {
 
 export async function loadResearchContext(db: SupabaseClient): Promise<ResearchContext> {
   const [profileRes, offeringsRes, competitorsRes, assetsRes] = await Promise.all([
-    db.from("business_profile").select("*").eq("id", 1).single(),
+    db.from("business_profile").select("*").single(),
     db.from("offerings").select("id, name, kind").eq("active", true).order("priority", { ascending: false }),
     db.from("competitors").select("id, name, website, social_urls, source").order("created_at"),
     db.from("brand_assets").select("kind, storage_key").order("created_at"),

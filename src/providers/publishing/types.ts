@@ -1,3 +1,5 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
+
 export interface PublishResult {
   success: boolean;
   /** Provider's id for this submission, used for status and cancel */
@@ -44,7 +46,8 @@ export interface Publisher {
   getStatus(providerRef: string, platform: string): Promise<PublishStatus>;
   /** Cancels a still-scheduled submission. Succeeds if there is nothing to cancel. */
   cancelScheduled(providerRef: string): Promise<{ success: boolean }>;
-  listAccounts(): Promise<ConnectedAccount[]>;
+  /** The business's connected accounts. `db` is limited to that business (RLS or businessDb). */
+  listAccounts(db: SupabaseClient): Promise<ConnectedAccount[]>;
   /** Link where the client signs in to connect an account, or null if done on the provider's site */
-  getConnectUrl(platform: string): Promise<string | null>;
+  getConnectUrl(db: SupabaseClient, platform: string): Promise<string | null>;
 }

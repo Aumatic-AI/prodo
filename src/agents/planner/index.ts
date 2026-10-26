@@ -4,7 +4,7 @@ import { MODELS } from "@/config/models";
 import { AppError, userMessage } from "@/core/errors";
 import { notify } from "@/core/notifications/notify";
 import { approvedBible } from "@/core/plans/plans";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { businessDb } from "@/lib/supabase/business";
 import { agentStep } from "@/agents/run";
 import { ai } from "@/providers/ai/registry";
 import { PLANNER_SYSTEM, plannerSchema } from "@/prompts/agents/planner";
@@ -25,11 +25,11 @@ export const planner = inngest.createFunction(
   {
     id: "agent-planner",
     retries: 2,
-    // One plan at a time; a second request for the same week waits, then finds it planned
-    concurrency: [{ limit: 1 }],
+    // One plan at a time per business; a second request for the same week waits, then finds it planned
+    concurrency: [{ limit: 1, key: "event.data.businessId" }],
     onFailure: async ({ event, error }) => {
-      const db = createAdminClient();
-      const weekStart = event.data.event.data.weekStart;
+      const { businessId, weekStart } = event.data.event.data;
+      const db = businessDb(businessId);
       await db.from("content_plans").update({ status: "failed", error: error.message }).eq("week_start", weekStart).eq("status", "planning");
       await notify(db, {
         kind: "agent_stopped",
@@ -42,8 +42,8 @@ export const planner = inngest.createFunction(
   },
   { event: "plan/requested" },
   async ({ event, step }) => {
-    const { weekStart, replace = false } = event.data;
-    const db = () => createAdminClient();
+    const { businessId, weekStart, replace = false } = event.data;
+    const db = () => businessDb(businessId);
 
     const plan = await step.run("open-plan", async () => {
       try {
@@ -54,7 +54,7 @@ export const planner = inngest.createFunction(
       }
     });
     const task = <T>(id: string, fn: (track: (u: any) => void) => Promise<T>, summary?: (r: T) => string) =>
-      agentStep(step, id, { agent: "planner", runId: plan.id, planId: plan.id, summary }, fn);
+      agentStep(step, id, { businessId, agent: "planner", runId: plan.id, planId: plan.id, summary }, fn);
 
     const ctx = await task(
       "read-brand",
@@ -125,7 +125,7 @@ export const planner = inngest.createFunction(
 
     await step.sendEvent(
       "start-production",
-      itemIds.map((itemId) => ({ name: "plan-item/produce", id: `produce-${itemId}`, data: { itemId, planId: plan.id } }))
+      itemIds.map((itemId) => ({ name: "plan-item/produce", id: `produce-${itemId}`, data: { businessId, itemId, planId: plan.id } }))
     );
     return { planId: plan.id, items: itemIds.length };
   }

@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { removeFiles } from "@/providers/storage/remove-files";
 
 export type MediaType = "image" | "video" | "text" | "carousel";
 export type MediaSource = "generated" | "uploaded";
@@ -104,7 +105,7 @@ export async function markGenerating(db: SupabaseClient, id: string) {
 }
 
 export async function deleteMedia(db: SupabaseClient, id: string) {
-  const { data: media } = await db.from("media").select("storage_key").eq("id", id).maybeSingle();
+  const { data: media } = await db.from("media").select("storage_key, business_id").eq("id", id).maybeSingle();
   const { data: files } = await db.from("media_files").select("storage_key").eq("media_id", id);
 
   const { error } = await db.from("media").delete().eq("id", id);
@@ -112,7 +113,7 @@ export async function deleteMedia(db: SupabaseClient, id: string) {
 
   // Files go only after the row is gone (a post using the media blocks the delete)
   const keys = [media?.storage_key, ...(files ?? []).map((f) => f.storage_key)].filter(Boolean) as string[];
-  if (keys.length) await db.storage.from("media").remove(keys);
+  if (media) await removeFiles(media.business_id, keys);
 }
 
 /** The product or service a media item is about: its offering's name, else the typed name. */

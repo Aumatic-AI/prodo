@@ -58,7 +58,7 @@ function totals(rows: { reach: number | null; views: number | null; engagements:
 }
 
 export async function loadPerformanceView(db: SupabaseClient, days: number): Promise<PerformanceView> {
-  const { data: profile } = await db.from("business_profile").select("timezone").eq("id", 1).single();
+  const { data: profile } = await db.from("business_profile").select("timezone").single();
   const tz = safeZone(profile?.timezone);
   const now = Date.now();
   const start = new Date(now - days * 86400_000).toISOString();

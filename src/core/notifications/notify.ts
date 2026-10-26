@@ -33,8 +33,8 @@ export interface Notification {
 
 export async function notify(db: SupabaseClient, input: NotifyInput): Promise<void> {
   const [{ data: settings }, { data: business }] = await Promise.all([
-    db.from("app_settings").select("notify_email").eq("id", 1).single(),
-    db.from("business_profile").select("name").eq("id", 1).single(),
+    db.from("app_settings").select("notify_email").single(),
+    db.from("business_profile").select("name").single(),
   ]);
   const to = input.email ? (settings?.notify_email ?? null) : null;
 

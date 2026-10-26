@@ -4,6 +4,7 @@ import { loadOnboarding } from "./load";
 import { newResearch, type ResearchState } from "./research";
 import { STEP_SCHEMAS } from "./schemas";
 import type { StepKey } from "./steps";
+import { ownRow } from "@/lib/supabase/own-row";
 
 /** First step whose saved answers are incomplete, or null when everything is ready. */
 export async function firstIncompleteStep(db: SupabaseClient): Promise<StepKey | null> {
@@ -22,7 +23,7 @@ export async function submitOnboarding(db: SupabaseClient): Promise<{ research: 
     throw new AppError("Some steps are not finished yet. Check them and submit again.", "INVALID_INPUT", false);
   }
 
-  const { data: profile, error: readError } = await db.from("business_profile").select("onboarding, onboarding_status").eq("id", 1).single();
+  const { data: profile, error: readError } = await db.from("business_profile").select("onboarding, onboarding_status").single();
   if (readError) throw readError;
   const existing: ResearchState | undefined = profile.onboarding?.research;
   if (profile.onboarding_status !== "collecting" && profile.onboarding_status !== "not_started" && existing) {
@@ -30,13 +31,12 @@ export async function submitOnboarding(db: SupabaseClient): Promise<{ research: 
   }
 
   const research = newResearch();
-  const { error } = await db
+  const { error } = await ownRow(db
     .from("business_profile")
     .update({
       onboarding_status: "analyzing",
       onboarding: { ...(profile.onboarding ?? {}), runId: research.id, submittedAt: new Date().toISOString(), research },
-    })
-    .eq("id", 1);
+    }));
   if (error) throw error;
   return { research, started: true };
 }

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { apiHandler } from "@/lib/api-handler";
-import { createClient } from "@/lib/supabase/server";
+import { currentBusiness } from "@/core/business";
 import { getMedia, markGenerating } from "@/core/media";
 import { inngest } from "@/jobs/client";
 import { assertVideoReady } from "@/providers/ffmpeg/client";
@@ -8,7 +8,7 @@ import { regenerateItem } from "@/core/plans/approval";
 
 export const POST = apiHandler(async (_req, { params }: { params: Promise<{ id: string }> }) => {
   const { id } = await params;
-  const db = await createClient();
+  const { db, businessId } = await currentBusiness();
   const media = await getMedia(db, id);
 
   if (media.type === "text") {
@@ -24,14 +24,14 @@ export const POST = apiHandler(async (_req, { params }: { params: Promise<{ id: 
   // Try again on This week), so the post and its media stay in step
   if (media.plan_item_id) {
     const item = await regenerateItem(db, media.plan_item_id, null);
-    await inngest.send({ name: "plan-item/produce", id: `produce-${item.id}-${Date.now()}`, data: { itemId: item.id, planId: item.plan_id, note: null } });
+    await inngest.send({ name: "plan-item/produce", id: `produce-${item.id}-${Date.now()}`, data: { businessId, itemId: item.id, planId: item.plan_id, note: null } });
     return NextResponse.json({ ok: true, planItemId: item.id });
   }
 
   await markGenerating(db, id);
 
   const event = media.type === "video" ? "media/generate-video" : "media/generate-image";
-  await inngest.send({ name: event, data: { mediaId: id }, id: `${id}-retry-${Date.now()}` });
+  await inngest.send({ name: event, data: { businessId, mediaId: id }, id: `${id}-retry-${Date.now()}` });
 
   return NextResponse.json({ ok: true });
 });

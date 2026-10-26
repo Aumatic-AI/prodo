@@ -29,11 +29,11 @@ const TONE_WORDS: Record<string, [string, string]> = {
 
 export async function loadStrategistInput(db: SupabaseClient): Promise<StrategistInput> {
   const [profileRes, offeringsRes, proofRes, kitRes, competitorsRes, learningsRes, hooksRes] = await Promise.all([
-    db.from("business_profile").select("*").eq("id", 1).single(),
+    db.from("business_profile").select("*").single(),
     // Active ones plus the website's pending finds (not ones the client rejected)
     db.from("offerings").select("id, name, kind, price, currency, benefits, audience, is_hero, active, verified").or("active.eq.true,verified.eq.false"),
     db.from("proof_items").select("id, kind, content, author").limit(40),
-    db.from("brand_kit").select("*").eq("id", 1).single(),
+    db.from("brand_kit").select("*").single(),
     db.from("competitors").select("name, analysis").not("analysis", "is", null),
     db.from("learnings").select("dimension, value, platform, score, insight").in("dimension", ["baseline", "format"]),
     db.from("hook_library").select("text").eq("source", "own_winner").order("score", { ascending: false }).limit(10),

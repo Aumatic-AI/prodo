@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Style } from "./schemas";
 import { removeMissing, saveProgress, syncAssets, upsertRows } from "./sync";
+import { ownRow } from "@/lib/supabase/own-row";
 
 function competitorFields(link: string) {
   if (!link) return { website: null, social_urls: {} };
@@ -35,15 +36,14 @@ export async function saveStyle(db: SupabaseClient, v: Style) {
     v.competitorVideos.map((vid) => ({ id: vid.id, storage_key: vid.key, kind: "reference_video" }))
   );
 
-  const { error } = await db
+  const { error } = await ownRow(db
     .from("app_settings")
     .update({
       autopilot_mode: v.autopilotMode,
       plan_weekday: v.planWeekday,
       plan_time: v.planTime,
       monthly_budget_usd: v.monthlyBudgetUsd,
-    })
-    .eq("id", 1);
+    }));
   if (error) throw error;
 
   await saveProgress(

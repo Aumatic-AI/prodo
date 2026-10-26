@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState, type FormEvent } from "react";
 import { ArrowRight, Eye, EyeOff, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/browser";
+import { NO_BUSINESS_MESSAGE } from "@/core/errors";
 import { Alert } from "@/components/kit/Alert";
 import { Field } from "@/components/kit/Field";
 import { TextInput } from "@/components/kit/inputs";
@@ -21,12 +21,16 @@ function signInMessage(raw: string): string {
 }
 
 export default function LoginPage() {
-  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  // Sent here after being signed out because the login has no business
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("error") === "no_business") setError(NO_BUSINESS_MESSAGE);
+  }, []);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -44,8 +48,8 @@ export default function LoginPage() {
 
     // Back to the page that sent us here; only same-site paths
     const next = new URLSearchParams(window.location.search).get("next");
-    router.push(next && next.startsWith("/") && !next.startsWith("//") ? next : "/week");
-    router.refresh();
+    // Full load, so nothing cached from an earlier login on this browser is shown
+    window.location.assign(next && next.startsWith("/") && !next.startsWith("//") ? next : "/week");
   }
 
   return (

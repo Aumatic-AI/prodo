@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { Popover } from "@base-ui/react/popover";
 import { Bell, ChevronDown, ChevronsUpDown, LogOut, Monitor, Moon, Settings, Sun, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -176,15 +176,14 @@ function Avatar() {
 
 /** The business at the bottom: opens a small menu with the theme, Settings and Log out. */
 export function AccountMenu({ collapsed = false, onNavigate }: { collapsed?: boolean; onNavigate?: () => void }) {
-  const router = useRouter();
   const userEmail = useSession((s) => s.user.email);
   const business = useSession((s) => s.business);
   const { choice, setTheme } = useTheme();
 
   async function logout() {
     await createClient().auth.signOut();
-    router.push("/login");
-    router.refresh();
+    // Full reload: the next login on this browser starts with no cached data from this business
+    window.location.assign("/login");
   }
 
   const item = "flex w-full items-center gap-2.5 rounded-ob px-3 py-2 text-left text-sm font-semibold transition-colors";

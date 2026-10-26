@@ -1,24 +1,29 @@
 import { inngest } from "./client";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { businessDb } from "@/lib/supabase/business";
 import { startPartialRefresh } from "@/core/onboarding/research";
 import { publicHolidays } from "@/providers/calendar/holidays";
 import { addDays } from "@/lib/zoned-time";
+import { cronForEveryBusiness } from "./every-business";
 
-// Once a month: public holidays for the client's countries become key dates (source system), and
-// the Social & Market Analyst reads the market again (own posts, competitors, ads, hooks).
+// Once a month, for each business: public holidays for its countries become key dates (source
+// system), and the Social & Market Analyst reads its market again (own posts, competitors, ads, hooks).
 // Skipped while paused or before onboarding is done.
 
 const LOOKAHEAD_DAYS = 120;
 
+/** The 1st of every month at 04:00 UTC, for each business */
+export const monthlyRefreshCron = cronForEveryBusiness("monthly-refresh-cron", "TZ=UTC 0 4 1 * *", "brand/monthly-refresh");
+
 export const monthlyRefresh = inngest.createFunction(
-  { id: "monthly-refresh", retries: 2 },
-  { cron: "TZ=UTC 0 4 1 * *" },
-  async ({ step }) => {
+  { id: "monthly-refresh", retries: 2, concurrency: [{ limit: 1, key: "event.data.businessId" }] },
+  { event: "brand/monthly-refresh" },
+  async ({ event, step }) => {
+    const { businessId } = event.data;
     const ready = await step.run("check", async () => {
-      const db = createAdminClient();
+      const db = businessDb(businessId);
       const [{ data: profile }, { data: settings }] = await Promise.all([
-        db.from("business_profile").select("onboarding_status, countries").eq("id", 1).single(),
-        db.from("app_settings").select("paused").eq("id", 1).single(),
+        db.from("business_profile").select("onboarding_status, countries").single(),
+        db.from("app_settings").select("paused").single(),
       ]);
       if (profile?.onboarding_status !== "done" || settings?.paused) return null;
       return { countries: (profile.countries ?? []).slice(0, 3) as string[] };
@@ -26,7 +31,7 @@ export const monthlyRefresh = inngest.createFunction(
     if (!ready) return { skipped: true };
 
     const added = await step.run("public-holidays", async () => {
-      const db = createAdminClient();
+      const db = businessDb(businessId);
       const today = new Date().toISOString().slice(0, 10);
       const until = addDays(today, LOOKAHEAD_DAYS);
       const years = [...new Set([today.slice(0, 4), until.slice(0, 4)].map(Number))];
@@ -43,9 +48,9 @@ export const monthlyRefresh = inngest.createFunction(
       return rows.length;
     });
 
-    const research = await step.run("start-market-refresh", () => startPartialRefresh(createAdminClient(), ["social_market_analyst"]));
+    const research = await step.run("start-market-refresh", () => startPartialRefresh(businessDb(businessId), ["social_market_analyst"]));
     if (research) {
-      await step.sendEvent("market-refresh", { name: "onboarding/started", id: research.attempt, data: { runId: research.id, attempt: research.attempt, agents: ["social_market_analyst"] } });
+      await step.sendEvent("market-refresh", { name: "onboarding/started", id: research.attempt, data: { businessId, runId: research.id, attempt: research.attempt, agents: ["social_market_analyst"] } });
     }
     return { holidays: added, marketRefresh: !!research };
   }

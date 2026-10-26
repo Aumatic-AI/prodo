@@ -1,5 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { apiHandler } from "@/lib/api-handler";
+import { assertOwnKey, currentBusiness } from "@/core/business";
+import { businessKey } from "@/providers/storage/supabase-storage";
 import { createClient } from "@/lib/supabase/server";
 import { listMedia, createMedia, type Media } from "@/core/media";
 import { AppError } from "@/core/errors";
@@ -39,17 +41,17 @@ export const GET = apiHandler(async (req: NextRequest) => {
 const UPLOAD_FOLDERS = [UPLOAD_RULES.photo.folder, UPLOAD_RULES.video.folder];
 
 export const POST = apiHandler(async (req: NextRequest) => {
-  const db = await createClient();
+  const { db, businessId } = await currentBusiness();
   const body = await req.json();
 
   // A file the browser already put in storage: saved as ready, nothing to generate
   if (body.source === "uploaded") {
     const key = String(body.storage_key ?? "");
-    if (!UPLOAD_FOLDERS.some((folder) => key.startsWith(`${folder}/`))) {
+    if (!UPLOAD_FOLDERS.some((folder) => key.startsWith(businessKey(businessId, `${folder}/`)))) {
       throw new AppError("This upload couldn't be found. Please upload it again.", "INVALID_INPUT", false);
     }
     const media = await createMedia(db, {
-      type: key.startsWith(`${UPLOAD_RULES.video.folder}/`) ? "video" : "image",
+      type: key.startsWith(businessKey(businessId, `${UPLOAD_RULES.video.folder}/`)) ? "video" : "image",
       source: "uploaded",
       status: "ready",
       storage_key: key,
@@ -61,6 +63,8 @@ export const POST = apiHandler(async (req: NextRequest) => {
 
   // Videos need our renderer; say so now instead of failing after paying for clips
   if (body.type === "video") await assertVideoReady();
+
+  if (body.reference_image_key) assertOwnKey(businessId, String(body.reference_image_key));
 
   const isText = body.type === "text";
 
@@ -85,7 +89,7 @@ export const POST = apiHandler(async (req: NextRequest) => {
 
   if (!isText) {
     const event = body.type === "video" ? "media/generate-video" : "media/generate-image";
-    await inngest.send({ name: event, data: { mediaId: media.id }, id: media.id });
+    await inngest.send({ name: event, data: { businessId, mediaId: media.id }, id: media.id });
   }
 
   return NextResponse.json(media, { status: 201 });

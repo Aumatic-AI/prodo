@@ -1,10 +1,11 @@
 import { inngest } from "@/jobs/client";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { businessDb } from "@/lib/supabase/business";
 import { analyticsFor } from "@/providers/analytics/registry";
 import type { PostMetrics } from "@/providers/analytics/types";
 import { publisherFor } from "@/providers/publishing/registry";
 import { optional } from "@/agents/run";
 import { agentStep } from "@/agents/run";
+import { cronForEveryBusiness } from "@/jobs/every-business";
 import { engagementRate } from "./score";
 
 // Agent 10 · Performance Analyst, daily: metrics for every post in its first 30 days (one row per
@@ -28,19 +29,23 @@ function row(targetId: string, day: string, m: PostMetrics) {
   return { post_target_id: targetId, captured_on: day, ...base, clicks: m.clicks, raw: m.raw as object };
 }
 
+/** Every day at 05:00 UTC, for each business */
+export const metricsCron = cronForEveryBusiness("agent-performance-metrics-cron", "TZ=UTC 0 5 * * *", "performance/sync");
+
 export const metricsSync = inngest.createFunction(
-  { id: "agent-performance-metrics", retries: 2, concurrency: [{ limit: 1 }] },
-  { cron: "TZ=UTC 0 5 * * *" },
-  async ({ step }) => {
+  { id: "agent-performance-metrics", retries: 2, concurrency: [{ limit: 1, key: "event.data.businessId" }] },
+  { event: "performance/sync" },
+  async ({ event, step }) => {
+    const { businessId } = event.data;
     const day = new Date().toISOString().slice(0, 10);
     const runId = `metrics-${day}`;
-    const task = <T,>(id: string, fn: () => Promise<T>, summary: (r: T) => string) => agentStep(step, id, { agent: "performance_analyst", runId, summary }, () => fn());
+    const task = <T,>(id: string, fn: () => Promise<T>, summary: (r: T) => string) => agentStep(step, id, { businessId, agent: "performance_analyst", runId, summary }, () => fn());
 
     const targets = await task(
       "published-posts",
       async () => {
         const since = new Date(Date.now() - TRACK_DAYS * 86400_000).toISOString();
-        const { data, error } = await createAdminClient()
+        const { data, error } = await businessDb(businessId)
           .from("post_targets")
           .select("id, platform, provider, provider_ref, provider_post_id, published_at")
           .eq("status", "published")
@@ -55,7 +60,7 @@ export const metricsSync = inngest.createFunction(
       await task(
         "post-metrics",
         async () => {
-          const db = createAdminClient();
+          const db = businessDb(businessId);
           const analytics = analyticsFor();
           const since = new Date(Date.now() - TRACK_DAYS * 86400_000).toISOString().slice(0, 10);
           // One paged list for everything; a provider post id can be its post or the platform post
@@ -91,8 +96,8 @@ export const metricsSync = inngest.createFunction(
       task(
         "followers",
         async () => {
-          const db = createAdminClient();
-          const accounts = await publisherFor().listAccounts();
+          const db = businessDb(businessId);
+          const accounts = await publisherFor().listAccounts(db);
           const analytics = analyticsFor();
           let saved = 0;
           for (const a of accounts) {
@@ -100,7 +105,7 @@ export const metricsSync = inngest.createFunction(
             if (!stats || stats.followers === null) continue;
             const { error } = await db
               .from("account_snapshots")
-              .upsert({ platform: a.platform, account_id: a.id, captured_on: day, followers: stats.followers, raw: stats.raw as object }, { onConflict: "platform,account_id,captured_on" });
+              .upsert({ platform: a.platform, account_id: a.id, captured_on: day, followers: stats.followers, raw: stats.raw as object }, { onConflict: "business_id,platform,account_id,captured_on" });
             if (!error) saved++;
           }
           return saved;

@@ -34,6 +34,6 @@ export function photoPrompt(prompt: string, photoStyle: string | null, hasRefere
 }
 
 export async function photoStyle(db: SupabaseClient): Promise<string | null> {
-  const { data } = await db.from("brand_kit").select("photo_style").eq("id", 1).single();
+  const { data } = await db.from("brand_kit").select("photo_style").single();
   return data?.photo_style ?? null;
 }

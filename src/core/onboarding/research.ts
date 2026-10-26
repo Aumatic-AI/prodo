@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { AppError } from "@/core/errors";
+import { ownRow } from "@/lib/supabase/own-row";
 
 // Brand research progress, kept in business_profile.onboarding.research.
 // Agents write it in parallel through set_research_state (one atomic update per write).
@@ -65,7 +66,7 @@ export function setAgentState(db: SupabaseClient, agent: ResearchAgent, value: A
 }
 
 export async function readResearch(db: SupabaseClient): Promise<{ status: string; research: ResearchState | null }> {
-  const { data, error } = await db.from("business_profile").select("onboarding, onboarding_status").eq("id", 1).single();
+  const { data, error } = await db.from("business_profile").select("onboarding, onboarding_status").single();
   if (error) throw error;
   return {
     status: data.onboarding_status,
@@ -82,12 +83,11 @@ export function isStale(research: ResearchState, lastActivityAt: string | null):
 
 /** Replaces the whole research state (one writer: the client's own request). */
 async function writeResearch(db: SupabaseClient, research: ResearchState): Promise<void> {
-  const { data, error: readError } = await db.from("business_profile").select("onboarding").eq("id", 1).single();
+  const { data, error: readError } = await db.from("business_profile").select("onboarding").single();
   if (readError) throw readError;
-  const { error } = await db
+  const { error } = await ownRow(db
     .from("business_profile")
-    .update({ onboarding: { ...(data.onboarding ?? {}), research } })
-    .eq("id", 1);
+    .update({ onboarding: { ...(data.onboarding ?? {}), research } }));
   if (error) throw error;
 }
 

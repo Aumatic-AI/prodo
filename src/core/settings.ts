@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { monthSpend } from "@/core/spend";
 import { POSTING_PLATFORMS } from "@/core/onboarding/options";
+import { ownRow } from "@/lib/supabase/own-row";
 
 // How the agents behave (app_settings), edited on Settings → Automation.
 
@@ -35,9 +36,9 @@ export interface AutomationView extends Automation {
 
 export async function getAutomation(db: SupabaseClient): Promise<AutomationView> {
   const [{ data, error }, spent, profile] = await Promise.all([
-    db.from("app_settings").select("*").eq("id", 1).single(),
+    db.from("app_settings").select("*").single(),
     monthSpend(db),
-    db.from("business_profile").select("posting_prefs").eq("id", 1).single(),
+    db.from("business_profile").select("posting_prefs").single(),
   ]);
   if (error) throw error;
   const posting = (profile.data?.posting_prefs?.platforms ?? {}) as Record<string, number>;
@@ -56,13 +57,12 @@ export async function getAutomation(db: SupabaseClient): Promise<AutomationView>
 
 export async function saveAutomation(db: SupabaseClient, input: Automation): Promise<AutomationView> {
   const { posts_per_week, ...settings } = input;
-  const { error } = await db.from("app_settings").update(settings).eq("id", 1);
+  const { error } = await ownRow(db.from("app_settings").update(settings));
   if (error) throw error;
-  const { data: profile } = await db.from("business_profile").select("posting_prefs").eq("id", 1).single();
-  const { error: prefsError } = await db
+  const { data: profile } = await db.from("business_profile").select("posting_prefs").single();
+  const { error: prefsError } = await ownRow(db
     .from("business_profile")
-    .update({ posting_prefs: { ...(profile?.posting_prefs ?? {}), platforms: posts_per_week } })
-    .eq("id", 1);
+    .update({ posting_prefs: { ...(profile?.posting_prefs ?? {}), platforms: posts_per_week } }));
   if (prefsError) throw prefsError;
   return getAutomation(db);
 }

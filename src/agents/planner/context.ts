@@ -30,7 +30,7 @@ export async function loadPlannerContext(db: SupabaseClient, weekStart: string):
   const bible = await approvedBible(db);
   const since = new Date(Date.now() - 21 * 86400_000).toISOString();
   const [profile, pillars, personas, offerings, offers, events, learnings, recent] = await Promise.all([
-    db.from("business_profile").select("*").eq("id", 1).single(),
+    db.from("business_profile").select("*").single(),
     db.from("content_pillars").select("id, name, description, target_share, funnel_stage").eq("active", true),
     db.from("personas").select("id, name, summary, pains").eq("active", true),
     db.from("offerings").select("id, name, kind, is_hero, priority, price, currency").eq("active", true).order("priority", { ascending: false }),

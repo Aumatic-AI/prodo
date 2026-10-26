@@ -1,6 +1,7 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { env } from "@/config/env";
 import { AppError, notConfigured } from "@/core/errors";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { businessDb } from "@/lib/supabase/business";
 import { request, statusError } from "@/providers/http";
 import type { ConnectedAccount, PublishResult, PublishStatus, PublishTarget, Publisher } from "./types";
 
@@ -38,18 +39,18 @@ export async function zernioCall(path: string, init: RequestInit = {}): Promise<
   return { status: res.status, body };
 }
 
-let cachedProfileId: string | null = null;
-let pendingProfile: Promise<string> | null = null;
+// Every business has its own Zernio profile (app_settings.zernio_profile_id): its connected accounts
+// live there, so one business never sees or posts to another's accounts. One Zernio API key for all.
 
-/** Tags this client's profile in Zernio, so a second create finds the first instead of duplicating it. */
-function externalId(): string {
+/** Tags a business's profile in Zernio, so a second create finds the first instead of duplicating it. */
+function externalId(businessId: string): string {
   const ref = env.SUPABASE_PROJECT_REF ?? new URL(env.NEXT_PUBLIC_SUPABASE_URL).hostname.split(".")[0];
-  return `prodo-${ref}`;
+  return `prodo-${ref}-${businessId}`;
 }
 
-/** Creates the client's profile, or returns the one Zernio already has for it. */
-async function createProfile(name: string): Promise<string> {
-  const tag = externalId();
+/** Creates the business's profile, or returns the one Zernio already has for it (two calls at once both land here). */
+async function createProfile(name: string, businessId: string): Promise<string> {
+  const tag = externalId(businessId);
   const res = await request(SERVICE, `${ZERNIO_API}/profiles`, {
     method: "POST",
     headers: zernioHeaders(),
@@ -68,27 +69,23 @@ async function createProfile(name: string): Promise<string> {
   throw statusError(SERVICE, res.ok ? 502 : res.status, body?.error ?? body?.message);
 }
 
-async function loadOrCreateProfileId(): Promise<string> {
-  const db = createAdminClient();
-  const { data: settings, error } = await db.from("app_settings").select("zernio_profile_id").eq("id", 1).single();
+/**
+ * The business's own Zernio profile: read from its app_settings, created on first use. Never the
+ * Zernio account's default profile, and never cached in memory (one server serves every business).
+ * `db` is limited to the business (RLS or businessDb).
+ */
+async function businessProfileId(db: SupabaseClient): Promise<string> {
+  const { data: settings, error } = await db.from("app_settings").select("business_id, zernio_profile_id").single();
   if (error) throw new AppError("Couldn't load settings. Try again.", "PROVIDER_DOWN", true);
   if (settings.zernio_profile_id) return settings.zernio_profile_id;
 
-  const { data: business } = await db.from("business_profile").select("name").eq("id", 1).single();
-  const id = await createProfile(business?.name?.trim() || "Prodo");
+  const { data: business } = await db.from("business_profile").select("name").single();
+  const id = await createProfile(business?.name?.trim() || "Prodo", settings.business_id);
 
-  const { error: saveError } = await db.from("app_settings").update({ zernio_profile_id: id }).eq("id", 1);
+  // Only the server may set the profile (migration 0017), so a user can't swap in another business's
+  const { error: saveError } = await businessDb(settings.business_id).from("app_settings").update({ zernio_profile_id: id }).eq("business_id", settings.business_id);
   if (saveError) throw new AppError("Couldn't save the Zernio profile. Try again.", "PROVIDER_DOWN", true);
   return id;
-}
-
-/** This client's own Zernio profile: read from app_settings, created on first use. Never the account's default. */
-async function clientProfileId(): Promise<string> {
-  if (cachedProfileId) return cachedProfileId;
-  // Calls that arrive together share one lookup, so only one profile is created
-  pendingProfile ??= loadOrCreateProfileId().finally(() => (pendingProfile = null));
-  cachedProfileId = await pendingProfile;
-  return cachedProfileId;
 }
 
 function mediaType(url: string): "image" | "video" {
@@ -165,8 +162,8 @@ export class ZernioPublisher implements Publisher {
     return { success: true };
   }
 
-  async listAccounts(): Promise<ConnectedAccount[]> {
-    const profileId = await clientProfileId();
+  async listAccounts(db: SupabaseClient): Promise<ConnectedAccount[]> {
+    const profileId = await businessProfileId(db);
     const { body } = await zernioCall(`/accounts?profileId=${encodeURIComponent(profileId)}`);
     return (body.accounts ?? [])
       .filter((a: any) => a.isActive !== false)
@@ -180,8 +177,8 @@ export class ZernioPublisher implements Publisher {
       }));
   }
 
-  async getConnectUrl(platform: string): Promise<string | null> {
-    const profileId = await clientProfileId();
+  async getConnectUrl(db: SupabaseClient, platform: string): Promise<string | null> {
+    const profileId = await businessProfileId(db);
     const { body } = await zernioCall(`/connect/${encodeURIComponent(platform)}?profileId=${encodeURIComponent(profileId)}`);
     if (!body.authUrl) throw new AppError("Couldn't get a connect link from Zernio. Try again.", "PROVIDER_DOWN", true);
     return body.authUrl;

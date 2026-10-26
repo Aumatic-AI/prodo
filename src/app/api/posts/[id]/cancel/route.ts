@@ -1,13 +1,13 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { apiHandler } from "@/lib/api-handler";
-import { createClient } from "@/lib/supabase/server";
+import { currentBusiness } from "@/core/business";
 import { getPost, cancelPost } from "@/core/posts";
 import { publisherFor } from "@/providers/publishing/registry";
 import { inngest } from "@/jobs/client";
 
 export const POST = apiHandler(async (_req: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
   const { id } = await params;
-  const db = await createClient();
+  const { db, businessId } = await currentBusiness();
   const post = await getPost(db, id);
 
   if (post.status !== "scheduled") {
@@ -40,7 +40,7 @@ export const POST = apiHandler(async (_req: NextRequest, { params }: { params: P
   // Cancels the dangling check-post-status run (it's sleeping until the
   // original publish_at) so it can't wake later and overwrite this post's
   // now-reverted draft status based on stale target state.
-  await inngest.send({ name: "post/cancelled", data: { postId: id } });
+  await inngest.send({ name: "post/cancelled", data: { businessId, postId: id } });
 
   return NextResponse.json({ ok: true });
 });

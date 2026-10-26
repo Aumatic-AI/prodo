@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { AppError } from "@/core/errors";
+import { ownRow } from "@/lib/supabase/own-row";
 
 // The Brand Bible: one versioned document every content agent reads. Only one version is
 // approved at a time; editing or regenerating makes a new draft and the approved one stays
@@ -157,7 +158,7 @@ export async function approveVersion(db: SupabaseClient, id: string): Promise<Bi
     funnel_stage: p.funnelStage,
   })));
 
-  const { error: statusError } = await db.from("business_profile").update({ onboarding_status: "done" }).eq("id", 1);
+  const { error: statusError } = await ownRow(db.from("business_profile").update({ onboarding_status: "done" }));
   if (statusError) throw statusError;
   return data;
 }

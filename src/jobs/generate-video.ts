@@ -1,7 +1,7 @@
 import { inngest } from "./client";
 import { adoptFinishedMedia } from "@/core/plans/plans";
 import { toInngestError } from "./to-inngest-error";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { businessDb } from "@/lib/supabase/business";
 import { getMedia, markReady, markFailed, productNameFor, type Media } from "@/core/media";
 import { getProfile } from "@/core/profile";
 import { AppError } from "@/core/errors";
@@ -17,7 +17,7 @@ import { CANVAS, type CanvasRatio } from "@/creative/sizes";
 import { buildAss } from "@/creative/subtitles";
 import { EndCard } from "@/creative/templates/carousel";
 import { loadTheme } from "@/creative/theme";
-import { storageKeyFor, upload, urlFor } from "@/providers/storage/supabase-storage";
+import { businessKey, storageKeyFor, upload, urlFor } from "@/providers/storage/supabase-storage";
 import { NonRetriableError } from "inngest";
 
 const MAX_IMAGE_POLLS = 12; // ~4.5 min
@@ -51,17 +51,19 @@ export const generateVideo = inngest.createFunction(
   {
     id: "generate-video",
     retries: 3,
-    concurrency: [{ limit: 2 }],
-    cancelOn: [{ event: "media/deleted", match: "data.mediaId" }],
+    concurrency: [{ limit: 2, key: "event.data.businessId" }],
+    cancelOn: [{ event: "media/deleted", if: "event.data.mediaId == async.data.mediaId && event.data.businessId == async.data.businessId" }],
     onFailure: async ({ event }) => {
-      const db = createAdminClient();
+      const { businessId } = event.data.event.data;
+      const db = businessDb(businessId);
       const msg = event.data.error?.message || "Video generation failed";
       await markFailed(db, event.data.event.data.mediaId, msg);
     },
   },
   { event: "media/generate-video" },
   async ({ event, step }) => {
-    const db = createAdminClient();
+    const { businessId } = event.data;
+    const db = businessDb(businessId);
     // Every step turns AppErrors into retry / stop for Inngest
     const run = <T>(id: string, fn: () => Promise<T>) => step.run(id, () => fn().catch(toInngestError));
 
@@ -109,7 +111,7 @@ export const generateVideo = inngest.createFunction(
       const result: { key: string; durationSec: number; words: { word: string; start: number; end: number }[] }[] = [];
       for (let i = 0; i < script.length; i++) {
         const { data } = await ai.voice(script[i], media.voice_id!, ai.languageCode(media.language));
-        const key = `audio/${media.id}/voice-${i}.mp3`;
+        const key = businessKey(businessId, `audio/${media.id}/voice-${i}.mp3`);
         await upload(db, key, data.buffer, "audio/mpeg");
         result.push({ key, durationSec: data.durationSec, words: data.words });
       }
@@ -192,7 +194,7 @@ export const generateVideo = inngest.createFunction(
 
     // 6. Captions (from the voice's word timings), end card and music drawn by our code, then one
     // ffmpeg run on our worker that saves the result straight to storage
-    const outputKey = storageKeyFor("video", media.id);
+    const outputKey = storageKeyFor(businessId, "video", media.id);
     const sceneDurations = clips.map((c) => c.targetDuration);
     const parts = await run("video-parts", async () => {
       const theme = await loadTheme(db);
@@ -200,11 +202,11 @@ export const generateVideo = inngest.createFunction(
       const words = (voices ?? []).flatMap((v, i) => v.words.map((w) => ({ word: w.word, start: starts[i] + w.start, end: starts[i] + w.end })));
       let subtitlesKey: string | null = null;
       if (words.length) {
-        subtitlesKey = `videos/${media.id}/captions.ass`;
+        subtitlesKey = businessKey(businessId, `videos/${media.id}/captions.ass`);
         const ass = buildAss({ canvas, words, font: theme.fonts.heading, highlight: theme.accent.bg, highlightText: theme.accent.text });
         await upload(db, subtitlesKey, Buffer.from(ass, "utf8"), "text/plain");
       }
-      const endCardKey = `videos/${media.id}/end-card.png`;
+      const endCardKey = businessKey(businessId, `videos/${media.id}/end-card.png`);
       await upload(db, endCardKey, await renderPng(EndCard({ canvas, theme, cta: "Learn more", line: null }), canvas, theme), "image/png");
       const font = theme.fontFiles.find((f) => f.family === theme.fonts.heading && f.weight >= 700) ?? theme.fontFiles[0];
       // Videos without a voice get a music bed so they aren't silent
@@ -213,7 +215,7 @@ export const generateVideo = inngest.createFunction(
         const total = sceneDurations.reduce((a, b) => a + b, 0) + 2.5;
         const music = await ai.music("Upbeat, modern instrumental background music for a short social media video, no vocals.", Math.ceil(total)).catch(() => null);
         if (music) {
-          musicKey = `audio/${media.id}/music.mp3`;
+          musicKey = businessKey(businessId, `audio/${media.id}/music.mp3`);
           await upload(db, musicKey, music.data, "audio/mpeg");
           await db.from("media_files").insert({ media_id: media.id, role: "music", storage_key: musicKey });
         }

@@ -1,4 +1,4 @@
-import { createAdminClient } from "@/lib/supabase/admin";
+import { businessDb } from "@/lib/supabase/business";
 import { userMessage } from "@/core/errors";
 import { toInngestError } from "@/jobs/to-inngest-error";
 import { sumUsage, type Usage } from "@/providers/usage";
@@ -19,6 +19,8 @@ export type AgentName =
 
 export interface AgentStepOptions<T> {
   agent: AgentName;
+  /** The business the work is for: its budget, its pause switch, its agent_runs */
+  businessId: string;
   /** Groups the steps of one workflow run, e.g. one onboarding research */
   runId?: string;
   planId?: string;
@@ -51,7 +53,7 @@ export async function runAgentStep<T>(opts: AgentStepOptions<T>, fn: (track: Tra
 }
 
 async function runStep<T>(opts: AgentStepOptions<T>, fn: (track: Track) => Promise<T>): Promise<T> {
-  const db = createAdminClient();
+  const db = businessDb(opts.businessId);
   const stepStarted = Date.now();
   trace.emit("step-start", { input: opts.input === undefined ? undefined : preview(opts.input) });
   try {

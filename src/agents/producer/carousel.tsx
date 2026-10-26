@@ -34,11 +34,11 @@ export async function produceCarousel(a: ProduceArgs, brief: CarouselBrief): Pro
     first: "12s",
     every: "6s",
     max: 30,
-    onRetry: (usage) => logUsage({ agent: "producer", planId: a.item.plan_id, itemId: a.item.id, mediaId: a.mediaId }, usage, "Made the cover photo again after a failed try"),
+    onRetry: (usage) => logUsage({ agent: "producer", businessId: a.businessId, planId: a.item.plan_id, itemId: a.item.id, mediaId: a.mediaId }, usage, "Made the cover photo again after a failed try"),
   });
   if (!done) throw new NonRetriableError("Making the cover photo took too long. Try again.");
   // Our own copy of the photo: the provider's link is temporary and can be slow
-  const photoUrl = await a.task(`keep-cover-${a.round}`, () => keepPhoto(a.db(), a.mediaId, done[0].url!, `cover-r${a.round}`), () => "Saved the cover photo");
+  const photoUrl = await a.task(`keep-cover-${a.round}`, () => keepPhoto(a.db(), a.businessId, a.mediaId, done[0].url!, `cover-r${a.round}`), () => "Saved the cover photo");
 
   return a.task(
     `slides-${a.round}`,
@@ -59,7 +59,7 @@ export async function produceCarousel(a: ProduceArgs, brief: CarouselBrief): Pro
             <ContentSlide canvas={canvas} theme={theme} index={i} total={total} title={s.title} body={s.body} />
           );
         const png = await renderPng(element, canvas, theme);
-        const key = dated("carousels", a.mediaId, `slide-${i + 1}-r${a.round}.png`);
+        const key = dated(a.businessId, "carousels", a.mediaId, `slide-${i + 1}-r${a.round}.png`);
         await saveFile(a.db(), a.mediaId, "slide", key, png, "image/png", { position: i, aspect_ratio: canvas.ratio });
         keys.push(key);
       }

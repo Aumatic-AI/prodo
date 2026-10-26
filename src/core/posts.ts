@@ -1,4 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { AppError } from "@/core/errors";
+import { publisherFor } from "@/providers/publishing/registry";
 
 export type PostStatus = "draft" | "scheduled" | "publishing" | "published" | "partial" | "failed";
 export type TargetStatus = "pending" | "sending" | "published" | "failed";
@@ -73,6 +75,30 @@ export function validateScheduleDate(publishAt: string): string | null {
   return null;
 }
 
+export interface TargetInput {
+  platform: string;
+  account_id: string;
+  account_name: string;
+  caption: string;
+  provider: string;
+}
+
+/**
+ * Targets sent by the browser, checked against the business's own connected accounts: an account
+ * that isn't the business's is refused, and the account's name and provider come from the
+ * provider, never from the request.
+ */
+export async function ownTargets(db: SupabaseClient, targets: unknown): Promise<TargetInput[]> {
+  const list = Array.isArray(targets) ? (targets as Partial<TargetInput>[]) : [];
+  if (!list.length) return [];
+  const accounts = await publisherFor().listAccounts(db);
+  return list.map((t) => {
+    const account = accounts.find((a) => a.id === t.account_id && (a.platform === t.platform || (t.platform === "twitter" && a.platform === "x")));
+    if (!account) throw new AppError("One of the chosen accounts isn't connected anymore. Refresh the page and pick again.", "INVALID_INPUT", false);
+    return { platform: t.platform!, account_id: account.id, account_name: account.name, caption: String(t.caption ?? ""), provider: account.provider };
+  });
+}
+
 export async function createPost(
   db: SupabaseClient,
   input: {
@@ -81,13 +107,7 @@ export async function createPost(
     publish_at?: string | null;
     origin?: "manual" | "agent";
     plan_item_id?: string | null;
-    targets: {
-      platform: string;
-      account_id: string;
-      account_name: string;
-      caption: string;
-      provider: string;
-    }[];
+    targets: TargetInput[];
   }
 ) {
   const { data: post, error: postError } = await db
@@ -116,17 +136,7 @@ export async function createPost(
   return getPost(db, post.id);
 }
 
-export async function replacePostTargets(
-  db: SupabaseClient,
-  postId: string,
-  targets: {
-    platform: string;
-    account_id: string;
-    account_name: string;
-    caption: string;
-    provider: string;
-  }[]
-) {
+export async function replacePostTargets(db: SupabaseClient, postId: string, targets: TargetInput[]) {
   const { error: deleteError } = await db.from("post_targets").delete().eq("post_id", postId);
   if (deleteError) throw deleteError;
 

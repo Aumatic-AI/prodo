@@ -1,6 +1,7 @@
 import type { GetStepTools } from "inngest";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { inngest } from "@/jobs/client";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { businessDb } from "@/lib/supabase/business";
 import { setAgentState, type ResearchAgent } from "@/core/onboarding/research";
 import { agentStep } from "@/agents/run";
 import { trace } from "@/lib/trace";
@@ -12,6 +13,9 @@ type Track = (usage: Usage | Usage[]) => void;
 
 /** What every research agent gets. */
 export interface AgentKit {
+  businessId: string;
+  /** The business's database (service role, limited to this business) */
+  db: () => SupabaseClient;
   runId: string;
   /** Extra input from whoever started the agent, e.g. the client's note on "Regenerate" */
   note: string | null;
@@ -26,6 +30,8 @@ export interface AgentKit {
  * step.invoke. Marks the agent running, loads the business context, runs it, and records
  * the one-line summary it returns (or the error, when it fails for good).
  */
+type ResearchEvent = `research/${"website-analyst" | "visual-identity-analyst" | "social-market-analyst" | "brand-strategist"}`;
+
 export function defineResearchAgent(agent: ResearchAgent, run: (kit: AgentKit) => Promise<string>) {
   const slug = agent.replace(/_/g, "-");
 
@@ -35,16 +41,17 @@ export function defineResearchAgent(agent: ResearchAgent, run: (kit: AgentKit) =
       retries: 2,
       onFailure: async ({ error, event }) => {
         trace.scope({ runId: event.data.event.data.runId, agent }, () => trace.emit("agent-end", { status: "failed", error: error.message }));
-        await setAgentState(createAdminClient(), agent, {
+        await setAgentState(businessDb(event.data.event.data.businessId), agent, {
           state: "failed",
           error: error.message,
           finishedAt: new Date().toISOString(),
         });
       },
     },
-    { event: `research/${slug}` },
+    { event: `research/${slug}` as ResearchEvent },
     async ({ event, step }) => {
-      const runId: string = event.data.runId;
+      const { runId, businessId } = event.data;
+      const db = () => businessDb(businessId);
       // Inngest runs step callbacks outside the handler's async context, so each one sets the trace context
       // itself. Trace events are written inside steps because the handler re-runs between steps.
       const traced =
@@ -56,23 +63,23 @@ export function defineResearchAgent(agent: ResearchAgent, run: (kit: AgentKit) =
         "start",
         traced(async () => {
           trace.emit("agent-start", { note: event.data.note ?? undefined });
-          await setAgentState(createAdminClient(), agent, { state: "running" });
+          await setAgentState(db(), agent, { state: "running" });
         })
       );
       const ctx = (await step.run(
         "load-context",
-        traced(() => loadResearchContext(createAdminClient()))
+        traced(() => loadResearchContext(db()))
       )) as ResearchContext;
 
-      const task: AgentKit["task"] = (id, fn, summary) => agentStep(step, id, { agent, runId, summary }, fn);
+      const task: AgentKit["task"] = (id, fn, summary) => agentStep(step, id, { agent, businessId, runId, summary }, fn);
 
       const note: string | null = event.data.note ?? null;
-      const summary = await run({ runId, note, step, ctx, task });
+      const summary = await run({ businessId, db, runId, note, step, ctx, task });
       await step.run(
         "finish",
         traced(async () => {
           trace.emit("agent-end", { status: "done", summary });
-          await setAgentState(createAdminClient(), agent, { state: "done", summary, finishedAt: new Date().toISOString() });
+          await setAgentState(db(), agent, { state: "done", summary, finishedAt: new Date().toISOString() });
         })
       );
       return { summary };

@@ -2,17 +2,19 @@ import { redirect } from "next/navigation";
 import { MobileTopBar } from "@/components/layout/MobileTopBar";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { SplashScreen } from "@/components/layout/SplashScreen";
-import { getSession } from "@/core/session";
+import { NO_BUSINESS_SIGN_OUT, getSession } from "@/core/session";
 import { SessionStoreProvider } from "@/stores/SessionStoreProvider";
 
 // Checked once per page load (layouts stay mounted while moving between tabs)
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession();
   if (!session) redirect("/login");
+  // A login without a business can't use the app: sign it out with a plain message
+  if (!session.business) redirect(NO_BUSINESS_SIGN_OUT);
   if (session.business.onboardingStatus !== "done") redirect("/onboarding");
 
   return (
-    <SessionStoreProvider session={session}>
+    <SessionStoreProvider session={{ ...session, business: session.business }}>
       {/* Same look as onboarding: ob-* colours and the Plus Jakarta font */}
       {/* Covers the first load while the first screens' data is fetched */}
       <SplashScreen />

@@ -34,8 +34,8 @@ export async function resolveSources(db: SupabaseClient, refs: SourceRef[]): Pro
     ids("chunk").length ? db.from("brand_chunks").select("id, content, brand_sources(url, title)").in("id", ids("chunk")) : null,
     ids("offering").length ? db.from("offerings").select("id, name, description, benefits, url").in("id", ids("offering")) : null,
     ids("proof").length ? db.from("proof_items").select("id, kind, content, author, brand_sources(url)").in("id", ids("proof")) : null,
-    ids("answer").length ? db.from("business_profile").select("*").eq("id", 1).single() : null,
-    refs.includes("kit") ? db.from("brand_kit").select("colors, fonts, photo_style, layout_style").eq("id", 1).single() : null,
+    ids("answer").length ? db.from("business_profile").select("*").single() : null,
+    refs.includes("kit") ? db.from("brand_kit").select("colors, fonts, photo_style, layout_style").single() : null,
   ]);
 
   const out: ResolvedSource[] = [];

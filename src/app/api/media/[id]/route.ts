@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { apiHandler } from "@/lib/api-handler";
+import { currentBusiness } from "@/core/business";
 import { createClient } from "@/lib/supabase/server";
 import { deleteMedia, getMedia } from "@/core/media";
 import { inngest } from "@/jobs/client";
@@ -23,8 +24,8 @@ export const GET = apiHandler(async (_req, { params }: { params: Promise<{ id: s
 
 export const DELETE = apiHandler(async (_req, { params }: { params: Promise<{ id: string }> }) => {
   const { id } = await params;
-  const db = await createClient();
+  const { db, businessId } = await currentBusiness();
   await deleteMedia(db, id);
-  await inngest.send({ name: "media/deleted", data: { mediaId: id } });
+  await inngest.send({ name: "media/deleted", data: { businessId, mediaId: id } });
   return NextResponse.json({ ok: true });
 });

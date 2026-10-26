@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { apiHandler } from "@/lib/api-handler";
-import { createClient } from "@/lib/supabase/server";
+import { currentBusiness } from "@/core/business";
 import { AppError } from "@/core/errors";
 import { getMedia, type Media } from "@/core/media";
 import { inngest } from "@/jobs/client";
@@ -14,7 +14,7 @@ const schema = z.object({ note: z.string().trim().min(2, "Say what should change
 export const POST = apiHandler(async (req: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
   const { id } = await params;
   const { note } = schema.parse(await req.json());
-  const db = await createClient();
+  const { db, businessId } = await currentBusiness();
   const original = await getMedia(db, id);
 
   if (original.source !== "generated") throw new AppError("Only media Prodo made can be made again. Upload a new file instead.", "INVALID_INPUT", false);
@@ -48,6 +48,6 @@ export const POST = apiHandler(async (req: NextRequest, { params }: { params: Pr
   const media = data as Media;
 
   const event = media.type === "video" ? "media/generate-video" : "media/generate-image";
-  await inngest.send({ name: event, data: { mediaId: media.id }, id: media.id });
+  await inngest.send({ name: event, data: { businessId, mediaId: media.id }, id: media.id });
   return NextResponse.json(media, { status: 201 });
 });

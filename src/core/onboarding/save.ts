@@ -26,7 +26,7 @@ function parse<T>(schema: { safeParse: (v: unknown) => { success: true; data: T 
 export type StepSlice = "basics" | "products" | "services" | "style" | null;
 
 async function businessSlice(db: SupabaseClient): Promise<"products" | "services"> {
-  const { data } = await db.from("business_profile").select("business_type").eq("id", 1).single();
+  const { data } = await db.from("business_profile").select("business_type").single();
   if (!data?.business_type) throw new AppError("Finish the basics first.", "INVALID_INPUT", false);
   return data.business_type === "service" ? "services" : "products";
 }

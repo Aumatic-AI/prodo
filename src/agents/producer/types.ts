@@ -9,8 +9,10 @@ export type Step = GetStepTools<typeof inngest>;
 /** What every producer gets for one attempt at a slot. */
 export interface ProduceArgs {
   step: Step;
+  businessId: string;
   /** Producer steps, logged against the slot and its media */
   task: Task;
+  /** The business's database (service role, limited to this business) */
   db: () => SupabaseClient;
   item: PlanItem;
   mediaId: string;

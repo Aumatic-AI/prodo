@@ -1,6 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { furthest, isStep, type StepKey } from "./steps";
 import type { OnboardingRaw } from "./load";
+import { ownRow } from "@/lib/supabase/own-row";
+import { assertOwnKey, businessIdOf } from "@/core/business";
+import { removeFiles } from "@/providers/storage/remove-files";
 
 export async function upsertRows(db: SupabaseClient, table: string, rows: Record<string, unknown>[]) {
   if (!rows.length) return;
@@ -33,13 +36,16 @@ export async function syncAssets(
   existing: { id: string; storage_key: string }[],
   rows: { id: string; storage_key: string; kind: string; offering_id?: string | null; tags?: string[] }[]
 ) {
+  const businessId = await businessIdOf(db);
+  const known = new Map(existing.map((a) => [a.id, a.storage_key]));
+  for (const row of rows) assertOwnKey(businessId, row.storage_key, [known.get(row.id)]);
   await upsertRows(db, "brand_assets", rows);
   const keep = new Set(rows.map((r) => r.id));
   const gone = existing.filter((a) => !keep.has(a.id));
   if (!gone.length) return;
   const { error } = await db.from("brand_assets").delete().in("id", gone.map((a) => a.id));
   if (error) throw error;
-  await db.storage.from("media").remove(gone.map((a) => a.storage_key));
+  await removeFiles(businessId, gone.map((a) => a.storage_key));
 }
 
 /**
@@ -55,20 +61,18 @@ export async function saveProgress(
   const { data: current, error: readError } = await db
     .from("business_profile")
     .select("onboarding, onboarding_status")
-    .eq("id", 1)
     .single();
   if (readError) throw readError;
 
   const before: OnboardingRaw = current.onboarding ?? {};
   const reached = before.step && isStep(before.step) ? furthest(before.step, step) : step;
 
-  const { error } = await db
+  const { error } = await ownRow(db
     .from("business_profile")
     .update({
       ...fields,
       onboarding: { ...before, ...raw, step: reached },
       ...(current.onboarding_status === "not_started" ? { onboarding_status: "collecting" } : {}),
-    })
-    .eq("id", 1);
+    }));
   if (error) throw error;
 }

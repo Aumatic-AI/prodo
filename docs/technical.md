@@ -54,9 +54,9 @@ External services are isolated behind interfaces in `src/providers/`. Nothing ou
 
 ### Publishing (`providers/publishing/`)
 
-`Publisher` interface: `publishPhoto`, `publishVideo`, `publishText`, `publishCarousel` (optional), `getStatus(ref, platform)`, `cancelScheduled`, `listAccounts`, `getConnectUrl(platform)`. `registry.ts` maps provider names to implementations; `publisherFor()` with no argument returns the default, **Zernio**. Each `post_targets` row stores its provider, so old Upload-Post rows keep working.
+`Publisher` interface: `publishPhoto`, `publishVideo`, `publishText`, `publishCarousel` (optional), `getStatus(ref, platform)`, `cancelScheduled`, `listAccounts(db)`, `getConnectUrl(db, platform)` (`db` is the business's database: RLS client or `businessDb`). `registry.ts` maps provider names to implementations; `publisherFor()` with no argument returns the default, **Zernio**. Each `post_targets` row stores its provider, so old Upload-Post rows keep working.
 
-Zernio (`https://zernio.com/api/v1`, Bearer key): one Zernio post per target (`POST /posts` with `publishNow` or `scheduledFor` in UTC), status from `GET /posts/{id}` per platform, cancel with `DELETE /posts/{id}`, accounts from `GET /accounts?profileId=`, connect links from `GET /connect/{platform}?profileId=`. When a target is published, `check-post-status` saves `provider_post_id` and `published_at`. Each client has its own Zernio profile: the first accounts or connect call creates one named after the business, tagged `externalId = prodo-<supabase ref>` (a repeat create returns 409 and the existing id), and saves its id in `app_settings.zernio_profile_id`. The account's default profile is never used.
+Zernio (`https://zernio.com/api/v1`, Bearer key): one Zernio post per target (`POST /posts` with `publishNow` or `scheduledFor` in UTC), status from `GET /posts/{id}` per platform, cancel with `DELETE /posts/{id}`, accounts from `GET /accounts?profileId=`, connect links from `GET /connect/{platform}?profileId=`. When a target is published, `check-post-status` saves `provider_post_id` and `published_at`. Each business has its own Zernio profile (one Zernio API key for all): the first accounts or connect call creates one named after the business, tagged `externalId = prodo-<supabase ref>-<business id>` (a repeat create returns 409 and the existing id), and saves its id in that business's `app_settings.zernio_profile_id`. The profile id is read from the database on every call, never cached in memory. The account's default profile is never used. Accounts the browser picks for a post are checked against the business's own list (`ownTargets()` in `core/posts.ts`), and their name and provider come from Zernio. Upload-Post publishing has one profile for the whole deploy, so it stays legacy-only.
 
 ### Analytics (`providers/analytics/`)
 
@@ -66,71 +66,7 @@ Zernio (`https://zernio.com/api/v1`, Bearer key): one Zernio post per target (`P
 
 Two backends behind one client (`client.ts`: `submitJob`, `getJob`, `videoReady`). New jobs go to **our worker** when `FFMPEG_WORKER_URL` and `FFMPEG_WORKER_SECRET` are set, otherwise to **Upload-Post's FFmpeg API** (`UPLOAD_POST_API_KEY`); `RENDERER` forces one. Job ids carry their backend and output key, so a job always finishes where it started. Connecting the worker later needs no code change.
 
-Upload-Post (`backends/upload-post.ts`), rules found with real jobs: files go in as public URLs and the command uses `{input}` (first file), `{input1}`… and `{output}`; `; | & # Technical Details
-
-Spec: **Prodo Agent Blueprint** (https://claude.ai/artifact/FdBQTmEf44xghnbi2hua4a). All ten agents are built (Sprint 1: 1–4; Sprint 2: 5–10).
-
-## Principle: code, AI, vendor
-
-Our own code handles anything rule-based (maths, layout, rendering, scheduling, validation). The AI model handles judgement. A paid vendor is used only where our code can't do the job. All text on ads (headline, CTA, price badge, logo) is drawn by our code with Satori, never by the image model.
-
-## Services
-
-| Service | Used for | Used by |
-|---|---|---|
-| OpenAI | Text, vision, embeddings (`text-embedding-3-small`, 1536 dims) | All agents |
-| Kie | nano-banana images, Seedance video clips | Producer, manual create |
-| ElevenLabs | Voice-over with word timestamps, music | Producer, manual create |
-| Zernio | Publishing, scheduling, connected accounts, per-post analytics. Replaces Upload-Post | Social & Market Analyst, Publisher, Performance Analyst |
-| Upload-Post | Legacy publisher, kept registered so posts made before Zernio still resolve | Publish jobs |
-| Twelve Labs (Pegasus 1.5) | Video understanding: hook, structure, pacing. Pegasus 1.2 was retired; 1.5 needs no index | Social & Market Analyst, QA Critic, Performance Analyst |
-| Firecrawl | Website map, crawl, screenshots | Website Analyst, Visual Identity Analyst |
-| ScrapeCreators | Public profiles and posts (Instagram, TikTok, YouTube), Meta and Google ad libraries, Google search. Replaces SerpAPI (see below) | Social & Market Analyst |
-| FFmpeg worker (`worker/`) | Self-hosted on a **Hostinger** VPS. Scene clips, burned-in captions, music under the voice, end card, 9:16 and 4:5, loudness | Producer, manual create |
-| Resend | Email for notifications. Off until `EMAIL_ENABLED=1` (emails are only logged) | Notifications |
-| Google Fonts | Brand fonts as files for our renderers (Satori and captions), kept in storage | Producer |
-| Nager.Date | Public holidays per country (free, no key) | Monthly refresh |
-| Supabase | Postgres, storage, auth, pgvector | All |
-| Inngest | Jobs, weekly cron, approval waits, retries | All |
-
-## Provider Adapter Pattern
-
-External services are isolated behind interfaces in `src/providers/`. Nothing outside that folder imports a vendor SDK or calls a vendor URL.
-
-### AI (`providers/ai/`)
-
-`registry.ts` exports one `ai` object. Jobs, routes and agents call it, never a vendor file:
-
-| Call | Provider | Returns |
-|---|---|---|
-| `ai.text(prompt, system?)`, `ai.vision(prompt, imageUrl, system?)` | OpenAI | `{ data: string, usage }` |
-| `ai.structured(zodSchema, prompt, { system?, images?, model? })` | OpenAI JSON mode | `{ data: T, usage }`; a bad shape is a retryable error. `images` are public URLs |
-| `ai.embed(texts)` | OpenAI `text-embedding-3-small` | `{ data: number[][], usage }` |
-| `ai.image.create / status`, `ai.video.create / status`, `ai.task.error / resultUrl` | Kie | task id, then status |
-| `ai.voice`, `ai.voices`, `ai.music` | ElevenLabs | audio + word timings |
-| `ai.analyzeVideo(videoUrl, prompt, jsonSchema?)` | Twelve Labs Pegasus 1.5 | JSON answer in one call (no index, no polling; videos up to 1 hour) |
-| `ai.crawl.map / scrape / screenshot / start / status` | Firecrawl | pages as markdown; `scrape(url, { design: true })` adds raw HTML and a screenshot |
-| `ai.search.google(query, region?)` | ScrapeCreators | web results |
-| `ai.ads.google(domain)`, `ai.ads.metaAdvertisers(name)`, `ai.ads.meta(pageId, country?)` | ScrapeCreators | ad creatives |
-| `ai.social.profile(platform, handle)`, `ai.social.posts(platform, handle, limit)` | ScrapeCreators | normalised `SocialProfile` / `SocialPost` (Instagram, TikTok, YouTube) |
-
-**SerpAPI was replaced by ScrapeCreators** (decision, Phase 1.8): one key covers search, ads and public social data. Google Trends and Maps reviews are dropped for now; dates come from the client's answers and reviews from the website and the client.
-
-`usage` is `{ provider, model, tokensIn, tokensOut, costUsd }`. Model names live in `src/config/models.ts`; estimated prices in `src/config/pricing.ts` (update them from each vendor's pricing page).
-
-`providers/http.ts` gives every adapter the same plumbing: `request()` adds a timeout (60 s, 5 min for downloads), and `statusError()` / `jsonOrThrow()` turn an HTTP status into a plain `AppError`.
-
-### Publishing (`providers/publishing/`)
-
-`Publisher` interface: `publishPhoto`, `publishVideo`, `publishText`, `publishCarousel` (optional), `getStatus(ref, platform)`, `cancelScheduled`, `listAccounts`, `getConnectUrl(platform)`. `registry.ts` maps provider names to implementations; `publisherFor()` with no argument returns the default, **Zernio**. Each `post_targets` row stores its provider, so old Upload-Post rows keep working.
-
-Zernio (`https://zernio.com/api/v1`, Bearer key): one Zernio post per target (`POST /posts` with `publishNow` or `scheduledFor` in UTC), status from `GET /posts/{id}` per platform, cancel with `DELETE /posts/{id}`, accounts from `GET /accounts?profileId=`, connect links from `GET /connect/{platform}?profileId=`. When a target is published, `check-post-status` saves `provider_post_id` and `published_at`. Each client has its own Zernio profile: the first accounts or connect call creates one named after the business, tagged `externalId = prodo-<supabase ref>` (a repeat create returns 409 and the existing id), and saves its id in `app_settings.zernio_profile_id`. The account's default profile is never used.
-
-### Analytics (`providers/analytics/`)
-
-`Analytics` interface, implemented by `zernio.ts`: `getPostMetrics(providerPostId)` (null while Zernio is still syncing), `getMetricsSince(date, page)`, `getAccountStats(accountId)`, `listPastPosts(accountId, limit)` (with media URLs when available). `analyticsFor()` returns it.
-
- and backticks aren't allowed, so the filter graph is uploaded as a file (`-filter_complex_script`); placeholders aren't filled in inside that file, so captions are burned in by a second job (`-vf subtitles={input1}`) with Upload-Post's own font (the worker uses the brand font). The finished file is downloaded into our storage; working files live under `render-jobs/<id>/` and are removed afterwards. It uses Upload-Post's monthly processing minutes. Check it with `npm run smoke scripts/smoke/upload-post-render.ts`.
+Upload-Post (`backends/upload-post.ts`), rules found with real jobs: files go in as public URLs and the command uses `{input}` (first file), `{input1}`… and `{output}`; `; | & $` and backticks aren't allowed, so the filter graph is uploaded as a file (`-filter_complex_script`); placeholders aren't filled in inside that file, so captions are burned in by a second job (`-vf subtitles={input1}`) with Upload-Post's own font (the worker uses the brand font). The finished file is downloaded into our storage; working files live under `render-jobs/<id>/` and are removed afterwards. It uses Upload-Post's monthly processing minutes. Check it with `npm run smoke scripts/smoke/upload-post-render.ts`.
 
 ### FFmpeg worker (`worker/`)
 
@@ -144,6 +80,25 @@ A small Node 24 service with no npm dependencies, deployed with Docker + Caddy (
 ### Storage (`providers/storage/`)
 
 `supabase-storage.ts` is the only file that turns a storage key into a URL. Everything else stores and passes keys.
+
+A business's files live under `<business id>/…`: `businessKey(businessId, path)` and `storageKeyFor(businessId, type, id)` build keys; the Producer's `dated(businessId, …)` too. Logged-in users can only create files in their own folder (signed upload links from `POST /api/uploads`) and can't list the bucket; replacing and deleting is done by the server (`removeFiles(businessId, keys)` in `remove-files.ts`), which only deletes keys in that business's folder (or old unfoldered files, for the business that owns them). A key sent by the browser must be in the business's folder or already one of its files (`assertOwnKey()`). Files made before multi-tenant keep their old paths. Shared files with no business: `fonts/` (Google Fonts cache) and `render-jobs/` (Upload-Post working files).
+
+## Multi-tenant
+
+One deploy serves every business. One login owns one business (`businesses.owner_id`, migration 0017), and every table has `business_id`.
+
+- **New logins**: Supabase → Authentication → Add user. A trigger on `auth.users` creates the business; a trigger on `businesses` creates its `business_profile`, `app_settings` (notification email = the login's email) and `brand_kit` rows. The person then goes through onboarding.
+- **API routes** use the logged-in client. RLS (`own_business`: `business_id = current_business_id()`) limits every query, and inserts get `business_id` from the column default. `currentBusiness()` (`src/core/business.ts`) gives the id when a route needs it (events, storage keys). A login with no business is signed out with a message.
+- **Agents and jobs** use `businessDb(businessId)` (`src/lib/supabase/business.ts`): the service role, but every select, update and delete is filtered to the business, every insert and upsert is stamped with it, an update can't change it, and every `rpc()` gets `p_business_id`. It refuses the `businesses` table. `createAdminClient()` is only for storage and for `listActiveBusinessIds()`.
+- **Events**: every event has `businessId` (`ForBusiness<…>` in `src/jobs/client.ts`, so a missing one doesn't compile). Event ids built from a week or a time include it (`plan-<business>-<week>`, `learn-<business>-…`).
+- **Crons** (`cronForEveryBusiness` in `src/jobs/every-business.ts`) list the businesses that finished onboarding and still have an owner, and send one event each: `plan/check-due` (hourly), `performance/sync` (daily), `performance/learn` (Sundays), `brand/monthly-refresh` (1st of the month). The function behind each event does the work for that business.
+- **Concurrency** is per business where it limits work (one plan, one research, three slots at a time, one learning run), so one business never waits for another.
+- **Settings rows** are one per business: read with `.single()`, update with `ownRow(...)` (the API refuses an update without a filter).
+- **Database guards**: foreign keys include `business_id` (`(col, business_id) → parent (id, business_id)`), so a row can't point at another business's row; a trigger stops `business_id` from changing; unique rules (week, Bible version, learnings, snapshots, reports) are per business; `match_brand_chunks`, `match_recent_hooks` and `set_research_state` search or write one business.
+- **Server-only columns**: logged-in users can write their own rows straight through the API, so a trigger (`guard_server_columns`) lets only the server set `app_settings.zernio_profile_id`, `post_targets.provider_ref` and `post_targets.provider_post_id` (users may only clear them). `publish-post` checks every target's account against the business's connected accounts again before posting. File deletes (`removeFiles(businessId, keys)`) only touch the business's folder, or old unfoldered files when `businesses.owns_unfoldered_files` is set (the first business).
+- **Cancel events** match the business as well as the item (`cancelOn` with `if: … && event.data.businessId == async.data.businessId`).
+- **Browser**: logging in or out reloads the page, so nothing cached from one business shows for the next login.
+- **Known limit**: Zernio analytics (`getMetricsSince`) pages through the whole Zernio account, shared by every business. Only the business's own posts are saved, but with many businesses its posts can fall past the 20-page cap and fall back to single lookups.
 
 ## Agents
 
@@ -200,7 +155,7 @@ Removed list items: offerings and offers are archived (`active = false`); review
 | Agent | Folder | Steps | Writes |
 |---|---|---|---|
 | 1 Website Analyst | `agents/website-analyst/` | map site → rank up to 30 pages by URL (code) → read each page (Firecrawl; unchanged pages skipped by hash) → embed changed pages → pull facts per page (AI, zod) → merge: near-identical names matched in code, then one AI check that drops repeats across pages and items the client already entered (it only drops, never rewrites) | `brand_sources` (web_page), `brand_chunks`, `offerings`, `offers`, `proof_items` (extracted rows inactive/unverified, with `source_id`) |
-| 2 Visual Identity Analyst | `agents/visual-identity/` | homepage HTML, CSS and screenshot (Firecrawl) → logo palette and light/dark versions (sharp, node-vibrant) → brand colours and WCAG AA text pairs (code) → photo and layout style (AI vision) | `brand_kit`, logo variants in storage (`logo/variants/`) |
+| 2 Visual Identity Analyst | `agents/visual-identity/` | homepage HTML, CSS and screenshot (Firecrawl) → logo palette and light/dark versions (sharp, node-vibrant) → brand colours and WCAG AA text pairs (code) → photo and layout style (AI vision) | `brand_kit`, logo variants in storage (`<business id>/logo/variants/`) |
 | 3 Social & Market Analyst | `agents/social-market/` | own posts (Zernio when connected, otherwise public profiles) → baselines and top/bottom 20% (code) → competitors: find if fewer than 2 (Google search + AI), Meta and Google ads, Instagram, homepage → summary (AI) → videos (Twelve Labs: up to 6 own, 4 competitor) → hooks (AI) | `brand_sources` (social_post, competitor), `brand_chunks`, `learnings` (baseline, format), `competitors` (+ discovered), `hook_library` |
 
 Rules every agent follows:
@@ -210,7 +165,7 @@ Rules every agent follows:
 - Prompts and their zod schemas live in `src/prompts/agents/`. Pure logic (ranking, chunking, colours, baselines) has its own files and is checked offline by `npm run smoke scripts/check/research-logic.ts`.
 - Facts only: extracted offerings, offers and proof keep `source_id` and wait for the client (`active = false`, `verified = false`). Competitor findings stay on `competitors.analysis` and `competitor` sources, never in our facts or Brand Brain chunks.
 
-**State.** `business_profile.onboarding.research` = `{ id, attempt, state: running|failed|done, startedAt, finishedAt, error, agents: { <agent>: { state: queued|running|done|failed, summary, error } } }`. Agents write it in parallel through `set_research_state(path, value)`, one atomic update each.
+**State.** `business_profile.onboarding.research` = `{ id, attempt, state: running|failed|done, startedAt, finishedAt, error, agents: { <agent>: { state: queued|running|done|failed, summary, error } } }`. Agents write it in parallel through `set_research_state(path, value, p_business_id)`, one atomic update each.
 
 **Progress screen** (`/onboarding/progress`). `GET /api/onboarding/progress` returns the state, the last 40 logged steps, steps done per agent, cost so far and `stale` (running but nothing logged for 20 min). The page polls every 3 s while running and stops when done or failed. Closing, reloading or coming back later shows the same state from the server.
 
@@ -240,7 +195,7 @@ load facts (answers, offerings incl. pending, proof, kit, market notes) → sear
 ### Weekly loop (Sprint 2: agents 5–9)
 
 ```
-weekly cron (hourly; fires on the client's plan day and hour, in their time zone) or "Plan this week" or the first Brand Bible approval
+weekly cron (hourly, one `plan/check-due` per business; fires on that business's plan day and hour, in its time zone) or "Plan this week" or the first Brand Bible approval
 → plan/requested → 5 Planner → plan-item/produce × N
 → per slot: 6 Creative Director → 8 QA Gate 1 (≤ 2 rewrites) → 7 Producer → 8 QA Gate 2 (≤ 2 targeted redos) → ready | needs_review
 → plan-item/settled → all settled: plan → review, notify (in-app + email) → client approves (or full autopilot after the timeout)
@@ -280,8 +235,8 @@ Each slot is one run of `produce-plan-item` (`agents/weekly/produce-item.ts`, 3 
 
 `agents/performance-analyst/`. The maths is code (`score.ts`, checked offline); the AI only explains the numbers.
 
-- **Daily** (`agent-performance-metrics`, 05:00 UTC): metrics for every post target in its first 30 days from Zernio analytics (one paged list, then single lookups for the rest) → one `post_metrics` row per target per day (engagement rate = the provider's, else engagements ÷ reach/impressions/views); follower counts per connected account → `account_snapshots`.
-- **Weekly** (`agent-performance-learnings`, Sunday 02:00 UTC, before the Planner; also `performance/learn` from "Update learnings"): latest numbers of every post from the last 90 days → baseline per platform (median of own posts once there are 10+, else the research baseline, else a platform default) → each post's score = engagement rate ÷ baseline (views when there is no rate, capped at 5) → learnings by angle, hook type, format, framework, lever, pillar, persona and posting time (overall and per platform; rejected slots count as 0.6 at half weight; confidence = n ÷ (n + 5); under 5 posts is an "early sign") → hook scores, and hooks scoring ≥ 1.5× become `own_winner` → why the best and worst video of the month did what they did (Twelve Labs, optional) → insights (AI; any insight without a number is replaced by a code-written one) → `weekly_reports` row and the weekly report notification (emailed).
+- **Daily** (`agent-performance-metrics`, 05:00 UTC, per business via `performance/sync`): metrics for every post target in its first 30 days from Zernio analytics (one paged list, then single lookups for the rest) → one `post_metrics` row per target per day (engagement rate = the provider's, else engagements ÷ reach/impressions/views); follower counts per connected account → `account_snapshots`.
+- **Weekly** (`agent-performance-learnings`, Sunday 02:00 UTC per business, before the Planner; also `performance/learn` from "Update learnings"): latest numbers of every post from the last 90 days → baseline per platform (median of own posts once there are 10+, else the research baseline, else a platform default) → each post's score = engagement rate ÷ baseline (views when there is no rate, capped at 5) → learnings by angle, hook type, format, framework, lever, pillar, persona and posting time (overall and per platform; rejected slots count as 0.6 at half weight; confidence = n ÷ (n + 5); under 5 posts is an "early sign") → hook scores, and hooks scoring ≥ 1.5× become `own_winner` → why the best and worst video of the month did what they did (Twelve Labs, optional) → insights (AI; any insight without a number is replaced by a code-written one) → `weekly_reports` row and the weekly report notification (emailed).
 - The Planner reads `learnings` on its next run: format weights, best posting times (10+ posts), and the learnings list in its prompt.
 
 **Screens.** `/performance`: weekly report, KPIs vs the previous period, reach and engagement over time, platforms, top posts, "What's working", followers, approval rate. `/activity`: every agent step, filterable, paged. `/costs`: the month's spend vs budget, by agent, day, kind of work, asset and weekly plan. APIs: `GET /api/performance?days=7|30|90`, `POST /api/performance/learn`, `GET /api/costs?month=YYYY-MM`, `GET /api/activity?agent=&status=&before=`.
@@ -326,9 +281,9 @@ Before the body runs, `assertBudget` (`src/agents/budget.ts`) stops it with `PAU
 
 - `src/middleware.ts` runs on every page and `/api` route. Logged-out page requests redirect to `/login?next=…`; logged-out API requests get `401 { error: { code: "UNAUTHORIZED", message } }`. Public: `/login`, `/api/auth/callback`, `/api/inngest` (Inngest signs its own requests).
 - `apiHandler()` checks the session again as a second layer. Pass `{ public: true }` only for routes that must work logged out.
-- Database: RLS on every table, `authenticated` role only, no `anon` privileges (migration `0009`). Jobs and agents use `createAdminClient()` (service role).
-- Storage bucket `media`: public read, writes for logged-in users only.
-- Signups are off in Supabase Auth; users are created in the dashboard.
+- Database: RLS on every table, `authenticated` role only and only its own business (migration `0017`), no `anon` privileges (migration `0009`). Jobs and agents use `businessDb(businessId)` (service role, one business).
+- Storage bucket `media`: public read; logged-in users may only create files in their own `<business id>/` folder; the server replaces and deletes files.
+- Signups are off in Supabase Auth (keep "Allow new users to sign up" off); users are created in the dashboard, and each one gets its own business.
 
 ## Error Handling Chain
 
@@ -371,11 +326,12 @@ Raw vendor error messages never reach the browser. Every `AppError` has a plain,
 2. Vendor retries disabled (`maxRetries: 0`) — Inngest is the only retry layer
 3. Every fetch has a timeout (60s default, 5min for downloads)
 4. Event ID = media/post ID — Inngest deduplicates double-clicks
-5. `cancelOn` stops a run when the item is deleted mid-job
-6. Concurrency: 5 images, 2 videos, 1 run per post
+5. `cancelOn` stops a run when the item is deleted mid-job (matching the item and the business)
+6. Concurrency: per business 5 images, 2 videos, 3 plan slots, 1 plan, 1 research; 1 run per post
 7. `onFailure` writes status + message to the DB row
 8. `step.sleep` for polling — no server runs while waiting
 9. Large files go to storage first; steps pass only the key (Inngest caps step output size)
+10. Every event carries `businessId`; functions open the database with `businessDb(businessId)`
 
 ## Kie Gotcha
 

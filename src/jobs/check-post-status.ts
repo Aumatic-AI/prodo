@@ -1,15 +1,16 @@
 import { inngest } from "./client";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { businessDb } from "@/lib/supabase/business";
 import { getPost, updatePost } from "@/core/posts";
 import { notify } from "@/core/notifications/notify";
 import { publisherFor } from "@/providers/publishing/registry";
 
 /** Sleeps until the post is due, then polls the provider for each target's real outcome and live URL. */
 export const checkPostStatus = inngest.createFunction(
-  { id: "check-post-status", cancelOn: [{ event: "post/cancelled", match: "data.postId" }] },
+  { id: "check-post-status", cancelOn: [{ event: "post/cancelled", if: "event.data.postId == async.data.postId && event.data.businessId == async.data.businessId" }] },
   { event: "post/check-status" },
   async ({ event, step }) => {
-    const db = createAdminClient();
+    const { businessId } = event.data;
+    const db = businessDb(businessId);
 
     await step.sleepUntil("wait-until-due", event.data.checkAt);
 

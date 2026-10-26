@@ -36,7 +36,7 @@ export async function snapshot(db: SupabaseClient, phase: "start" | "end"): Prom
         count(db, "offers", ["verified", false]),
         count(db, "proof_items", ["verified", false]),
         count(db, "competitors", ["source", "discovered"]),
-        db.from("brand_kit").select("colors, fonts, logo_variants, photo_style, layout_style").eq("id", 1).maybeSingle(),
+        db.from("brand_kit").select("colors, fonts, logo_variants, photo_style, layout_style").maybeSingle(),
       ]);
       return { counts, waiting: { pendingOfferings, pendingOffers, pendingProof, discovered }, kit: kit.data };
     });

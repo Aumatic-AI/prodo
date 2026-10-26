@@ -11,7 +11,7 @@ export async function saveServices(db: SupabaseClient, v: Services) {
     db.from("proof_items").select("id").eq("kind", "case_study").eq("verified", true),
     db.from("proof_items").select("id").in("kind", CREDENTIAL_KINDS).eq("verified", true),
     db.from("brand_assets").select("id, storage_key").in("kind", ["team", "location", "work"]),
-    db.from("business_profile").select("cta_links").eq("id", 1).single(),
+    db.from("business_profile").select("cta_links").single(),
   ]);
   const ids = (res: { data: { id: string }[] | null }) => (res.data ?? []).map((r) => r.id);
 

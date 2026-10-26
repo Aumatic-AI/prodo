@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { apiHandler } from "@/lib/api-handler";
-import { createClient } from "@/lib/supabase/server";
+import { currentBusiness } from "@/core/business";
 import { AppError } from "@/core/errors";
 import { findPlanByWeek } from "@/core/plans/plans";
 import { resolveWeek, weekClock } from "@/core/plans/week";
@@ -13,7 +13,7 @@ const schema = z.object({ week: z.string().default("next"), replace: z.boolean()
 // "Plan next week" / "Plan again": starts the Planner for that week
 export const POST = apiHandler(async (req: NextRequest) => {
   const { week, replace } = schema.parse(await req.json().catch(() => ({})));
-  const db = await createClient();
+  const { db, businessId } = await currentBusiness();
   const clock = await weekClock(db);
   const weekStart = resolveWeek(week, clock);
   if (weekStart < clock.thisWeek) throw new AppError("That week is over. Plan this week or a later one.", "INVALID_INPUT", false);
@@ -29,6 +29,6 @@ export const POST = apiHandler(async (req: NextRequest) => {
   if (existing && ["planning", "producing"].includes(existing.status) && replace) {
     throw new AppError("The agents are still working on this week. Wait until they finish, then plan again.", "INVALID_INPUT", false);
   }
-  await inngest.send({ name: "plan/requested", id: `plan-${weekStart}-${replace ? "again" : "new"}-${Math.floor(Date.now() / 60_000)}`, data: { weekStart, replace, source: "client" } });
+  await inngest.send({ name: "plan/requested", id: `plan-${businessId}-${weekStart}-${replace ? "again" : "new"}-${Math.floor(Date.now() / 60_000)}`, data: { businessId, weekStart, replace, source: "client" } });
   return NextResponse.json({ weekStart, started: true });
 });

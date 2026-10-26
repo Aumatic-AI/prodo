@@ -65,7 +65,7 @@ async function fontsFor(heading: string | null, body: string | null): Promise<{ 
 }
 
 export async function loadTheme(db: SupabaseClient): Promise<CreativeTheme> {
-  const [kit, { data: profile }] = await Promise.all([getKit(db), db.from("business_profile").select("name, logo_key").eq("id", 1).single()]);
+  const [kit, { data: profile }] = await Promise.all([getKit(db), db.from("business_profile").select("name, logo_key").single()]);
   const c = kit.colors;
   const textOptions = [WHITE, BLACK, c.text, c.bg];
 

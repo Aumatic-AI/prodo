@@ -13,7 +13,7 @@ export interface WeekClock {
 }
 
 export async function weekClock(db: SupabaseClient): Promise<WeekClock> {
-  const { data } = await db.from("business_profile").select("timezone").eq("id", 1).single();
+  const { data } = await db.from("business_profile").select("timezone").single();
   const timezone = safeZone(data?.timezone);
   const today = zonedParts(new Date(), timezone).day;
   return { timezone, today, thisWeek: weekStartOf(today), nextWeek: nextWeekStart(today) };

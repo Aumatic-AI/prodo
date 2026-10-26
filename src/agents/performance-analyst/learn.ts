@@ -2,12 +2,13 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { inngest } from "@/jobs/client";
 import { MODELS } from "@/config/models";
 import { notify } from "@/core/notifications/notify";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { businessDb } from "@/lib/supabase/business";
 import { addDays, safeZone, weekStartOf, zonedParts } from "@/lib/zoned-time";
 import { ai } from "@/providers/ai/registry";
 import { urlFor } from "@/providers/storage/supabase-storage";
 import { INSIGHTS_SYSTEM, insightsSchema } from "@/prompts/agents/insights";
 import { agentStep, optional } from "@/agents/run";
+import { cronForEveryBusiness } from "@/jobs/every-business";
 import { loadPerformance, loadRejected, storedBaselines, type PerfPost } from "./data";
 import { baselines, groupLearnings, MIN_CONFIDENT, REJECTED_SCORE, REJECTED_WEIGHT, scorePost, type Learning, type Tagged } from "./score";
 
@@ -76,19 +77,23 @@ async function followers(db: SupabaseClient, today: string): Promise<{ now: numb
   return { now, change: now - then };
 }
 
+/** Sundays at 02:00 UTC, for each business (before its Planner runs) */
+export const learningsCron = cronForEveryBusiness("agent-performance-learnings-cron", "TZ=UTC 0 2 * * 0", "performance/learn");
+
 export const weeklyLearnings = inngest.createFunction(
-  { id: "agent-performance-learnings", retries: 2, concurrency: [{ limit: 1 }] },
-  [{ cron: "TZ=UTC 0 2 * * 0" }, { event: "performance/learn" }],
-  async ({ step }) => {
-    const db = () => createAdminClient();
+  { id: "agent-performance-learnings", retries: 2, concurrency: [{ limit: 1, key: "event.data.businessId" }] },
+  { event: "performance/learn" },
+  async ({ event, step }) => {
+    const { businessId } = event.data;
+    const db = () => businessDb(businessId);
     const runId = `learnings-${new Date().toISOString().slice(0, 10)}`;
     const task = <T,>(id: string, fn: (track: (u: any) => void) => Promise<T>, summary: (r: T) => string) =>
-      agentStep(step, id, { agent: "performance_analyst", runId, summary }, fn);
+      agentStep(step, id, { businessId, agent: "performance_analyst", runId, summary }, fn);
 
     const result = await task(
       "score-posts",
       async () => {
-        const { data: profile } = await db().from("business_profile").select("timezone, language, name").eq("id", 1).single();
+        const { data: profile } = await db().from("business_profile").select("timezone, language, name").single();
         const tz = safeZone(profile?.timezone);
         const sinceIso = new Date(Date.now() - WINDOW_DAYS * 86400_000).toISOString();
         const [posts, rejected, stored] = await Promise.all([loadPerformance(db(), sinceIso, tz), loadRejected(db(), sinceIso, tz), storedBaselines(db())]);
@@ -107,7 +112,7 @@ export const weeklyLearnings = inngest.createFunction(
             .from("learnings")
             .upsert(
               learnings.map((l) => ({ ...l, updated_at: new Date().toISOString() })),
-              { onConflict: "dimension,value,platform" }
+              { onConflict: "business_id,dimension,value,platform" }
             );
           if (error) throw error;
         }
@@ -120,7 +125,7 @@ export const weeklyLearnings = inngest.createFunction(
                 { dimension: "baseline", value: "engagement_rate", platform, score: b.er, sample_size: b.sample, confidence: 1, insight: "Median engagement rate of your own posts" },
                 ...(b.views ? [{ dimension: "baseline", value: "views", platform, score: b.views, sample_size: b.sample, confidence: 1, insight: "Median views of your own posts" }] : []),
               ],
-              { onConflict: "dimension,value,platform" }
+              { onConflict: "business_id,dimension,value,platform" }
             );
         }
 
@@ -226,7 +231,7 @@ export const weeklyLearnings = inngest.createFunction(
         const r = res.data.report;
         const { error } = await db()
           .from("weekly_reports")
-          .upsert({ week_start: result.weekStart, headline: r.headline, summary: r.summary, next_week: r.nextWeek, stats: { ...s, baselineFrom: result.baselineFrom } }, { onConflict: "week_start" });
+          .upsert({ week_start: result.weekStart, headline: r.headline, summary: r.summary, next_week: r.nextWeek, stats: { ...s, baselineFrom: result.baselineFrom } }, { onConflict: "business_id,week_start" });
         if (error) throw error;
 
         await notify(db(), {

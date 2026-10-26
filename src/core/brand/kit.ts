@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { BLACK, readablePairs, WHITE, type TextPair } from "@/lib/color";
 import { TEMPLATE_IDS } from "@/core/creative/brief";
+import { ownRow } from "@/lib/supabase/own-row";
 
 // The brand kit the Visual Identity Analyst builds and the client can override.
 
@@ -28,7 +29,7 @@ export interface BrandKit extends KitInput {
 }
 
 export async function getKit(db: SupabaseClient): Promise<BrandKit> {
-  const { data, error } = await db.from("brand_kit").select("*").eq("id", 1).single();
+  const { data, error } = await db.from("brand_kit").select("*").single();
   if (error) throw error;
   return {
     colors: { primary: null, secondary: null, accent: null, bg: WHITE, text: BLACK, pairs: [], ...data.colors },
@@ -58,7 +59,7 @@ export async function saveKit(db: SupabaseClient, input: KitInput): Promise<Bran
   // Colours or fonts the client changed are theirs: later research runs keep them
   const sameColors = (["primary", "secondary", "accent", "bg", "text"] as const).every((k) => current.colors[k] === c[k]);
   const sameFonts = current.fonts.heading === input.fonts.heading && current.fonts.body === input.fonts.body;
-  const { error } = await db
+  const { error } = await ownRow(db
     .from("brand_kit")
     .update({
       colors: { ...current.colors, ...c, pairs, ...(sameColors ? {} : { manual: true }) },
@@ -66,8 +67,7 @@ export async function saveKit(db: SupabaseClient, input: KitInput): Promise<Bran
       photo_style: input.photo_style,
       layout_style: input.layout_style,
       template_ids: input.template_ids,
-    })
-    .eq("id", 1);
+    }));
   if (error) throw error;
   return getKit(db);
 }

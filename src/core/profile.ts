@@ -40,7 +40,6 @@ export async function getProfile(db: SupabaseClient): Promise<BusinessProfile | 
   const { data } = await db
     .from("business_profile")
     .select("*")
-    .eq("id", 1)
     .single();
   return data;
 }

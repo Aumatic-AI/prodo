@@ -28,7 +28,7 @@ export async function loadCosts(db: SupabaseClient, month: string): Promise<Cost
 
   const [runs, settings] = await Promise.all([
     db.from("agent_runs").select("agent, cost_usd, created_at, media_id, plan_id").gte("created_at", start).lt("created_at", end).limit(20000),
-    db.from("app_settings").select("monthly_budget_usd").eq("id", 1).single(),
+    db.from("app_settings").select("monthly_budget_usd").single(),
   ]);
   if (runs.error) throw runs.error;
   const rows = (runs.data ?? []).map((r) => ({ ...r, cost: Number(r.cost_usd ?? 0) }));

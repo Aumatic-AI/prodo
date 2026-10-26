@@ -4,7 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { LIMITS } from "@/config/limits";
 import { AppError } from "@/core/errors";
 import { request } from "@/providers/http";
-import { upload } from "@/providers/storage/supabase-storage";
+import { businessKey, upload } from "@/providers/storage/supabase-storage";
 import { luminance, toHex } from "@/lib/color";
 
 // Logo colours and versions for light and dark backgrounds. Code only.
@@ -79,12 +79,12 @@ export interface LogoVariants {
  * Logo versions as storage keys. Only logos with transparency can be recoloured;
  * a logo on a solid box is used as it is everywhere.
  */
-export async function makeLogoVariants(db: SupabaseClient, image: Buffer, logoKey: string, analysis: LogoAnalysis, darkText: string): Promise<LogoVariants> {
+export async function makeLogoVariants(db: SupabaseClient, businessId: string, image: Buffer, logoKey: string, analysis: LogoAnalysis, darkText: string): Promise<LogoVariants> {
   if (!analysis.transparent) return { full: logoKey, light: logoKey, dark: null };
 
   const stamp = Date.now();
   const save = async (name: string, png: Buffer) => {
-    const key = `logo/variants/${stamp}-${name}.png`;
+    const key = businessKey(businessId, `logo/variants/${stamp}-${name}.png`);
     await upload(db, key, png, "image/png");
     return key;
   };

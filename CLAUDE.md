@@ -1,8 +1,8 @@
 # CLAUDE.md — Prodo
 
-Autonomous AI ad and content system for one client. Onboarding builds the brand knowledge (Brand Bible, Brand Brain); ten agents then plan, produce, publish and learn from posts on a weekly loop. Manual create-and-post still works alongside the agents.
+Autonomous AI ad and content system. Onboarding builds each business's brand knowledge (Brand Bible, Brand Brain); ten agents then plan, produce, publish and learn from posts on a weekly loop. Manual create-and-post still works alongside the agents.
 
-One repo, one deploy per client. Not multi-tenant: each client has its own Supabase project, Vercel project, Inngest environment and keys.
+One deploy serves many businesses (multi-tenant): **one login = one business**. A new login gets its own empty business and goes through onboarding. Every table has `business_id`; see "Multi-tenant" below.
 
 ## Spec
 
@@ -16,13 +16,16 @@ Those pages fill their tables from inline JavaScript. Read the raw HTML, not jus
 
 ### Status
 
-Branch `sprint-1` (now also holds Sprint 2 work). Don't commit unless the user asks.
+Sprint 1 and 2 are merged to `main`; multi-tenant work is on branch `multi-tenant`. Don't commit unless the user asks.
 - Sprint 1: 1.1–1.10 built. Left for 1.11: FFmpeg worker env vars + smoke test, a full run for both test brands, sprint report, PR.
 - Sprint 2 (phases 2–4 of the Blueprint) code written 2026-10-25: Planner (5), Creative Director (6), Producer upgrade (7: Satori ad layouts, carousels, video with captions/music/end card/renditions), QA Critic (8, both gates with targeted redo), Publisher (9, three autopilot modes), weekly cron, This week board + approval inbox, "Create an ad", notifications (in-app + email, sending off). Offline checks pass (`scripts/check/weekly-logic.ts`); no real run yet. **Needs migration 0016** and a worker redeploy.
 - UI: every screen uses the kit (`src/components/ui` was deleted). The Dashboard was removed (it was built for Upload-Post); a new one comes with the learning loop.
 - Code written 2026-10-25 (round 2): agent 10 Performance Analyst (daily metrics and followers, weekly learnings, hook scores, weekly report), Performance / Activity / Costs screens, logo change → Visual Identity Analyst, client colour and font edits protected, monthly refresh (public holidays + Social & Market Analyst), pause holds scheduled posts, ad layouts per brand, mobile app shell, "make again with a note" in Media. Dropped on purpose: app theme from the client's brand kit.
+- Multi-tenant (2026-10-26, branch `multi-tenant`): one login = one business. **Needs migration 0017**, then regenerated types. Sprint 1–2 work is merged to `main`.
 
-Migrations were applied by pasting them into the Supabase SQL Editor, not `supabase db push`, so the CLI's history doesn't know them. Before the first `db push`, run `npx supabase migration repair --status applied 0001 0002 0003 0004 0005 0006 0007 0008 0009 0010 0011 0012 0013 0014 0015` (add 0016 once the user has run it).
+Migrations were applied by pasting them into the Supabase SQL Editor, not `supabase db push`, so the CLI's history doesn't know them. Before the first `db push`, run `npx supabase migration repair --status applied 0001 0002 0003 0004 0005 0006 0007 0008 0009 0010 0011 0012 0013 0014 0015 0016` (add 0017 once the user has run it).
+
+**Deviation from the plan:** the plan had one deploy (Supabase, Vercel, Inngest) per client. Prodo is now multi-tenant: one deploy, one login per business, every row tagged with `business_id`.
 
 **Deviation from the plan:** SerpAPI is replaced by ScrapeCreators (no Google Trends or Maps reviews for now). See `docs/technical.md` → Brand research.
 
@@ -119,11 +122,22 @@ Claims, reviews, prices and deadlines must come from stored facts (`offerings`, 
 
 ### Storage keys, not URLs
 
-`media.storage_key`, `brand_assets.storage_key`, `media_files.storage_key` store keys like `images/2026/10/<id>.png`. Only `supabase-storage.ts` turns a key into a URL. Never store or pass full URLs.
+`media.storage_key`, `brand_assets.storage_key`, `media_files.storage_key` store keys like `<business id>/images/2026/10/<id>.png`. A business's files live in its own folder: build keys with `businessKey()` / `storageKeyFor(businessId, …)`. Files from before multi-tenant keep their old paths (no folder). Only `supabase-storage.ts` turns a key into a URL. Never store or pass full URLs. A key that comes from the browser is checked with `assertOwnKey()`; files are deleted only by the server (`removeFiles()`).
 
 ### Connected accounts
 
-Read live from the publishing provider (cached 60s in TanStack Query). No `connected_accounts` table. `account_name` is copied onto `post_targets` at post time for history.
+Read live from the publishing provider (cached 60s in TanStack Query). No `connected_accounts` table. Each business has its own Zernio profile (`app_settings.zernio_profile_id`), so `listAccounts(db)` and `getConnectUrl(db, platform)` take the business's database. Accounts the browser picks for a post are checked with `ownTargets()`. `account_name` is copied onto `post_targets` at post time for history.
+
+### Multi-tenant
+
+One login owns one business (`businesses.owner_id`). Creating a login in Supabase Auth creates its business and settings rows (database triggers); the user then goes through onboarding.
+
+- **API routes**: the logged-in client; RLS (`business_id = current_business_id()`) limits every query, and inserts fill `business_id` by themselves. When the id is needed (events, storage keys) use `currentBusiness()` (`src/core/business.ts`).
+- **Agents and jobs**: `businessDb(businessId)` (`src/lib/supabase/business.ts`), the service role limited to one business: it filters every read, update and delete, stamps every insert and passes `p_business_id` to database functions. Never use `createAdminClient()` for tables; it's only for storage and for listing businesses.
+- **Events**: every Inngest event carries `businessId` (typed in `src/jobs/client.ts`). Concurrency keys and event ids built from dates include it. Crons send one event per active business (`cronForEveryBusiness`).
+- **Settings rows** (`business_profile`, `app_settings`, `brand_kit`) are one row per business: read them with `.single()`, update them with `ownRow(...)`.
+- The database backs it up: foreign keys include `business_id`, so a row can't point at another business's row, and a trigger stops a row moving to another business.
+- Users can write their own rows straight through the API, so never trust a column the server set: `zernio_profile_id`, `provider_ref` and `provider_post_id` are server-only (trigger), `publish-post` re-checks accounts, and `removeFiles(businessId, keys)` only deletes the business's own files. `cancelOn` matches `businessId` too.
 
 ### Error handling chain
 
@@ -131,7 +145,7 @@ Vendor error → adapter translates to `AppError` (type + plain message + retry 
 
 ### Inngest jobs
 
-Each outside call is its own step. Retries only replay the failed step. Vendor retries disabled. Event ID = media/post ID (deduplicates). `cancelOn` stops runs when items are deleted. Regenerate at most twice, then mark "Needs review". See `docs/technical.md`.
+Each outside call is its own step. Retries only replay the failed step. Vendor retries disabled. Every event carries `businessId`. Event ID = media/post ID (deduplicates); ids built from a week or a time include the business id. `cancelOn` stops runs when items are deleted. Regenerate at most twice, then mark "Needs review". See `docs/technical.md`.
 
 ### Kie gotcha
 
@@ -149,20 +163,22 @@ Never append `2>&1` to the types command — stderr noise breaks the generated f
 
 ### Schema rules
 
-- 27 tables, see `docs/database.md`. Columns added after the Data Model artifact (0014–0015) are listed there under "Changes since the Data Model"; that file wins over the artifact. Singletons (`business_profile`, `app_settings`, `brand_kit`) have `check (id = 1)` and a seeded row.
+- 28 tables plus `businesses`, see `docs/database.md`. Changes after the Data Model artifact (0014–0017) are listed there under "Changes since the Data Model"; that file wins over the artifact. Every table has `business_id`. Settings tables (`business_profile`, `app_settings`, `brand_kit`) have one row per business (primary key `business_id`), made when the business is created.
 - Products and services are one table, `offerings`, with `kind`. Type-specific details go in `attributes`.
 - Brand rows (`offerings`, `personas`, `content_pillars`, `offers`) are archived with `active = false`, never hard-deleted.
 - `brand_bible` is versioned; only one row can be `approved` (partial unique index).
 - pgvector: `brand_chunks.embedding` and `hook_library.embedding` are `vector(1536)` (`text-embedding-3-small`). Changing the model means a migration + re-embedding. Search through `match_brand_chunks()`.
-- Access: RLS on every table, `authenticated` only, no `anon` grants. Agents and jobs use the service-role client.
+- Access: RLS on every table (`own_business`: `authenticated` sees only its own business), no `anon` grants. Agents and jobs use `businessDb(businessId)`.
 
 ### Client conventions
 
-- **API routes**: `createClient()` from `@/lib/supabase/server`
+- **API routes**: `createClient()` from `@/lib/supabase/server`, or `currentBusiness()` when the business id is needed
 - **Client components**: `createClient()` from `@/lib/supabase/browser`
-- **Inngest jobs and agents**: `createAdminClient()` from `@/lib/supabase/admin` (service-role, bypasses RLS)
+- **Inngest jobs and agents**: `businessDb(businessId)` from `@/lib/supabase/business` (service role, limited to one business)
 
 ### Auth
+
+New logins are added in Supabase → Authentication → Users → Add user (there is no sign-up page). Keep "Allow new users to sign up" off in Supabase Auth settings, or anyone could create a business through the Auth API. A login with no business is signed out with a message (`/api/auth/signout`; it never signs out a login that has a business). Logging in or out reloads the page, so no cached data from one business shows for the next login.
 
 `src/middleware.ts` protects every page and every `/api` route. Exceptions: `/login`, `/api/auth/callback`, `/api/inngest` (Inngest signs its own requests). Unauthenticated API calls get `401 { error: { code: "UNAUTHORIZED", message } }`. `apiHandler` checks the user again as a second layer; pass `{ public: true }` only for routes that must work logged out.
 
@@ -183,7 +199,7 @@ Hand-written utility classes in `globals.css` (`.bg-primary`, `.text-muted`, `.r
 - Media used by a post cannot be deleted (restrict FK)
 - A carousel is one `media` row; its slides are `media_files` rows (`role = slide`)
 - Settings → Business profile saves through `PUT /api/settings/profile` with the onboarding Basics schema and `saveBasics` (logo uploaded first with a signed link). The old multipart `/api/profile` remains for the Media screens
-- Until `business_profile.onboarding_status = 'done'` the app redirects to `/onboarding`. To reopen the wizard on a dev project, set it back to `not_started`
+- Until `business_profile.onboarding_status = 'done'` the app redirects to `/onboarding`. To reopen the wizard for a business on a dev project, set its row back to `not_started`
 - `INNGEST_DEV=1` must be unset in production
 - Never mock or fake a vendor response to make a check pass. Post only to test social accounts during development
 

@@ -1,9 +1,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Basics } from "./schemas";
 import { saveProgress } from "./sync";
+import { assertOwnKey, businessIdOf } from "@/core/business";
+import { removeFiles } from "@/providers/storage/remove-files";
 
 export async function saveBasics(db: SupabaseClient, b: Basics) {
-  const { data: profile } = await db.from("business_profile").select("cta_links, logo_key").eq("id", 1).single();
+  const { data: profile } = await db.from("business_profile").select("cta_links, logo_key").single();
+  const businessId = await businessIdOf(db);
+  if (b.logoKey) assertOwnKey(businessId, b.logoKey, [profile?.logo_key]);
 
   // Only keep socials that were filled in
   const socials = Object.fromEntries(Object.entries(b.socials).filter(([, url]) => url));
@@ -29,6 +33,6 @@ export async function saveBasics(db: SupabaseClient, b: Basics) {
 
   // Old logo file is no longer used
   if (profile?.logo_key && profile.logo_key !== b.logoKey) {
-    await db.storage.from("media").remove([profile.logo_key]);
+    await removeFiles(businessId, [profile.logo_key]);
   }
 }

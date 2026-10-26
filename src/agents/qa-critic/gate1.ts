@@ -24,7 +24,7 @@ async function describeSlot(db: SupabaseClient, itemId: string): Promise<string>
   const [persona, offering, profile] = await Promise.all([
     item.persona_id ? db.from("personas").select("name, summary, pains, desires").eq("id", item.persona_id).maybeSingle() : Promise.resolve({ data: null }),
     item.offering_id ? db.from("offerings").select("name, price, currency, benefits").eq("id", item.offering_id).maybeSingle() : Promise.resolve({ data: null }),
-    db.from("business_profile").select("name, compliance").eq("id", 1).single(),
+    db.from("business_profile").select("name, compliance").single(),
   ]);
   const lines = [
     `Business: ${profile.data?.name}`,

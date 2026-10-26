@@ -9,7 +9,7 @@ import { loadTheme, themePairs } from "@/creative/theme";
 import { ai } from "@/providers/ai/registry";
 import { getJob } from "@/providers/ffmpeg/client";
 import { submitComposeJob } from "@/providers/ffmpeg/compose-video";
-import { upload, urlFor } from "@/providers/storage/supabase-storage";
+import { businessKey, upload, urlFor } from "@/providers/storage/supabase-storage";
 import { logUsage } from "@/agents/weekly/task";
 import { optional } from "@/agents/run";
 import { canvasesFor } from "./canvases";
@@ -41,7 +41,7 @@ const languageCode = (lang: string | null) => (lang && /^[a-z]{2}$/i.test(lang) 
 
 export async function produceVideo(a: ProduceArgs, brief: VideoBrief, previous: VideoState | null, redoScenes: number[] | null): Promise<{ produced: Produced; state: VideoState }> {
   const canvases = canvasesFor("video", a.item.platforms);
-  const scope = { agent: "producer" as const, planId: a.item.plan_id, itemId: a.item.id, mediaId: a.mediaId };
+  const scope = { agent: "producer" as const, businessId: a.businessId, planId: a.item.plan_id, itemId: a.item.id, mediaId: a.mediaId };
   const onRetry = (usage: Parameters<typeof logUsage>[1]) => logUsage(scope, usage, "Made a scene again after a failed try");
 
   // 1. Voice per scene: real spoken length and word timings for captions
@@ -50,12 +50,12 @@ export async function produceVideo(a: ProduceArgs, brief: VideoBrief, previous: 
     (await a.task(
       `voice-${a.round}`,
       async (track) => {
-        const { data: profile } = await a.db().from("business_profile").select("voice_id, language").eq("id", 1).single();
+        const { data: profile } = await a.db().from("business_profile").select("voice_id, language").single();
         const out: VideoState["voices"] = [];
         for (const [i, scene] of brief.scenes.entries()) {
           const res = await ai.voice(scene.voiceover, profile?.voice_id ?? undefined, languageCode(profile?.language ?? null));
           track(res.usage);
-          const key = `audio/${a.mediaId}/voice-${i}.mp3`;
+          const key = businessKey(a.businessId, `audio/${a.mediaId}/voice-${i}.mp3`);
           await saveFile(a.db(), a.mediaId, "voice", key, res.data.buffer, "audio/mpeg", { position: i });
           out.push({ key, durationSec: res.data.durationSec, words: res.data.words });
         }
@@ -126,7 +126,7 @@ export async function produceVideo(a: ProduceArgs, brief: VideoBrief, previous: 
         async (track) => {
           const res = await ai.music(`${brief.musicMood}. Instrumental background music for a short social media ad, no vocals, steady energy.`, Math.ceil(total + END_CARD_SEC));
           track(res.usage);
-          const key = `audio/${a.mediaId}/music.mp3`;
+          const key = businessKey(a.businessId, `audio/${a.mediaId}/music.mp3`);
           await saveFile(a.db(), a.mediaId, "music", key, res.data, "audio/mpeg");
           return key;
         },
@@ -152,10 +152,10 @@ export async function produceVideo(a: ProduceArgs, brief: VideoBrief, previous: 
       for (const canvas of canvases) {
         const tag = `${canvas.ratio.replace(":", "x")}-r${a.round}`;
         const ass = buildAss({ canvas, words, overlays, font: theme.fonts.heading, highlight: theme.accent.bg, highlightText: theme.accent.text });
-        const subtitles = dated("videos", a.mediaId, `captions-${tag}.ass`);
+        const subtitles = dated(a.businessId, "videos", a.mediaId, `captions-${tag}.ass`);
         await upload(a.db(), subtitles, Buffer.from(ass, "utf8"), "text/plain");
         const card = await renderPng(<EndCard canvas={canvas} theme={theme} cta={brief.cta.label} line={brief.message.length <= 70 ? brief.message : null} />, canvas, theme);
-        const endCard = dated("videos", a.mediaId, `end-card-${tag}.png`);
+        const endCard = dated(a.businessId, "videos", a.mediaId, `end-card-${tag}.png`);
         await upload(a.db(), endCard, card, "image/png");
         out[canvas.ratio] = { subtitles, endCard };
       }
@@ -174,7 +174,7 @@ export async function produceVideo(a: ProduceArgs, brief: VideoBrief, previous: 
     async () => {
       const jobs: { ratio: string; jobId: string; key: string }[] = [];
       for (const canvas of canvases) {
-        const key = dated("videos", a.mediaId, `${canvas.ratio.replace(":", "x")}-r${a.round}.mp4`);
+        const key = dated(a.businessId, "videos", a.mediaId, `${canvas.ratio.replace(":", "x")}-r${a.round}.mp4`);
         const jobId = await submitComposeJob({
           width: canvas.width,
           height: canvas.height,

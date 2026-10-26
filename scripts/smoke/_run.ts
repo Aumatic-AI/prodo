@@ -15,3 +15,12 @@ export async function smoke(name: string, fn: () => Promise<{ result: unknown; u
     process.exitCode = 1;
   }
 }
+
+/** The business a smoke test works for: SMOKE_BUSINESS_ID, else the first one that finished onboarding. */
+export async function smokeBusinessId(): Promise<string> {
+  if (process.env.SMOKE_BUSINESS_ID) return process.env.SMOKE_BUSINESS_ID;
+  const { listActiveBusinessIds } = await import("@/lib/supabase/business");
+  const [first] = await listActiveBusinessIds();
+  if (!first) throw new Error("No business has finished onboarding. Set SMOKE_BUSINESS_ID.");
+  return first;
+}

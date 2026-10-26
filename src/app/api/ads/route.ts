@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { apiHandler } from "@/lib/api-handler";
-import { createClient } from "@/lib/supabase/server";
+import { currentBusiness } from "@/core/business";
 import { AppError } from "@/core/errors";
 import { FORMATS } from "@/core/creative/brief";
 import { approvedBible, getItemView, planForWeek } from "@/core/plans/plans";
@@ -25,7 +25,7 @@ const schema = z.object({
 // "Create ad for…": one slot through the full chain (Creative Director → QA → Producer → QA)
 export const POST = apiHandler(async (req: NextRequest) => {
   const input = schema.parse(await req.json());
-  const db = await createClient();
+  const { db, businessId } = await currentBusiness();
   await approvedBible(db);
   if (!allowedFormats(input.platforms).includes(input.format)) {
     throw new AppError("That format doesn't work on every platform you picked (TikTok and YouTube take video only; text posts don't work on Instagram).", "INVALID_INPUT", false);
@@ -58,6 +58,6 @@ export const POST = apiHandler(async (req: NextRequest) => {
     .single();
   if (error) throw error;
 
-  await inngest.send({ name: "plan-item/produce", id: `produce-${item.id}`, data: { itemId: item.id, planId: plan.id, oneOff: true } });
+  await inngest.send({ name: "plan-item/produce", id: `produce-${item.id}`, data: { businessId, itemId: item.id, planId: plan.id, oneOff: true } });
   return NextResponse.json(await getItemView(db, item.id), { status: 201 });
 });

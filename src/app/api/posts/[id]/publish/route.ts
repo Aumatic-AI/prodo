@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { apiHandler } from "@/lib/api-handler";
-import { createClient } from "@/lib/supabase/server";
-import { getPost, updatePost, replacePostTargets, validateScheduleDate } from "@/core/posts";
+import { currentBusiness } from "@/core/business";
+import { getPost, updatePost, ownTargets, replacePostTargets, validateScheduleDate } from "@/core/posts";
 import { inngest } from "@/jobs/client";
 
 export const POST = apiHandler(async (req: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
@@ -9,7 +9,7 @@ export const POST = apiHandler(async (req: NextRequest, { params }: { params: Pr
   const body = await req.json();
   const action: "now" | "schedule" | "draft" = body.action || "now";
 
-  const db = await createClient();
+  const { db, businessId } = await currentBusiness();
   const post = await getPost(db, id);
 
   if (post.status !== "draft") {
@@ -27,7 +27,7 @@ export const POST = apiHandler(async (req: NextRequest, { params }: { params: Pr
   }
 
   if (Array.isArray(body.targets)) {
-    await replacePostTargets(db, id, body.targets);
+    await replacePostTargets(db, id, await ownTargets(db, body.targets));
   }
 
   if (action === "draft") {
@@ -39,7 +39,7 @@ export const POST = apiHandler(async (req: NextRequest, { params }: { params: Pr
     publish_at: action === "schedule" ? body.publish_at : null,
   });
 
-  await inngest.send({ name: "post/publish", data: { postId: id } });
+  await inngest.send({ name: "post/publish", data: { businessId, postId: id } });
 
   return NextResponse.json({ ok: true });
 });

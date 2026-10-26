@@ -1,5 +1,4 @@
 import { env } from "@/config/env";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { ai } from "@/providers/ai/registry";
 import { urlFor } from "@/providers/storage/supabase-storage";
 import { VISUAL_STYLE_SYSTEM, visualStylePrompt, visualStyleSchema } from "@/prompts/agents/visual-style";
@@ -9,6 +8,7 @@ import { defineResearchAgent } from "@/agents/research/define";
 import { collectCss, readDesign, type SiteDesign } from "./css";
 import { analyzeLogo, downloadImage, makeLogoVariants, type LogoAnalysis, type LogoVariants } from "./logo";
 import { pickColors } from "./palette";
+import { ownRow } from "@/lib/supabase/own-row";
 
 // Agent 2 · Visual Identity Analyst
 // Builds brand_kit so code can draw on-brand ads: colours with readable text pairs, fonts,
@@ -17,8 +17,7 @@ import { pickColors } from "./palette";
 
 const MAX_PHOTOS = 4;
 
-export const visualIdentityAnalyst = defineResearchAgent("visual_identity_analyst", async ({ ctx, task }) => {
-  const db = () => createAdminClient();
+export const visualIdentityAnalyst = defineResearchAgent("visual_identity_analyst", async ({ businessId, db, ctx, task }) => {
   const publicUrl = (key: string) => urlFor(env.NEXT_PUBLIC_SUPABASE_URL, key);
 
   // A site that blocks reading isn't fatal: the logo alone still gives colours
@@ -49,7 +48,7 @@ export const visualIdentityAnalyst = defineResearchAgent("visual_identity_analys
             const image = await downloadImage(publicUrl(ctx.logoKey!));
             const analysis = await analyzeLogo(image);
             const colors = pickColors(analysis.palette, site?.design.colors ?? []);
-            const variants = await makeLogoVariants(db(), image, ctx.logoKey!, analysis, colors.text);
+            const variants = await makeLogoVariants(db(), businessId, image, ctx.logoKey!, analysis, colors.text);
             return { analysis, variants };
           },
           (r: { analysis: LogoAnalysis; variants: LogoVariants }) =>
@@ -63,7 +62,7 @@ export const visualIdentityAnalyst = defineResearchAgent("visual_identity_analys
     "save-colours-and-fonts",
     async () => {
       // Colours and fonts the client set by hand in Brand → Brand kit stay theirs
-      const { data: current } = await db().from("brand_kit").select("colors, fonts").eq("id", 1).single();
+      const { data: current } = await db().from("brand_kit").select("colors, fonts").single();
       const colors = current?.colors?.manual ? current.colors : pickColors(logo?.analysis.palette ?? [], design?.colors ?? []);
       const fonts = current?.fonts?.manual
         ? current.fonts
@@ -72,14 +71,13 @@ export const visualIdentityAnalyst = defineResearchAgent("visual_identity_analys
             body: design?.fonts.body ?? null,
             found: design?.fonts.all ?? [],
           };
-      const { error } = await db()
+      const { error } = await ownRow(db()
         .from("brand_kit")
         .update({
           colors,
           fonts,
           ...(logo ? { logo_variants: logo.variants } : {}),
-        })
-        .eq("id", 1);
+        }));
       if (error) throw error;
       return {
         colors: [colors.primary, colors.secondary, colors.accent].filter(Boolean).length,
@@ -105,13 +103,12 @@ export const visualIdentityAnalyst = defineResearchAgent("visual_identity_analys
             }
           );
           track(res.usage);
-          const { error } = await db()
+          const { error } = await ownRow(db()
             .from("brand_kit")
             .update({
               photo_style: res.data.photoStyle,
               layout_style: res.data.layoutStyle,
-            })
-            .eq("id", 1);
+            }));
           if (error) throw error;
           return res.data;
         },

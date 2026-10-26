@@ -164,7 +164,7 @@ export async function saveBaselines(db: SupabaseClient, baselines: Baseline[]): 
     ];
   });
   if (!rows.length) return 0;
-  const { error } = await db.from("learnings").upsert(rows, { onConflict: "dimension,value,platform" });
+  const { error } = await db.from("learnings").upsert(rows, { onConflict: "business_id,dimension,value,platform" });
   if (error) throw error;
   return rows.length;
 }

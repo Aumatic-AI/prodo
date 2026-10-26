@@ -101,7 +101,8 @@ function toResult(data: any, accountId: string): PublishResult {
 }
 
 // Legacy provider: kept so posts made before Zernio still show their status.
-// Here the account id is the platform name.
+// Here the account id is the platform name. It has one profile for the whole deploy
+// (UPLOAD_POST_PROFILE), not one per business, so it must never be the default provider again.
 export class UploadPostPublisher implements Publisher {
   id = "upload-post";
 

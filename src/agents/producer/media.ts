@@ -4,7 +4,7 @@ import type { PlanItem } from "@/core/plans/types";
 import { LIMITS } from "@/config/limits";
 import { AppError } from "@/core/errors";
 import { request } from "@/providers/http";
-import { upload, urlFor } from "@/providers/storage/supabase-storage";
+import { businessKey, upload, urlFor } from "@/providers/storage/supabase-storage";
 
 // Media rows the Producer makes for a slot. One media row per attempt; slides, renditions, voice
 // and music files hang off it as media_files.
@@ -33,9 +33,10 @@ export async function startMedia(db: SupabaseClient, item: PlanItem, brief: Brie
   return data.id;
 }
 
-export function dated(prefix: string, mediaId: string, name: string): string {
+/** Key for one of a media item's files, in the business's storage folder */
+export function dated(businessId: string, prefix: string, mediaId: string, name: string): string {
   const now = new Date();
-  return `${prefix}/${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, "0")}/${mediaId}/${name}`;
+  return businessKey(businessId, `${prefix}/${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, "0")}/${mediaId}/${name}`);
 }
 
 export async function saveFile(
@@ -71,11 +72,11 @@ export async function markMediaReady(db: SupabaseClient, mediaId: string, key: s
  * Keeps a copy of an AI photo in our storage and returns its public URL. The image provider's own
  * links are temporary and can be slow; the design and the quality check read our copy instead.
  */
-export async function keepPhoto(db: SupabaseClient, mediaId: string, url: string, name: string): Promise<string> {
+export async function keepPhoto(db: SupabaseClient, businessId: string, mediaId: string, url: string, name: string): Promise<string> {
   const res = await request("Image download", url, {}, LIMITS.downloadTimeoutMs);
   if (!res.ok) throw new AppError("Couldn't download the AI photo. Try again.", "PROVIDER_DOWN", true);
   const type = res.headers.get("content-type")?.split(";")[0] || "image/png";
-  const key = dated("images", mediaId, `${name}.${type === "image/jpeg" ? "jpg" : type === "image/webp" ? "webp" : "png"}`);
+  const key = dated(businessId, "images", mediaId, `${name}.${type === "image/jpeg" ? "jpg" : type === "image/webp" ? "webp" : "png"}`);
   await saveFile(db, mediaId, "thumbnail", key, Buffer.from(await res.arrayBuffer()), type);
   return urlFor(process.env.NEXT_PUBLIC_SUPABASE_URL!, key);
 }

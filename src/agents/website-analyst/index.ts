@@ -1,5 +1,4 @@
 import { AppError } from "@/core/errors";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { ai } from "@/providers/ai/registry";
 import { optional } from "@/agents/run";
 import { embedSources, saveSource } from "@/agents/research/brain";
@@ -20,10 +19,9 @@ const MIN_PAGE_CHARS = 200;
 
 const shortUrl = (url: string) => url.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "") || url;
 
-export const websiteAnalyst = defineResearchAgent("website_analyst", async ({ ctx, task }) => {
+export const websiteAnalyst = defineResearchAgent("website_analyst", async ({ db, ctx, task }) => {
   const website = ctx.website;
   if (!website) return "No website given, so nothing to read";
-  const db = () => createAdminClient();
   const brief = businessBrief(ctx);
 
   const map = await task(

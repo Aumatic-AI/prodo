@@ -34,11 +34,11 @@ export async function produceStatic(a: ProduceArgs, brief: StaticBrief): Promise
     first: "12s",
     every: "6s",
     max: 30,
-    onRetry: (usage) => logUsage({ agent: "producer", planId: a.item.plan_id, itemId: a.item.id, mediaId: a.mediaId }, usage, "Made the photo again after a failed try"),
+    onRetry: (usage) => logUsage({ agent: "producer", businessId: a.businessId, planId: a.item.plan_id, itemId: a.item.id, mediaId: a.mediaId }, usage, "Made the photo again after a failed try"),
   });
   if (!done) throw new NonRetriableError("Making the photo took too long. Try again.");
   // Our own copy of the photo: the provider's link is temporary and can be slow
-  const photoUrl = await a.task(`keep-photo-${a.round}`, () => keepPhoto(a.db(), a.mediaId, done[0].url!, `photo-r${a.round}`), () => "Saved the background photo");
+  const photoUrl = await a.task(`keep-photo-${a.round}`, () => keepPhoto(a.db(), a.businessId, a.mediaId, done[0].url!, `photo-r${a.round}`), () => "Saved the background photo");
 
   return a.task(
     `render-${a.round}`,
@@ -52,7 +52,7 @@ export async function produceStatic(a: ProduceArgs, brief: StaticBrief): Promise
           canvas,
           theme
         );
-        const key = dated("images", a.mediaId, `${canvas.ratio.replace(":", "x")}-r${a.round}.png`);
+        const key = dated(a.businessId, "images", a.mediaId, `${canvas.ratio.replace(":", "x")}-r${a.round}.png`);
         // The first size is the main file (media.storage_key); the others are renditions
         if (i === 0) await upload(a.db(), key, png, "image/png");
         else await saveFile(a.db(), a.mediaId, "rendition", key, png, "image/png", { aspect_ratio: canvas.ratio });

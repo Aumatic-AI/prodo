@@ -1,4 +1,3 @@
-import { createAdminClient } from "@/lib/supabase/admin";
 import { MODELS } from "@/config/models";
 import { saveDraft } from "@/core/brand/bible";
 import { ai } from "@/providers/ai/registry";
@@ -16,8 +15,7 @@ import { buildSourceBook } from "./sources";
 // load answers and facts → search the Brand Brain per section → write core sections (AI)
 // → personas and pillars (AI) → checks (code) → save draft → seed hooks (AI)
 
-export const brandStrategist = defineResearchAgent("brand_strategist", async ({ task, note }) => {
-  const db = () => createAdminClient();
+export const brandStrategist = defineResearchAgent("brand_strategist", async ({ db, task, note }) => {
 
   const input = await task("load-facts", async () => loadStrategistInput(db()), (r: StrategistInput) => `Loaded ${r.offerings.length} offerings and ${r.proof.length} proof points`);
 

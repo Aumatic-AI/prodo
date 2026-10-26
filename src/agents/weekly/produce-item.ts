@@ -2,7 +2,7 @@ import { inngest } from "@/jobs/client";
 import type { Brief } from "@/core/creative/brief";
 import { getItem, updateItem } from "@/core/plans/plans";
 import type { PlanItem, QaReport } from "@/core/plans/types";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { businessDb } from "@/lib/supabase/business";
 import { writeBrief } from "@/agents/creative-director";
 import { gate1 } from "@/agents/qa-critic/gate1";
 import { gate2, type Gate2Result } from "@/agents/qa-critic/gate2";
@@ -27,22 +27,22 @@ export const produceItem = inngest.createFunction(
   {
     id: "produce-plan-item",
     retries: 2,
-    concurrency: [{ limit: 3 }],
-    cancelOn: [{ event: "plan-item/cancelled", match: "data.itemId" }],
+    concurrency: [{ limit: 3, key: "event.data.businessId" }],
+    cancelOn: [{ event: "plan-item/cancelled", if: "event.data.itemId == async.data.itemId && event.data.businessId == async.data.businessId" }],
     onFailure: async ({ event, error }) => {
-      const db = createAdminClient();
-      const { itemId, planId, oneOff } = event.data.event.data;
+      const { businessId, itemId, planId, oneOff } = event.data.event.data;
+      const db = businessDb(businessId);
       await db.from("plan_items").update({ status: "failed", error: error.message }).eq("id", itemId);
       await db.from("media").update({ status: "failed", error: error.message }).eq("plan_item_id", itemId).eq("status", "generating");
-      await inngest.send({ name: "plan-item/settled", data: { itemId, planId, oneOff } });
+      await inngest.send({ name: "plan-item/settled", data: { businessId, itemId, planId, oneOff } });
     },
   },
   { event: "plan-item/produce" },
   async ({ event, step }) => {
-    const { itemId, planId, note = null, oneOff = false } = event.data;
-    const db = () => createAdminClient();
-    const cd = taskFor(step, "creative_director", { planId, itemId });
-    const qa = taskFor(step, "qa_critic", { planId, itemId });
+    const { businessId, itemId, planId, note = null, oneOff = false } = event.data;
+    const db = () => businessDb(businessId);
+    const cd = taskFor(step, "creative_director", { businessId, planId, itemId });
+    const qa = taskFor(step, "qa_critic", { businessId, planId, itemId });
 
     const settle = (status: "ready" | "needs_review", report?: Partial<QaReport>) =>
       step.run(`settle-${status}`, async () => {
@@ -72,7 +72,7 @@ export const produceItem = inngest.createFunction(
     }
     if (!passedGate1 || !brief) {
       await settle("needs_review", { reason: `The brief scored ${lastScore}/10 after ${MAX_REDOS} rewrites. Main issue: ${feedback?.[0] ?? "below the bar"}. Nothing was spent on images or video.` });
-      await step.sendEvent("settled", { name: "plan-item/settled", data: { itemId, planId, oneOff } });
+      await step.sendEvent("settled", { name: "plan-item/settled", data: { businessId, itemId, planId, oneOff } });
       return { status: "needs_review" };
     }
 
@@ -89,19 +89,19 @@ export const produceItem = inngest.createFunction(
     // A text post is ready as soon as its brief passes (startMedia saved it as ready)
     if (brief.kind === "text") {
       await settle("ready");
-      await step.sendEvent("settled", { name: "plan-item/settled", data: { itemId, planId, oneOff } });
+      await step.sendEvent("settled", { name: "plan-item/settled", data: { businessId, itemId, planId, oneOff } });
       return { status: "ready" };
     }
 
-    const producer = taskFor(step, "producer", { planId, itemId, mediaId });
-    const qa2 = taskFor(step, "qa_critic", { planId, itemId, mediaId });
+    const producer = taskFor(step, "producer", { businessId, planId, itemId, mediaId });
+    const qa2 = taskFor(step, "qa_critic", { businessId, planId, itemId, mediaId });
     let videoState: VideoState | null = null;
     let fix: string | null = null;
     let redoScenes: number[] | null = null;
     let review: Gate2Result | null = null;
 
     for (let round = 0; round <= MAX_REDOS; round++) {
-      const args: ProduceArgs = { step, task: producer, db, item, mediaId, round, fix };
+      const args: ProduceArgs = { step, businessId, task: producer, db, item, mediaId, round, fix };
       let produced: Produced;
       if (brief.kind === "static") produced = await produceStatic(args, brief);
       else if (brief.kind === "carousel") produced = await produceCarousel(args, brief);
@@ -132,7 +132,7 @@ export const produceItem = inngest.createFunction(
         reason: `Still below the bar after ${MAX_REDOS} redos (${review?.score ?? 0}/10). ${failed.slice(0, 2).join(" ") || review?.notes || ""}`.trim(),
       });
     }
-    await step.sendEvent("settled", { name: "plan-item/settled", data: { itemId, planId, oneOff } });
+    await step.sendEvent("settled", { name: "plan-item/settled", data: { businessId, itemId, planId, oneOff } });
     return { status: review?.passed ? "ready" : "needs_review" };
   }
 );

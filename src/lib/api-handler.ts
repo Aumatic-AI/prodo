@@ -14,6 +14,7 @@ const APP_ERROR_STATUS: Partial<Record<ErrorType, number>> = {
   NOT_CONFIGURED: 503,
   PROVIDER_DOWN: 502,
   TIMEOUT: 504,
+  UNAUTHORIZED: 401,
 };
 
 type Handler = (req: NextRequest, ctx: any) => Promise<NextResponse>;

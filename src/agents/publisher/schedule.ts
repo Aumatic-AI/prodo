@@ -41,9 +41,9 @@ export async function scheduleItem(db: SupabaseClient, itemId: string, accounts?
     return { postId: existing.id, publishAt: existing.publish_at, platforms: item.platforms, missing: [] };
   }
 
-  const list = accounts ?? (await publisherFor().listAccounts());
+  const list = accounts ?? (await publisherFor().listAccounts(db));
   const brief = item.brief as Brief | null;
-  const { data: profile } = await db.from("business_profile").select("website, cta_links").eq("id", 1).single();
+  const { data: profile } = await db.from("business_profile").select("website, cta_links").single();
   const links: Record<string, string> = { website: profile?.website ?? "", ...(profile?.cta_links ?? {}) };
   const link = brief ? links[brief.cta.link] || links.website || null : null;
 

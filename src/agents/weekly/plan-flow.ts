@@ -3,24 +3,29 @@ import { approvePlan } from "@/core/plans/approval";
 import { getPlan, listItems, setPlanStatus } from "@/core/plans/plans";
 import { SETTLED } from "@/core/plans/types";
 import { notify } from "@/core/notifications/notify";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { businessDb } from "@/lib/supabase/business";
+import { cronForEveryBusiness } from "@/jobs/every-business";
 import { nextWeekStart, safeZone, zonedParts } from "@/lib/zoned-time";
 
 // The weekly loop around the agents:
-// - weekly cron: on the client's plan day and time, plan next week (Planner)
+// - weekly cron: on each business's plan day and time, plan its next week (Planner)
 // - when every slot of a plan has settled: plan → review, tell the client
 // - full autopilot: approve by itself after the timeout (slots that need review never go out)
 
-/** Runs hourly; plans next week when it's the client's plan day and hour in their time zone. */
-export const weeklyPlanCron = inngest.createFunction(
-  { id: "weekly-plan-cron" },
-  { cron: "TZ=UTC 0 * * * *" },
-  async ({ step }) => {
+/** Hourly: asks every business whether it's time to plan (each has its own day, hour and time zone). */
+export const weeklyPlanCron = cronForEveryBusiness("weekly-plan-cron", "TZ=UTC 0 * * * *", "plan/check-due");
+
+/** Plans the business's next week when it's its plan day and hour in its time zone. */
+export const weeklyPlanCheck = inngest.createFunction(
+  { id: "weekly-plan-check", concurrency: [{ limit: 1, key: "event.data.businessId" }] },
+  { event: "plan/check-due" },
+  async ({ event, step }) => {
+    const { businessId } = event.data;
     const due = await step.run("is-it-plan-time", async () => {
-      const db = createAdminClient();
+      const db = businessDb(businessId);
       const [{ data: settings }, { data: profile }, { data: bible }] = await Promise.all([
-        db.from("app_settings").select("paused, plan_weekday, plan_time").eq("id", 1).single(),
-        db.from("business_profile").select("timezone, onboarding_status").eq("id", 1).single(),
+        db.from("app_settings").select("paused, plan_weekday, plan_time").single(),
+        db.from("business_profile").select("timezone, onboarding_status").single(),
         db.from("brand_bible").select("id").eq("status", "approved").maybeSingle(),
       ]);
       if (!settings || settings.paused || profile?.onboarding_status !== "done" || !bible) return null;
@@ -34,7 +39,7 @@ export const weeklyPlanCron = inngest.createFunction(
     });
     if (!due) return { planned: false };
     // Event id = week: a retry or a second run in the same hour plans once
-    await step.sendEvent("request-plan", { name: "plan/requested", id: `plan-${due}`, data: { weekStart: due, source: "cron" } });
+    await step.sendEvent("request-plan", { name: "plan/requested", id: `plan-${businessId}-${due}`, data: { businessId, weekStart: due, source: "cron" } });
     return { planned: true, weekStart: due };
   }
 );
@@ -43,19 +48,20 @@ export const weeklyPlanCron = inngest.createFunction(
 export const firstPlan = inngest.createFunction(
   { id: "first-plan-after-bible" },
   { event: "brand/approved" },
-  async ({ step }) => {
+  async ({ event, step }) => {
+    const { businessId } = event.data;
     const weekStart = await step.run("first-time", async () => {
-      const db = createAdminClient();
+      const db = businessDb(businessId);
       const [{ count }, { data: profile }, { data: settings }] = await Promise.all([
         db.from("content_plans").select("id", { count: "exact", head: true }),
-        db.from("business_profile").select("timezone").eq("id", 1).single(),
-        db.from("app_settings").select("paused").eq("id", 1).single(),
+        db.from("business_profile").select("timezone").single(),
+        db.from("app_settings").select("paused").single(),
       ]);
       if (count || settings?.paused) return null;
       return nextWeekStart(zonedParts(new Date(), safeZone(profile?.timezone)).day);
     });
     if (!weekStart) return { planned: false };
-    await step.sendEvent("request-plan", { name: "plan/requested", id: `plan-${weekStart}`, data: { weekStart, source: "onboarding" } });
+    await step.sendEvent("request-plan", { name: "plan/requested", id: `plan-${businessId}-${weekStart}`, data: { businessId, weekStart, source: "onboarding" } });
     return { planned: true, weekStart };
   }
 );
@@ -65,8 +71,8 @@ export const onItemSettled = inngest.createFunction(
   { id: "plan-item-settled", concurrency: [{ limit: 1, key: "event.data.planId" }] },
   { event: "plan-item/settled" },
   async ({ event, step }) => {
-    const { planId, itemId, oneOff } = event.data;
-    const db = () => createAdminClient();
+    const { businessId, planId, itemId, oneOff } = event.data;
+    const db = () => businessDb(businessId);
 
     if (oneOff) {
       await step.run("tell-client", async () => {
@@ -95,7 +101,7 @@ export const onItemSettled = inngest.createFunction(
       const items = await listItems(db(), planId);
       if (!items.every((i) => SETTLED.includes(i.status))) return null;
 
-      const { data: settings } = await db().from("app_settings").select("autopilot_mode, approval_timeout_hours").eq("id", 1).single();
+      const { data: settings } = await db().from("app_settings").select("autopilot_mode, approval_timeout_hours").single();
       const full = settings?.autopilot_mode === "full";
       const due = full ? new Date(Date.now() + (settings?.approval_timeout_hours ?? 24) * 3600_000).toISOString() : null;
       await setPlanStatus(db(), planId, "review", { approval_due_at: due });
@@ -116,30 +122,30 @@ export const onItemSettled = inngest.createFunction(
       return { full };
     });
 
-    if (done) await step.sendEvent("review-started", { name: "plan/review-started", data: { planId } });
+    if (done) await step.sendEvent("review-started", { name: "plan/review-started", data: { businessId, planId } });
     return { reviewed: !!done };
   }
 );
 
 /** Full autopilot: when the timeout passes and the plan is still waiting, approve it. */
 export const autoApprove = inngest.createFunction(
-  { id: "plan-auto-approve", cancelOn: [{ event: "plan/approved", match: "data.planId" }] },
+  { id: "plan-auto-approve", cancelOn: [{ event: "plan/approved", if: "event.data.planId == async.data.planId && event.data.businessId == async.data.businessId" }] },
   { event: "plan/review-started" },
   async ({ event, step }) => {
-    const { planId } = event.data;
-    const db = () => createAdminClient();
+    const { businessId, planId } = event.data;
+    const db = () => businessDb(businessId);
     const due = await step.run("when", async () => (await getPlan(db(), planId)).approval_due_at);
     if (!due) return { auto: false };
 
     await step.sleepUntil("wait-for-client", due);
 
     const approved = await step.run("approve-if-still-waiting", async () => {
-      const [plan, { data: settings }] = await Promise.all([getPlan(db(), planId), db().from("app_settings").select("autopilot_mode, paused").eq("id", 1).single()]);
+      const [plan, { data: settings }] = await Promise.all([getPlan(db(), planId), db().from("app_settings").select("autopilot_mode, paused").single()]);
       if (plan.status !== "review" || settings?.autopilot_mode !== "full" || settings?.paused) return false;
       await approvePlan(db(), planId);
       return true;
     });
-    if (approved) await step.sendEvent("approved", { name: "plan/approved", data: { planId, auto: true } });
+    if (approved) await step.sendEvent("approved", { name: "plan/approved", data: { businessId, planId, auto: true } });
     return { auto: approved };
   }
 );

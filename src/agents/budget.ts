@@ -7,7 +7,7 @@ export { monthSpend };
 
 /** Stops agent work when paused or when this month's budget is used up. */
 export async function assertBudget(db: SupabaseClient): Promise<void> {
-  const { data: settings, error } = await db.from("app_settings").select("paused, monthly_budget_usd").eq("id", 1).single();
+  const { data: settings, error } = await db.from("app_settings").select("paused, monthly_budget_usd").single();
   if (error) throw error;
 
   if (settings.paused) {

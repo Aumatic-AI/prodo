@@ -1,7 +1,7 @@
 import { inngest } from "./client";
 import { adoptFinishedMedia } from "@/core/plans/plans";
 import { toInngestError } from "./to-inngest-error";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { businessDb } from "@/lib/supabase/business";
 import { getMedia, markReady, markFailed, productNameFor, type Media } from "@/core/media";
 import { getProfile } from "@/core/profile";
 import { AppError } from "@/core/errors";
@@ -19,17 +19,19 @@ export const generateImage = inngest.createFunction(
   {
     id: "generate-image",
     retries: 3,
-    concurrency: [{ limit: 5 }],
-    cancelOn: [{ event: "media/deleted", match: "data.mediaId" }],
+    concurrency: [{ limit: 5, key: "event.data.businessId" }],
+    cancelOn: [{ event: "media/deleted", if: "event.data.mediaId == async.data.mediaId && event.data.businessId == async.data.businessId" }],
     onFailure: async ({ event }) => {
-      const db = createAdminClient();
+      const { businessId } = event.data.event.data;
+      const db = businessDb(businessId);
       const msg = event.data.error?.message || "Image generation failed";
       await markFailed(db, event.data.event.data.mediaId, msg);
     },
   },
   { event: "media/generate-image" },
   async ({ event, step }) => {
-    const db = createAdminClient();
+    const { businessId } = event.data;
+    const db = businessDb(businessId);
 
     const media = await step.run("load-media", () => getMedia(db, event.data.mediaId));
     if (!media.idea) throw new NonRetriableError("No idea provided");
@@ -71,7 +73,7 @@ export const generateImage = inngest.createFunction(
         const buffer =
           (logoUrl && (await composeCreativeImage({ photoUrl: finalUrl, logoUrl, aspectRatio }))) ||
           (await download(finalUrl));
-        const key = storageKeyFor("image", media.id);
+        const key = storageKeyFor(businessId, "image", media.id);
         await upload(db, key, buffer, "image/png");
         return key;
       } catch (err) {
