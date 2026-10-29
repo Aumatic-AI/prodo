@@ -52,6 +52,7 @@ export const ai = {
   social: {
     profile: ScrapeCreators.profile,
     posts: ScrapeCreators.posts,
+    post: ScrapeCreators.post,
   },
 };
 

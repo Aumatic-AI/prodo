@@ -57,7 +57,8 @@ export async function loadCreativeContext(db: SupabaseClient, itemId: string): P
       .eq("verified", true)
       .or(item.offering_id ? `offering_id.is.null,offering_id.eq.${item.offering_id}` : "offering_id.is.null")
       .limit(12),
-    db.from("brand_assets").select("id, kind, ai_description, offering_id, storage_key, tags").neq("kind", "reference_video").neq("kind", "doc").limit(40),
+    // The client's own photos only: references are other brands' posts, never used as ours
+    db.from("brand_assets").select("id, kind, ai_description, offering_id, storage_key, tags").in("kind", ["product_photo", "person", "general", "team", "location", "work"]).limit(60),
     db.from("brand_kit").select("photo_style, template_ids").single(),
     db.from("hook_library").select("text").order("created_at", { ascending: false }).limit(25),
   ]);
@@ -79,7 +80,10 @@ export async function loadCreativeContext(db: SupabaseClient, itemId: string): P
   const c = bible.content ?? {};
   const offerRow = offer.data;
   // Photos of this offering first, then general brand photos
-  const assetRows = (assets.data ?? []).sort((a, b) => Number(b.offering_id === item.offering_id) - Number(a.offering_id === item.offering_id)).slice(0, 12);
+  const assetRows = (assets.data ?? [])
+    .filter((a) => !/.(mp4|mov)$/i.test(a.storage_key))
+    .sort((a, b) => Number(b.offering_id === item.offering_id) - Number(a.offering_id === item.offering_id))
+    .slice(0, 12);
 
   return {
     usage,

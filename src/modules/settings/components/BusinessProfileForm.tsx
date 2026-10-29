@@ -6,7 +6,7 @@ import { Field } from "@/components/kit/Field";
 import { TextArea, TextInput } from "@/components/kit/inputs";
 import { Select } from "@/components/kit/Select";
 import { MultiSelect } from "@/components/kit/MultiSelect";
-import { ChoiceCards } from "@/components/kit/choices";
+import { RankedChoiceCards } from "@/components/kit/choices";
 import { LogoUploader } from "@/components/kit/LogoUploader";
 import { SaveBar } from "@/components/kit/SaveBar";
 import { Skeleton } from "@/components/kit/Skeleton";
@@ -15,18 +15,19 @@ import { Badge } from "@/components/kit/Badge";
 import { row } from "@/components/kit/styles";
 import { COUNTRY_OPTIONS } from "@/config/countries";
 import { LIMITS } from "@/config/limits";
-import { basicsSchema, toFieldErrors, type BasicsDraft, type FieldErrors } from "@/core/onboarding/schemas";
+import { businessProfileSchema, toFieldErrors, type BusinessProfileDraft, type FieldErrors } from "@/core/onboarding/schemas";
+import { MAX_GOALS } from "@/core/onboarding/options";
 import { useSession } from "@/stores/SessionStoreProvider";
-import { GOAL_OPTIONS, LANGUAGE_OPTIONS, timezoneOptions } from "@/modules/onboarding/config";
+import { CURRENCY_OPTIONS, GOAL_OPTIONS, INDUSTRY_OPTIONS, LANGUAGE_OPTIONS, timezoneOptions } from "@/modules/onboarding/config";
 import { SocialLinks } from "@/modules/onboarding/steps/basics/SocialLinks";
 import { useBusinessProfile, useSaveBusinessProfile } from "../hooks/useBusinessProfile";
 
-/** The business basics from onboarding, editable any time. Same fields and checks as onboarding's first step. */
+/** The business profile and goals from onboarding, editable any time. Same fields and checks as onboarding. */
 export function BusinessProfileForm() {
   const { data: saved, isLoading, error } = useBusinessProfile();
   const save = useSaveBusinessProfile();
   const updateBusiness = useSession((s) => s.updateBusiness);
-  const [form, setForm] = useState<BasicsDraft | null>(null);
+  const [form, setForm] = useState<BusinessProfileDraft | null>(null);
   const [errors, setErrors] = useState<FieldErrors>({});
   const zones = useMemo(() => timezoneOptions(), []);
 
@@ -44,11 +45,11 @@ export function BusinessProfileForm() {
     );
   }
 
-  const set = (patch: Partial<BasicsDraft>) => setForm({ ...form, ...patch });
+  const set = (patch: Partial<BusinessProfileDraft>) => setForm({ ...form, ...patch });
   const dirty = JSON.stringify(form) !== JSON.stringify(saved);
 
   async function submit() {
-    const parsed = basicsSchema.safeParse(form);
+    const parsed = businessProfileSchema.safeParse(form);
     if (!parsed.success) {
       setErrors(toFieldErrors(parsed.error));
       return;
@@ -121,12 +122,28 @@ export function BusinessProfileForm() {
               />
             </Field>
           </div>
+          <div className={row}>
+            <Field label="Industry" htmlFor="industry" error={errors.industry} hint="Health, beauty and finance get extra ad-rule checks.">
+              <Select
+                id="industry"
+                searchable
+                options={INDUSTRY_OPTIONS}
+                value={form.industry ?? ""}
+                placeholder="Pick your industry"
+                searchPlaceholder="Search industries…"
+                onValueChange={(industry) => set({ industry: industry as BusinessProfileDraft["industry"] })}
+              />
+            </Field>
+            <Field label="Currency" htmlFor="currency" error={errors.currency} hint="Used for every price.">
+              <Select id="currency" searchable options={CURRENCY_OPTIONS} value={form.currency} searchPlaceholder="Search currencies…" onValueChange={(currency) => set({ currency })} />
+            </Field>
+          </div>
         </div>
       </Card>
 
-      <Card title="Main goal" description="Sets the mix of content and the call to action agents use.">
-        <Field error={errors.primaryGoal}>
-          <ChoiceCards label="Main goal" options={GOAL_OPTIONS} value={form.primaryGoal} onChange={(primaryGoal) => set({ primaryGoal })} />
+      <Card title="Goals" description={`Pick up to ${MAX_GOALS}, in order. The first is your main goal and drives most posts.`}>
+        <Field error={errors.goals}>
+          <RankedChoiceCards label="Goals" options={GOAL_OPTIONS} value={form.goals} onChange={(goals) => set({ goals })} max={MAX_GOALS} />
         </Field>
       </Card>
 

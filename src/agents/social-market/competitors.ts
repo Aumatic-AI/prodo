@@ -15,7 +15,7 @@ import {
 import { saveSource } from "@/agents/research/brain";
 import type { ResearchContext } from "@/agents/research/context";
 import { nameKey } from "@/agents/research/text";
-import { scorePosts, splitTopBottom } from "./baseline";
+import { scorePosts } from "./baseline";
 
 // Competitors: find them when the client named fewer than two, read their public footprint
 // (website, Instagram, Meta and Google ads), then summarise it. Their claims stay theirs:
@@ -29,6 +29,8 @@ export interface Competitor {
   name: string;
   website: string | null;
   socialUrls: Record<string, string>;
+  /** A brand the client admires: only its posts are studied, for look and hooks */
+  inspiration?: boolean;
 }
 
 /** ScrapeCreators wants "UK" for the United Kingdom; everything else is the ISO code. */
@@ -115,6 +117,7 @@ interface AdNote {
   cta?: string;
   format?: string;
   firstShown?: string;
+  videoUrl?: string;
 }
 
 export interface CompetitorPost {
@@ -143,6 +146,7 @@ const trimAd = (a: AdCreative): AdNote => ({
   cta: a.cta,
   format: a.format,
   firstShown: a.firstShown,
+  videoUrl: a.videoUrl,
 });
 
 /** Meta Ad Library: finds the competitor's page by name (which also gives their Instagram) and its active ads. */
@@ -153,8 +157,13 @@ export async function readMetaAds(competitor: Competitor, country: string | unde
   const key = nameKey(competitor.name);
   const match = search.data.find((m) => nameKey(m.name) === key) ?? search.data.find((m) => nameKey(m.name).includes(key) || key.includes(nameKey(m.name)));
   if (!match) return { instagram: null, ads: [] as AdNote[], usage };
-  const ads = await ai.ads.meta(match.pageId, country);
+  let ads = await ai.ads.meta(match.pageId, country);
   usage.push(ads.usage);
+  // No ads in the client's country: what they run elsewhere still shows what sells
+  if (!ads.data.length && country) {
+    ads = await ai.ads.meta(match.pageId);
+    usage.push(ads.usage);
+  }
   return {
     instagram: match.instagram ?? null,
     ads: ads.data.slice(0, 12).map(trimAd),
@@ -173,8 +182,8 @@ export async function readInstagram(handle: string) {
   const [profile, list] = await Promise.all([ai.social.profile("instagram", handle), ai.social.posts("instagram", handle, 30)]);
   const followers = profile.data?.followers ?? null;
   const { posts } = scorePosts("instagram", list.data, followers);
-  const { top } = splitTopBottom(posts);
-  const best = (top.length ? top : posts).slice(0, 8);
+  // Their best posts by engagement (the top 20% alone is often only 2 or 3 posts)
+  const best = [...posts].sort((a, b) => (b.score ?? 0) - (a.score ?? 0)).slice(0, 8);
   return {
     followers,
     posts: best.map((p) => ({
@@ -193,6 +202,15 @@ export async function readHomepage(website: string | null) {
   if (!website) return { text: null, usage: [] as Usage[] };
   const res = await ai.crawl.scrape(website);
   return { text: res.data.markdown.slice(0, 5000), usage: [res.usage] };
+}
+
+/**
+ * The competitor's longest-running video ad: an ad kept running for months is one that sells,
+ * so it's the best one to watch. Null when none of their ads is a video.
+ */
+export function longestRunningVideoAd(ads: AdNote[]): AdNote | null {
+  const videos = ads.filter((a) => a.videoUrl && a.firstShown);
+  return videos.sort((a, b) => Date.parse(a.firstShown!) - Date.parse(b.firstShown!))[0] ?? null;
 }
 
 /** Instagram handle the client gave for this competitor, if any. */

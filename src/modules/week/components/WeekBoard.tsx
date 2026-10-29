@@ -37,7 +37,7 @@ export function WeekBoard({ weekStart, items, today, timezone, onOpen }: BoardPr
   return (
     <>
       {/* Tablet and up: columns */}
-      <div className="-mx-1 hidden snap-x snap-mandatory overflow-x-auto scroll-px-1 px-1 pb-2 md:block">
+      <div className="-mx-1 -mt-1 hidden snap-x snap-mandatory overflow-x-auto scroll-px-1 px-1 pb-2 pt-1 md:block">
         <div className="grid gap-3" style={{ gridTemplateColumns: columns }}>
           {days.map(({ day, slots }) => (
             <div

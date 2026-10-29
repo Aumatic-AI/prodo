@@ -15,6 +15,8 @@ type Events = {
   "media/deleted": ForBusiness<{ mediaId: string }>;
   /** Brand research. `agents` lists which ones to run (all on submit, the unfinished ones on retry). */
   "onboarding/started": ForBusiness<{ runId: string; attempt: string; agents: ResearchAgent[] }>;
+  /** Read the website from the first onboarding screen and fill Basics and the products or services */
+  "onboarding/scan": ForBusiness<{ scanId: string }>;
   /** One research agent, started by the onboarding run (step.invoke) */
   "research/website-analyst": ForBusiness<{ runId: string; note?: string | null }>;
   "research/visual-identity-analyst": ForBusiness<{ runId: string; note?: string | null }>;

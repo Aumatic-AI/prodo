@@ -9,7 +9,7 @@ import type { Voice } from "@/providers/ai/registry";
 import { useVoiceSearch, type VoiceFilterState } from "@/modules/onboarding/hooks/useVoiceSearch";
 import { useAudioPreview } from "@/modules/onboarding/hooks/useAudioPreview";
 import { voiceLanguageFor } from "@/modules/onboarding/config";
-import { VoiceBrowser } from "@/modules/onboarding/steps/style/voices/VoiceBrowser";
+import { VoiceBrowser } from "@/modules/onboarding/steps/content/voices/VoiceBrowser";
 
 export interface VoiceChoice {
   id: string;

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { clip } from "./lenient";
+import { VIDEO_ON_SCREEN_TEXT } from "@/config/video";
 import { CTA_LINKS, FRAMEWORKS, HOOK_TYPES, LEVERS, LIMITS, TEMPLATE_IDS, type Format } from "@/core/creative/brief";
 
 // Creative Director: one slot → a complete brief. The model cites fact labels ([O1], [F1], [R2],
@@ -62,6 +63,7 @@ Craft rules:
 - Framework: one of ${FRAMEWORKS.join(", ")} (AIDA, problem-agitate-solve, before-after-bridge, hook-story-offer).
 - Levers: up to 3 of ${LEVERS.join(", ")}. social_proof, authority, scarcity and urgency need a fact label as "source" (a review, credential or live offer); others use null.
 - Facts only: every price, number, result, review, award, guarantee or deadline must come from FACTS with its label, listed in "claims" as { "text", "source": "R1" }. Never invent any. No urgency or deadlines unless there is a live offer [F1].
+- The product [O], offer [F] and review [R] facts are current. Website passages [C] can be older: when they disagree, the [O], [F] or [R] fact wins, and never take a price or deadline from a [C] passage.
 - Call to action: "cta.label" up to ${LIMITS.ctaWords} words (e.g. "Book a free call"); "cta.link" is one of the available links.
 - Captions: one per platform key given (e.g. "instagram"), native to that platform, within its character limit, ending with the call to action. Instagram/TikTok: 3–6 relevant hashtags at the end. LinkedIn: no more than 3 hashtags. X: short. Add a required disclaimer when a claim needs it.
 - Respect the voice, the do/don't rules and NEVER SAY. Write in the business's language.
@@ -81,7 +83,7 @@ const FORMAT_RULES: Record<Format, string> = {
 - imagePrompt: the cover photo only, no text in the image, leave space at the bottom for the hook.`,
   video: `FORMAT: short vertical video, ${LIMITS.minScenes}–${LIMITS.maxScenes} scenes, 15–35 seconds in total.
 - Scene 1 is the hook: it must grab attention in the first 2 seconds.
-- Each scene: "voiceover" (spoken, natural, about ${LIMITS.wordsPerSecond} words per second, 2–8 seconds of speech), "overlay" (big on-screen text, at most ${LIMITS.overlayWords} words, can be empty), "visual" (what the camera sees: subject, setting, light; no text, letters or logos in the picture; no one speaking to camera), "motion" (one camera move, e.g. "slow push in", "gentle pan left").
+- Each scene: "voiceover" (spoken, natural, about ${LIMITS.wordsPerSecond} words per second, 2–8 seconds of speech), ${VIDEO_ON_SCREEN_TEXT ? `"overlay" (big on-screen text, at most ${LIMITS.overlayWords} words, can be empty), ` : ""}"visual" (what the camera sees: subject, setting, light; no text, letters or logos in the picture; no one speaking to camera), "motion" (one camera move, e.g. "slow push in", "gentle pan left").
 - The last scene lands the call to action.
 - musicMood: a few words for background music (e.g. "warm acoustic, upbeat").`,
   text: `FORMAT: text-only post. Put the full post in each platform's caption; the hook is the first line. No image.`,
@@ -93,7 +95,7 @@ export function creativeSystem(format: Format): string {
 ${FORMAT_RULES[format]}
 
 Return JSON with these keys: message, hooks [{type, text}], chosenHook, framework, levers [{lever, source}], cta {label, link}, claims [{text, source}], captions {platform: text}, photo${
-    format === "static" ? ", headline, subhead, badge {text, source} | null, imagePrompt, layout" : format === "carousel" ? ", slides [{title, body}], imagePrompt" : format === "video" ? ", scenes [{voiceover, overlay, visual, motion}], musicMood" : ""
+    format === "static" ? ", headline, subhead, badge {text, source} | null, imagePrompt, layout" : format === "carousel" ? ", slides [{title, body}], imagePrompt" : format === "video" ? `, scenes [{voiceover, ${VIDEO_ON_SCREEN_TEXT ? "overlay, " : ""}visual, motion}], musicMood` : ""
   }.`;
 }
 

@@ -40,7 +40,7 @@ export function ProductsReview() {
             <Rows>
               <Row label="Details">{offer.details}</Row>
               <Row label="Product">{productName(offer.offeringId) || "All products"}</Row>
-              <Row label="Ends">{day(offer.endsAt)}</Row>
+              <Row label="Ends">{day(offer.endsAt) || "No end date: used without 'ends soon' copy"}</Row>
             </Rows>
           </Item>
         ))}

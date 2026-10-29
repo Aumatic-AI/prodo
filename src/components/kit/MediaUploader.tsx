@@ -13,10 +13,11 @@ import { FieldError } from "./Field";
 interface Pending {
   tempId: string;
   previewUrl: string;
+  video: boolean;
 }
 
 interface MediaUploaderProps<T extends Upload> {
-  purpose: Extract<UploadPurpose, "photo" | "video">;
+  purpose: Extract<UploadPurpose, "photo" | "video" | "media">;
   value: T[];
   onChange: (value: T[]) => void;
   max: number;
@@ -30,6 +31,9 @@ export function publicUrl(key: string): string {
   return urlFor(process.env.NEXT_PUBLIC_SUPABASE_URL!, key);
 }
 
+/** True for a stored video file (by its extension). */
+export const isVideoKey = (key: string) => /.(mp4|mov)$/i.test(key);
+
 /** Drag-and-drop gallery. Files upload at once; the list holds storage keys. */
 export function MediaUploader<T extends Upload>({ purpose, value, onChange, max, extend, tagOf }: MediaUploaderProps<T>) {
   const upload = useUpload(purpose);
@@ -38,7 +42,6 @@ export function MediaUploader<T extends Upload>({ purpose, value, onChange, max,
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const rule = UPLOAD_RULES[purpose];
-  const isVideo = purpose === "video";
   const room = max - value.length - pending.length;
 
   // Latest list for uploads that finish after other changes
@@ -53,7 +56,7 @@ export function MediaUploader<T extends Upload>({ purpose, value, onChange, max,
 
     await Promise.all(
       picked.map(async (file) => {
-        const item: Pending = { tempId: crypto.randomUUID(), previewUrl: URL.createObjectURL(file) };
+        const item: Pending = { tempId: crypto.randomUUID(), previewUrl: URL.createObjectURL(file), video: file.type.startsWith("video/") };
         setPending((p) => [...p, item]);
         try {
           const uploaded = await upload(file);
@@ -77,8 +80,8 @@ export function MediaUploader<T extends Upload>({ purpose, value, onChange, max,
   }
 
   // Plain <img>: previews include local blob URLs, which next/image can't load
-  const preview = (src: string) =>
-    isVideo ? (
+  const preview = (src: string, video: boolean) =>
+    video ? (
       <video src={src} muted playsInline preload="metadata" className="size-full object-cover" />
     ) : (
       // eslint-disable-next-line @next/next/no-img-element
@@ -93,7 +96,7 @@ export function MediaUploader<T extends Upload>({ purpose, value, onChange, max,
         <div className="grid grid-cols-[repeat(auto-fill,minmax(96px,1fr))] gap-2.5">
           {value.map((item) => (
             <div key={item.id} className={thumb}>
-              {preview(publicUrl(item.key))}
+              {preview(publicUrl(item.key), purpose === "video" || isVideoKey(item.key))}
               {tagOf?.(item) && (
                 <span className="absolute bottom-1.5 left-1.5 rounded-full bg-ob-dark/75 px-2 text-[11px] font-semibold text-ob-on-dark">{tagOf(item)}</span>
               )}
@@ -112,7 +115,7 @@ export function MediaUploader<T extends Upload>({ purpose, value, onChange, max,
           ))}
           {pending.map((p) => (
             <div key={p.tempId} className={thumb}>
-              {preview(p.previewUrl)}
+              {preview(p.previewUrl, p.video)}
               <span className="absolute inset-0 grid place-items-center bg-ob-surface/70">
                 <Loader2 size={20} className="animate-spin" aria-label="Uploading" />
               </span>

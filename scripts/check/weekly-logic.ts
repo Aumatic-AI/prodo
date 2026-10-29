@@ -4,10 +4,11 @@ import assert from "node:assert/strict";
 import { addDays, nextWeekStart, weekStartOf, zonedParts, zonedToUtc } from "@/lib/zoned-time";
 import { allocate, allowedFormats, avoidRepeats, planSlots } from "@/agents/planner/slots";
 import { assembleBrief } from "@/agents/creative-director/assemble";
-import { checkBrief, findBanned } from "@/agents/creative-director/checks";
+import { checkBrief, findBanned, pricesIn } from "@/agents/creative-director/checks";
 import type { FactBook } from "@/agents/creative-director/book";
 import type { CreativeContext } from "@/agents/creative-director/context";
 import { rawBriefSchema } from "@/prompts/agents/creative-brief";
+import { pictureOnly } from "@/agents/producer/picture-only";
 import { overallScore } from "@/prompts/agents/qa-brief";
 import { buildAss, groupWords } from "@/creative/subtitles";
 import { CANVAS } from "@/creative/sizes";
@@ -320,6 +321,18 @@ await check("buildComposeJob: silent video without voice or music", () => {
   const job = buildComposeJob({ width: 1080, height: 1350, clipUrls: ["https://x.kie.ai/a.mp4"], sceneDurations: [5], outputKey: "videos/m/out.mp4" });
   assert.ok(job.args.includes("-an"));
   assert.equal(job.inputs.length, 1);
+});
+
+await check("pricesIn: finds money amounts in any common form, not plain numbers", () => {
+  assert.deepEqual(pricesIn(["Holly, now $455", "₪1,400 for the cape", "only 499 ILS", "11 colours, sizes XS–XXL", "30% off"]), [455, 1400, 499]);
+});
+
+await check("pictureOnly: drops text, layout and font talk from a scene, keeps the picture and 'no text' lines", () => {
+  const scene =
+    "A woman walks toward the softly lit gathering, then pauses. Leave a generous white lower margin for the disclaimer. Hold this shot with the disclaimer overlay legible in high-contrast Fraunces type. Use accents in #81a2d0. No text, letters or logos in the scene.";
+  const out = pictureOnly(scene);
+  assert.equal(out, "A woman walks toward the softly lit gathering, then pauses. No text, letters or logos in the scene.");
+  assert.equal(pictureOnly("Close-up of the cotton texture in warm side light."), "Close-up of the cotton texture in warm side light.");
 });
 
 console.log(`\n${passed} checks passed${process.exitCode ? ", some FAILED" : ""}`);

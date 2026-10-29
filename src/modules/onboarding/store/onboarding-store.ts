@@ -1,7 +1,7 @@
 import { createStore } from "zustand/vanilla";
 import type { FieldErrors, OnboardingDraft } from "@/core/onboarding/schemas";
 
-export type Slice = "basics" | "products" | "services" | "style";
+export type Slice = "content" | "basics" | "products" | "services";
 
 /** Keys of a slice that hold lists, e.g. "products" in the products slice. */
 type ListKey<S extends Slice> = {
@@ -31,6 +31,11 @@ export interface OnboardingState {
   /** Takes the server's copy of a slice after a save */
   applySaved: (slice: Slice | null, fresh: OnboardingDraft) => void;
   setStatus: (status: OnboardingDraft["status"]) => void;
+  /**
+   * Takes a fresh copy from the server (e.g. after the website scan filled Basics and the products).
+   * Slices the client has edited and not saved keep their edits.
+   */
+  refresh: (fresh: OnboardingDraft) => void;
 }
 
 /** Deep equality that ignores key order (values that only look changed don't count as edits). */
@@ -119,6 +124,17 @@ export function createOnboardingStore(initial: OnboardingDraft) {
       })),
 
     setStatus: (status) => set((s) => ({ draft: { ...s.draft, status } })),
+
+    refresh: (fresh) =>
+      set((s) => {
+        const slices: Slice[] = ["content", "basics", "products", "services"];
+        const clean = slices.filter((k) => !s.dirty[k]);
+        const pick = (from: OnboardingDraft) => Object.fromEntries(clean.map((k) => [k, from[k]]));
+        return {
+          draft: { ...s.draft, ...pick(fresh), step: fresh.step, status: fresh.status, scan: fresh.scan },
+          saved: { ...s.saved, ...pick(fresh), step: fresh.step, status: fresh.status, scan: fresh.scan },
+        };
+      }),
   }));
 }
 

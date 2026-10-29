@@ -106,8 +106,8 @@ Ten agents, each an Inngest function with one step per outside call.
 
 | # | Agent | Runs | Writes |
 |---|---|---|---|
-| 1 | Website Analyst | Onboarding submit, Refresh brand | `brand_sources`, `brand_chunks`, `offerings`, `proof_items`, `offers` |
-| 2 | Visual Identity Analyst | Onboarding submit, logo change | `brand_kit` |
+| 1 | Website Analyst | Onboarding website scan (first screen), onboarding submit when the scan didn't read the site, Refresh brand | `brand_sources`, `brand_chunks`, `offerings`, `proof_items`, `offers` |
+| 2 | Visual Identity Analyst | Onboarding website scan (colours and fonts only), onboarding submit, logo change | `brand_kit` |
 | 3 | Social & Market Analyst | Onboarding, monthly refresh | `brand_sources`, `competitors.analysis`, `proof_items`, `calendar_events`, `learnings` (baseline), `hook_library` |
 | 4 | Brand Strategist | After 1–3; on Regenerate | `brand_bible` (draft), `personas`, `content_pillars`, `hook_library` |
 | 5 | Planner | Weekly cron, "Plan next week" | `content_plans`, `plan_items` |
@@ -122,31 +122,47 @@ Agents 1–4 run at onboarding and on "Refresh brand"; 5–9 run the weekly loop
 ### Onboarding flow
 
 ```
-wizard (1.7, built) → submit → onboarding/started → [1 Website ‖ 2 Visual ‖ 3 Social & Market] → 4 Brand Strategist   (1.8–1.9)
+website screen → onboarding/scan (reads the site while the client answers) → Your content → Basics → products or services → connect → review
+→ submit → onboarding/started → [1 Website (skipped if the scan read it) ‖ 2 Visual ‖ 3 Social & Market] → 4 Brand Strategist
 → Brand Bible draft → client review (edit / regenerate / approve) → brand/approved → first plan (Planner, next week)
 ```
 
 `business_profile.onboarding_status`: `not_started → collecting → analyzing → review → done`. The first saved step sets `collecting`; submit sets `analyzing`.
 
-**Routing.** After login, `(app)/layout.tsx` sends anyone not `done` to `/onboarding`; `onboarding/layout.tsx` sends `done` users to `/week` (home; the old Dashboard was removed). `/onboarding` resumes at the furthest saved step (`business_profile.onboarding.step`), or `/onboarding/progress` after submit. Steps beyond the furthest one redirect back. Both layouts read the session through `getSession()`, cached per request.
+**Routing.** After login, `(app)/layout.tsx` sends anyone not `done` to `/onboarding`; `onboarding/layout.tsx` sends `done` users to `/week` (home; the old Dashboard was removed). `/onboarding` resumes at the furthest saved step (`business_profile.onboarding.step`; a new business starts at `website`), or `/onboarding/progress` after submit. Steps beyond the furthest one redirect back. Both layouts read the session through `getSession()`, cached per request.
 
 **Data flow.** `onboarding/layout.tsx` loads the full draft once on the server (`loadOnboarding`, one round of parallel queries) into a Zustand store. Moving between steps makes no requests. Continue runs `useStepSave`: drop empty list rows → validate with the step's zod schema (field errors under keys like `products.0.name`) → `PUT /api/onboarding/{step}` → merge the server's copy of that slice back. Unsaved edits on other steps stay in the store.
+
+**Steps.** `website` (start screen, not numbered) → 1 `content` (Your content) → 2 `basics` → 3 `business` (products or services) → 4 `connect` → 5 `review`. Order in `src/core/onboarding/steps.ts`. The old "Style & rules" step is gone: tone and rules moved to Basics, posting plan, voice, music and competitors to Your content, autopilot to Settings (defaults apply).
+
+**Website scan.** Saving the website (`PUT /api/onboarding/website`) writes `onboarding.scan = { id, website, state: running }` and sends `onboarding/scan` (event id = scan id). `src/jobs/onboarding-scan.ts` reads the site while the client answers Your content: the Website Analyst's read (`agents/website-analyst/read-website.ts`: map, read, embed, facts, merge; found products also get `in_stock` and their image links) → one AI call for the Basics answers (`website-analyst/profile.ts`; fills only empty fields) → socials → logo (only if none) → colours and fonts (`visual-identity/brand-kit.ts`) → photos of the found products (5 main in-stock products, 2 photos each, saved as `brand_assets` with `source_id`; page text has no image links, so photos come from each product page's schema.org Product data, Shopify's free `/products/<handle>.js`, or its share image) → `scan.filled` (Basics fields it filled, shown with a "Filled from your website" badge), `scan.soldOut`, `state: done`. It writes the scan with `set_scan_state` one key at a time; the client's saves merge their keys with `merge_onboarding`, so neither overwrites the other. A newer website cancels a running scan. Steps log to `agent_runs` as `website_analyst` with `run_id` = scan id.
+
+While the scan runs, the browser polls `GET /api/onboarding` every 4 s (`useWebsiteScan`); when it finishes, Basics and the products or services take the server's copy unless the client edited them. Basics and the business step show "Finishing reading your website…" until then, with "Fill it in myself" to skip waiting.
+
+**Found rows.** Products, services, offers and reviews the scan found load into the wizard with `found: true` (a "Found on your website" badge; found products start folded). Saving the step confirms them (`active = true`, `verified = true`); removing one rejects it (`active = false`, `verified = true`), so a later read doesn't offer it again. Sold-out products stay out and are listed with "Add them anyway".
+
+**Data checks.** Shops convert prices to each visitor's currency, so a found price in a currency other than the scan's usual one is left empty. Chat, social and payment widget colours (WhatsApp green, PayPal…) never become brand colours. Disclaimers are at most 3 notices an ad must carry (customs, results vary), not shipping prices or times.
+
+**Limits** (`src/config/limits.ts`). Each read adds at most 5 new main products or services (in stock, best-ranked pages first, so the homepage's featured ones lead), plus up to 5 sold-out ones kept hidden. A business can have up to 15 products or services and 3 real photos per product; the client adds the rest by hand.
 
 **Where answers go**
 
 | Step | Saved to |
 |---|---|
-| Basics | `business_profile` (name, logo_key, description, website, social_urls, business_type, countries, language, timezone, primary_goal), cities in `onboarding.cities` |
+| Website | `business_profile.website`, `onboarding.scan` |
+| Your content | `business_profile.content_prefs` (goals, mix, image and video styles, people, logo), `primary_goal` (= first goal), `posting_prefs`, `voice_id`, `music_mood`; `competitors` (client rows, `relation` competitor or inspiration); `brand_assets` (person, general, reference_image, reference_video); `brand_sources` (kind reference, one per pasted link) |
+| Basics | `business_profile` (name, logo_key, description, website, social_urls, business_type, countries, cities, language, timezone, industry, currency, primary_cta, cta_links, tone, compliance), `brand_kit` colours and fonts (through `saveKit`, so a change marks them as the client's) |
 | Products | `offerings` (kind product), `brand_assets` (product_photo), `offers`, `proof_items` (review, link kept as a `brand_sources` row with the same id), `calendar_events` (source client) |
-| Services | `offerings` (kind service, details in `attributes`, FAQs as `objections`), `proof_items` (case_study, certification, award), `brand_assets` (team, location, work; case study photos tagged `case:<id>`), `cta_links`, area/years/FAQs in `onboarding` |
-| Style | `business_profile` (tone, liked_brands, compliance, posting_prefs, voice_id, music_mood), `competitors`, `brand_assets` (reference_video), `app_settings` (autopilot, plan day and time, budget) |
+| Services | `offerings` (kind service, details in `attributes`, FAQs as `objections`), `proof_items` (case_study, certification, award), `brand_assets` (team, location, work; case study photos tagged `case:<id>`), `cta_links.lead_magnet`, area/years/FAQs in `onboarding` |
 | Connect | Accounts are read live from Zernio. Only the client's profile id is stored (`app_settings.zernio_profile_id`) |
 
-Removed list items: offerings and offers are archived (`active = false`); reviews, case studies, credentials, dates, competitors and assets are deleted (asset files too).
+Removed list items: offerings and offers are archived (`active = false`; found ones are rejected, see above); reviews, case studies, credentials, dates, competitors, reference links and assets are deleted (asset files too).
 
-**APIs.** `PUT /api/onboarding/[step]`, `POST /api/onboarding/submit` (sends `onboarding/started`, event id = run id), `POST /api/uploads` (signed upload link), `POST /api/onboarding/import/shopify` (reads a store's public `products.json`; CSV import is parsed in the browser).
+**Video sound.** There is no sound question: each video style has its own sound (`VIDEO_STYLE_SOUND` in `core/onboarding/options.ts`), and Your content asks for a voice only when a picked style uses a voice-over and for a music mood only when one uses music (both when none is picked).
 
-**Submit.** Sets `onboarding_status = analyzing`, writes `onboarding.research` (all agents queued) and sends `onboarding/started` (event id = attempt id, so a double submit runs once). The client moves to `/onboarding/progress`.
+**APIs.** `PUT /api/onboarding/[step]`, `POST /api/onboarding/submit` (sends `onboarding/started`, event id = run id), `GET /api/onboarding` (the whole draft; polled during the scan), `POST /api/uploads` (signed upload link). CSV import is parsed in the browser. Settings → Business profile (`/api/settings/profile`) edits the profile fields and goals with `businessProfileSchema` and `saveProfile`.
+
+**Submit.** Sets `onboarding_status = analyzing`, writes `onboarding.research` (all agents queued; the Website Analyst is marked done when the scan already read the same website) and sends `onboarding/started` (event id = attempt id, so a double submit runs once). The client moves to `/onboarding/progress`.
 
 ### Brand research (Phase 1.8)
 
@@ -154,14 +170,19 @@ Removed list items: offerings and offers are archived (`active = false`); review
 
 | Agent | Folder | Steps | Writes |
 |---|---|---|---|
-| 1 Website Analyst | `agents/website-analyst/` | map site → rank up to 30 pages by URL (code) → read each page (Firecrawl; unchanged pages skipped by hash) → embed changed pages → pull facts per page (AI, zod) → merge: near-identical names matched in code, then one AI check that drops repeats across pages and items the client already entered (it only drops, never rewrites) | `brand_sources` (web_page), `brand_chunks`, `offerings`, `offers`, `proof_items` (extracted rows inactive/unverified, with `source_id`) |
-| 2 Visual Identity Analyst | `agents/visual-identity/` | homepage HTML, CSS and screenshot (Firecrawl) → logo palette and light/dark versions (sharp, node-vibrant) → brand colours and WCAG AA text pairs (code) → photo and layout style (AI vision) | `brand_kit`, logo variants in storage (`<business id>/logo/variants/`) |
-| 3 Social & Market Analyst | `agents/social-market/` | social profiles the client left empty, taken from their homepage links (plain download, no AI; only empty fields are filled, saved to `business_profile.social_urls`) → own posts (Zernio when connected, otherwise public profiles) → baselines and top/bottom 20% (code) → competitors: find if fewer than 2 (Google search + AI), Meta and Google ads, Instagram, homepage → summary (AI) → videos (Twelve Labs: up to 6 own, 4 competitor) → hooks (AI) | `brand_sources` (social_post, competitor), `brand_chunks`, `learnings` (baseline, format), `competitors` (+ discovered), `hook_library` |
+| 1 Website Analyst | `agents/website-analyst/` | map site → rank up to 15 pages by URL shape (code): at most 4 single product or service pages and 3 collection pages; sale pages, about, reviews, contact and shipping or refund policies are always worth a place; site maps, .md files and legal pages are skipped → read each page (Firecrawl; unchanged pages skipped by hash) → embed changed pages → pull facts per page (AI, zod) → merge: near-identical names matched in code, then one AI check that drops repeats across pages and items the client already entered (it only drops, never rewrites) | `brand_sources` (web_page), `brand_chunks`, `offerings`, `offers`, `proof_items` (extracted rows inactive/unverified, with `source_id`) |
+| 2 Visual Identity Analyst | `agents/visual-identity/` | homepage HTML, CSS and screenshot (Firecrawl) → logo palette and light/dark versions (sharp, node-vibrant) → brand colours and WCAG AA text pairs (code); all skipped when the onboarding scan already read the same website and logo → photo and layout style (AI vision, with up to 3 of the client's reference images) → one line per photo without one (AI vision, 8 per call, up to 48) | `brand_kit`, logo variants in storage (`<business id>/logo/variants/`), `brand_assets.ai_description` and `tags` |
+| 3 Social & Market Analyst | `agents/social-market/` | social profiles the client left empty, taken from their homepage links (skipped when the scan did it) → own posts (Zernio when connected, otherwise public profiles) → baselines and top/bottom 20% (code) → competitors: find if fewer than 2 rivals (Google search + AI); each rival (max 5): 12 Meta ads, 12 Google ads, 8 top Instagram posts, homepage → summary (AI); brands the client admires (`relation = inspiration`): top Instagram posts only, no ads or gaps → the client's reference links (ScrapeCreators, up to 10) → videos (Twelve Labs: up to 6 own, plus 5 others: 2 references, then each rival's longest-running Meta video ad or a top Instagram video, then brands they admire) → what reference videos do well (kept on `brand_sources` kind reference) → hooks (AI; `reference` source for references and admired brands) | `brand_sources` (social_post, competitor, reference), `brand_chunks`, `learnings` (baseline, format), `competitors` (+ discovered), `hook_library` |
 
 Rules every agent follows:
 - One `task(id, work, summary)` per outside call (a few make two dependent calls, e.g. find a Meta page, then read its ads). Every task is logged to `agent_runs` with `run_id` = the research id, its cost and a plain summary.
 - Work the agent can do without (one page, one competitor, one video) is wrapped in `optional()`: after Inngest's retries it's skipped and shows as "Skipped a step" in the activity list.
-- Hard caps: 30 pages, 5 competitors, 6 own videos, 4 competitor videos, 50 posts per platform.
+- Hard caps: 15 pages, 5 competitors, 10 reference links, 6 own videos, 5 other videos, 48 photo descriptions, 50 posts per platform.
+- Pages the site no longer has (missing from the site map and answering 404 or 410) are removed with their Brand Brain passages on the next read; facts found on them keep their row.
+- Brand Brain passages can be older than what the client edits in the app. The Creative Director is told product, offer and review facts win, and a code check rejects any price in a brief that isn't the product's current price or an amount in the live offer or a review.
+- The research right after onboarding reuses what the website scan did (kit, socials); "Refresh brand" later reads everything again.
+- References and admired brands are direction, never facts: they stay out of the Brand Brain (which agents cite) and reach the Strategist only as market notes. The Creative Director only picks the client's own photos, never reference images.
+- The Strategist also gets the "Your content" answers (goals, formats, styles, people) and the industry; health, beauty and finance add their claim words to the never-say list (`src/config/industry-rules.ts`).
 - Prompts and their zod schemas live in `src/prompts/agents/`. Pure logic (ranking, chunking, colours, baselines) has its own files and is checked offline by `npm run smoke scripts/check/research-logic.ts`.
 - Facts only: extracted offerings, offers and proof keep `source_id` and wait for the client (`active = false`, `verified = false`). Competitor findings stay on `competitors.analysis` and `competitor` sources, never in our facts or Brand Brain chunks.
 
@@ -209,7 +230,7 @@ Each slot is one run of `produce-plan-item` (`agents/weekly/produce-item.ts`, 3 
 | 5 Planner | `agents/planner/` | Plans one week | Slot count from posts per week (Settings → Automation), days spread evenly, platforms per slot, local posting times (defaults until learnings have 10+ posts), format mix weighted by learnings and supported by every platform in the slot, pillar mix by largest remainder, 30% experiments, no back-to-back repeat of format, offering or angle on a platform, offers only while live | Offering, offer, persona, angle, objective, hook type, levers and the reason per slot; the week's theme |
 | 6 Creative Director | `agents/creative-director/` | One slot → a brief (`core/creative/brief.ts`) | Numbered fact book (`[O1]` offering, `[F1]` offer, `[R…]` verified proof, `[C…]` Brand Brain passages, `[G…]` real photos); labels → stored refs; claims, badges and fact levers without a source dropped; word limits (headline 8, overlay 7, slide title 8, body 30, ~2.5 spoken words/s), caption length per platform, never-say words, no urgency without a live offer; one rewrite when a check fails; hook swapped when ≥ 0.9 similar to one used in 60 days (`match_recent_hooks`); hook saved to `hook_library` | 8 hooks (one per type), framework, levers, CTA, claims, captions per platform, and per format: headline/subhead/badge/photo prompt/layout, 5–8 slides, or 3–6 scenes with voice-over, overlay, visual and camera move |
 | 8 QA Gate 1 | `agents/qa-critic/gate1.ts` | Before any money is spent | Weighted score; pass = overall ≥ 7, compliance ≥ 7 and no open code problems | Scores hook, one message, persona fit, CTA, proof, compliance (0–10) and lists fixes |
-| 7 Producer | `agents/producer/` | Makes the asset | Sizes per platform (`canvases.ts`); our layouts draw every word (`src/creative/`); captions as an `.ass` file from voice word timings; end card; compose on the FFmpeg worker | Kie photo (real product photo as reference), Kie clips, ElevenLabs voice per scene and music |
+| 7 Producer | `agents/producer/` | Makes the asset | Sizes per platform (`canvases.ts`); our layouts draw every word (`src/creative/`); captions as an `.ass` file from voice word timings (switched off for now: `VIDEO_ON_SCREEN_TEXT` in `src/config/video.ts`, so videos have no captions or hook text until the new editor); end card (also off: `VIDEO_END_CARD`); scene descriptions pass through `pictureOnly()` so the image and video models never get asked for words; QA Gate 2 also checks each scene still for painted-in words; compose on the FFmpeg worker | Kie photo (real product photo as reference), Kie clips, ElevenLabs voice per scene and music |
 | 8 QA Gate 2 | `agents/qa-critic/gate2.ts` | After the asset | Sizes, every text colour pair ≥ 4.5:1, safe zones, caption length, video length, loudness | OpenAI vision for images and carousels (product matches the reference, no stray AI text, on brand); Twelve Labs for video (hook visible in 3 s, scenes match the script, no glitches) |
 | 9 Publisher | `agents/publisher/` | Approved slot → scheduled post | One target per connected account on the slot's platforms, caption per platform (+ CTA link where links work), at the slot time (or 10 min from now), `origin = agent`; each platform gets its best size from the renditions (`publish-post`) | — |
 
@@ -370,7 +391,7 @@ Every route wraps its handler with `apiHandler()` from `src/lib/api-handler.ts`,
 |---|---|---|
 | `/api/profile` | GET, PUT | Business profile; PUT is multipart (fields + logo) |
 | `/api/offerings` | GET | Active offerings (Create Content's picker) |
-| `/api/onboarding/[step]`, `/submit`, `/progress`, `/retry`, `/import/shopify` | | Wizard saves, submit, research progress and retry |
+| `/api/onboarding`, `/api/onboarding/[step]`, `/submit`, `/progress`, `/retry` | | Draft, wizard saves (the website step starts the scan), submit, research progress and retry |
 | `/api/brand/bible` | GET, PUT | Approved + draft + history + Strategist state; PUT saves edits as a new draft |
 | `/api/brand/bible/[id]`, `…/approve`, `/api/brand/bible/regenerate` | GET, POST | One version; approve a draft; new draft with a note |
 | `/api/brand/sources?refs=` | GET | The text behind a claim |

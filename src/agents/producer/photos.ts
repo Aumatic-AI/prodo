@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Brief } from "@/core/creative/brief";
 import type { PlanItem } from "@/core/plans/types";
 import { urlFor } from "@/providers/storage/supabase-storage";
+import { pictureOnly } from "./picture-only";
 
 // Real photos as reference images, so the real product, team or place appears in the ad.
 
@@ -22,7 +23,7 @@ export async function referencePhoto(db: SupabaseClient, brief: Brief, item: Pla
 /** Image prompt with the brand's photo style and the no-text rule. `fix` carries QA's notes on a redo. */
 export function photoPrompt(prompt: string, photoStyle: string | null, hasReference: boolean, fix?: string | null): string {
   return [
-    prompt.replace(/\s+$/, "").replace(/\.?$/, "."),
+    pictureOnly(prompt).replace(/\s+$/, "").replace(/\.?$/, "."),
     photoStyle ? `Photo style: ${photoStyle}.` : "",
     hasReference ? "The product, person or place in the reference image must appear exactly as it looks: same shape, colours, materials and details." : "",
     "Professional advertising photography, realistic, high detail, clean composition with calm space for text added later.",

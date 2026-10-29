@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { MODELS } from "@/config/models";
+import { VIDEO_ON_SCREEN_TEXT } from "@/config/video";
 import { platformMeta } from "@/config/platforms";
 import type { Brief } from "@/core/creative/brief";
 import { getItem, updateItem } from "@/core/plans/plans";
@@ -7,7 +8,7 @@ import type { QaCheck, QaReport } from "@/core/plans/types";
 import { CANVAS } from "@/creative/sizes";
 import { MIN_TEXT_CONTRAST } from "@/lib/color";
 import { ai } from "@/providers/ai/registry";
-import { IMAGE_QA_SYSTEM, VIDEO_REVIEW_JSON_SCHEMA, imageReviewSchema, videoReviewPrompt, type VideoReview } from "@/prompts/agents/qa-asset";
+import { IMAGE_QA_SYSTEM, SCENE_TEXT_SYSTEM, VIDEO_REVIEW_JSON_SCHEMA, imageReviewSchema, sceneTextSchema, videoReviewPrompt, type VideoReview } from "@/prompts/agents/qa-asset";
 import type { Produced } from "@/agents/producer/types";
 import type { Task } from "@/agents/weekly/task";
 import { PASS_SCORE } from "./gate1";
@@ -72,19 +73,49 @@ async function reviewImages(brief: Brief, produced: Produced, track: (u: any) =>
 }
 
 async function reviewVideo(brief: Brief, produced: Produced, track: (u: any) => void) {
-  const res = await ai.analyzeVideo<VideoReview>(produced.previewUrls[0], videoReviewPrompt(brief.hook.text, produced.scenes ?? []), VIDEO_REVIEW_JSON_SCHEMA);
+  const res = await ai.analyzeVideo<VideoReview>(produced.previewUrls[0], videoReviewPrompt(brief.hook.text, produced.scenes ?? [], VIDEO_ON_SCREEN_TEXT), VIDEO_REVIEW_JSON_SCHEMA);
   track(res.usage);
   const r = res.data;
   const bad = (r.scenes ?? []).filter((s) => !s.matches || s.glitch || s.aiText);
   const redoScenes = bad.map((s) => s.scene - 1).filter((i) => i >= 0 && i < (produced.scenes?.length ?? 0));
   if (!r.hookVisible && !redoScenes.includes(0)) redoScenes.unshift(0);
   const checks: QaCheck[] = [
-    { name: "Hook in the first 3 seconds", passed: !!r.hookVisible },
+    { name: VIDEO_ON_SCREEN_TEXT ? "Hook in the first 3 seconds" : "Strong opening shot", passed: !!r.hookVisible },
     { name: "Scenes match the script", passed: !(r.scenes ?? []).some((s) => !s.matches), detail: bad.filter((s) => !s.matches).map((s) => `Scene ${s.scene}: ${s.note}`).join(" ") || undefined },
     { name: "No glitches", passed: !(r.scenes ?? []).some((s) => s.glitch || s.aiText), detail: bad.filter((s) => s.glitch || s.aiText).map((s) => `Scene ${s.scene}: ${s.note}`).join(" ") || undefined },
   ];
-  const fix = bad.map((s) => s.note).filter(Boolean).join(" ") || null;
+  const painted = await paintedTextScenes(produced, track);
+  for (const i of painted.scenes) if (!redoScenes.includes(i)) redoScenes.push(i);
+  checks.push({
+    name: "No words painted into scenes",
+    passed: !painted.scenes.length,
+    detail: painted.scenes.length ? painted.notes : undefined,
+  });
+  const fix = [...bad.map((s) => s.note), ...(painted.scenes.length ? ["Make the picture with no words, letters, labels or text panels in it."] : [])].filter(Boolean).join(" ") || null;
   return { score: Number(r.score) || 0, checks, notes: r.summary ?? "", fix, redoScenes };
+}
+
+/**
+ * Words the image model painted into a scene's still (they carry into the clip). Twelve Labs can
+ * miss them, so a vision model looks at the stills. A failed check never fails the video.
+ */
+async function paintedTextScenes(produced: Produced, track: (u: any) => void): Promise<{ scenes: number[]; notes: string }> {
+  const stills = (produced.sceneImageUrls ?? []).map((url, index) => ({ url, index })).filter((s): s is { url: string; index: number } => !!s.url);
+  if (!stills.length) return { scenes: [], notes: "" };
+  try {
+    const res = await ai.structured(sceneTextSchema, stills.map((s, i) => `Image ${i + 1} = scene ${s.index + 1}`).join("\n"), {
+      system: SCENE_TEXT_SYSTEM,
+      images: stills.map((s) => s.url),
+      model: MODELS.critic,
+    });
+    track(res.usage);
+    const flagged = res.data.scenes.filter((s) => s.strayText);
+    // The model numbers scenes as given; map back through the image order
+    const scenes = flagged.map((s) => stills[s.scene - 1]?.index).filter((i): i is number => i !== undefined);
+    return { scenes, notes: flagged.map((s) => `Scene ${s.scene}: ${s.note}`).join(" ") };
+  } catch {
+    return { scenes: [], notes: "" };
+  }
 }
 
 export async function gate2(task: Task, db: () => SupabaseClient, itemId: string, round: number, brief: Brief, produced: Produced): Promise<Gate2Result> {

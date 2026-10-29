@@ -2,44 +2,65 @@
 
 import { useEffect, useState } from "react";
 import type { TeamPhotoDraft } from "@/core/onboarding/schemas";
-import { AddButton, NumberedList, OptionalBadge, Section } from "../../components/blocks";
+import { AddButton, FromSiteBadge, NumberedList, OptionalBadge, Section } from "../../components/blocks";
+import { ScanWait, useScanWait } from "../../components/ScanWait";
+import { Alert } from "@/components/kit/Alert";
+import { LIMITS } from "@/config/limits";
 import { Field } from "../../components/form/Field";
 import { TextInput } from "@/components/kit/inputs";
 import { ChoiceCards, Pills } from "@/components/kit/choices";
 import { MediaUploader } from "@/components/kit/MediaUploader";
 import { StepLayout } from "../../components/shell/StepLayout";
 import { useOnboarding, useSlice } from "../../store/OnboardingStoreProvider";
-import { SERVICES_META, SERVICE_AREA_OPTIONS, TEAM_PHOTO_KIND_OPTIONS, WHY_WE_ASK, currencyFor } from "../../config";
+import { SERVICES_META, SERVICE_AREA_OPTIONS, TEAM_PHOTO_KIND_OPTIONS } from "../../config";
 import { newService } from "../../lib/factories";
 import { ServiceCard } from "./ServiceCard";
 import { CaseStudiesSection } from "./CaseStudiesSection";
 import { CredentialsSection } from "./CredentialsSection";
-import { row } from "@/components/kit/styles";
 
 type PhotoKind = TeamPhotoDraft["kind"];
 
 export function ServicesStep() {
   const { value: v, update, addItem } = useSlice("services");
-  const countries = useOnboarding((s) => s.draft.basics.countries);
-  const currency = currencyFor(countries);
+  const currency = useOnboarding((s) => s.draft.basics.currency);
+  const { waiting, skip } = useScanWait();
+  const found = v.services.filter((s) => s.found).length;
   const set = (patch: Partial<typeof v>) => update("services", patch);
   // New team photos are tagged with the kind picked here
   const [photoKind, setPhotoKind] = useState<PhotoKind>("team");
 
+  // A service is required, so start with one empty card (unless the website read is about to fill the list)
   useEffect(() => {
-    if (!v.services.length) addItem("services", "services", newService(currency));
+    if (!waiting && !v.services.length) addItem("services", "services", newService(currency));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [waiting]);
+
+  if (waiting) {
+    return (
+      <StepLayout step="business" title={SERVICES_META.title} lead={SERVICES_META.lead} primaryAction={<span />}>
+        <ScanWait onSkip={skip} />
+      </StepLayout>
+    );
+  }
 
   return (
-    <StepLayout step="business" title={SERVICES_META.title} lead={SERVICES_META.lead} why={WHY_WE_ASK.services}>
-      <Section title="Your services" path="services">
+    <StepLayout step="business" title={SERVICES_META.title} lead={SERVICES_META.lead}>
+      <Section title="Your services" path="services" badge={found ? <FromSiteBadge /> : undefined}>
+        {found > 0 && (
+          <Alert tone="success">
+            <strong>Added your {found} main services from your website.</strong> Check their prices and details. Add any others you want to promote below.
+          </Alert>
+        )}
         <div className="flex flex-col gap-3">
           {v.services.map((s, i) => (
             <ServiceCard key={s.id} index={i} service={s} canRemove={v.services.length > 1} />
           ))}
         </div>
-        <AddButton onClick={() => addItem("services", "services", newService(currency))}>Add service</AddButton>
+        {v.services.length < LIMITS.offeringsMax ? (
+          <AddButton onClick={() => addItem("services", "services", newService(currency))}>Add service</AddButton>
+        ) : (
+          <p className="m-0 text-[13px] text-ob-muted">You&apos;ve added the most services ({LIMITS.offeringsMax}). Remove one to add another.</p>
+        )}
       </Section>
 
       <Section title="Where do you serve?">
@@ -75,16 +96,8 @@ export function ServicesStep() {
         />
       </Section>
 
-      <Section title="How should people contact you?" description="Every call to action links here.">
-        <div className={row}>
-          <Field label="Booking link" htmlFor="booking" path="bookingUrl" optional>
-            <TextInput id="booking" type="url" inputMode="url" value={v.bookingUrl} onValueChange={(bookingUrl) => set({ bookingUrl })} placeholder="https://" />
-          </Field>
-          <Field label="WhatsApp number" htmlFor="whatsapp" path="whatsapp" optional>
-            <TextInput id="whatsapp" type="tel" inputMode="tel" value={v.whatsapp} onValueChange={(whatsapp) => set({ whatsapp })} placeholder="+356 9912 3456" />
-          </Field>
-        </div>
-        <Field label="Free guide or lead magnet" htmlFor="lead" path="leadMagnetUrl" optional>
+      <Section title="Free guide or lead magnet" badge={<OptionalBadge />} description="A free download or checklist that brings in leads. Where customers go is set in Basics.">
+        <Field label="Link" htmlFor="lead" path="leadMagnetUrl" optional>
           <TextInput id="lead" type="url" inputMode="url" value={v.leadMagnetUrl} onValueChange={(leadMagnetUrl) => set({ leadMagnetUrl })} placeholder="https://" />
         </Field>
       </Section>

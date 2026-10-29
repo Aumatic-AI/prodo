@@ -29,9 +29,18 @@ function distinct(colors: string[]): string[] {
  * site's most used colourful values. Background and text come from the site's light and dark
  * colours, falling back to white and near-black.
  */
+/** Colours of chat, social and payment widgets that sites embed; never the brand's own */
+const WIDGET_COLOURS = new Set([
+  "#25d366", "#2db742", "#128c7e", "#075e54", // WhatsApp
+  "#1877f2", "#3b5998", "#4267b2", "#0084ff", // Facebook, Messenger
+  "#1da1f2", "#e1306c", "#c13584", // X, Instagram
+  "#008060", "#5c6ac4", "#5a31f4", // Shopify, Shop Pay
+  "#003087", "#009cde", "#ffc439", "#635bff", "#4285f4", // PayPal, Stripe, Google
+]);
+
 export function pickColors(logoPalette: string[], css: CssColor[]): BrandColors {
   const brandVars = css.filter((c) => c.brand).map((c) => c.hex);
-  const siteColours = css.filter((c) => !c.brand).map((c) => c.hex);
+  const siteColours = css.filter((c) => !c.brand && !WIDGET_COLOURS.has(c.hex.toLowerCase())).map((c) => c.hex);
   const colourful = distinct([...brandVars, ...logoPalette, ...siteColours].filter(isColourful));
   const [primary = null, secondary = null, accent = null] = colourful;
 

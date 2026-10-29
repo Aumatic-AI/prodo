@@ -3,6 +3,8 @@ import type { ResearchAgent } from "@/core/onboarding/research";
 import type {
   AutopilotMode,
   BusinessType,
+  CtaChoice,
+  Industry,
   Goal,
   MusicMood,
   PostingPlatform,
@@ -12,59 +14,16 @@ import type {
 } from "@/core/onboarding/options";
 
 export const STEP_META: Record<StepKey, { nav: string; title: string; lead: string }> = {
-  basics: { nav: "Basics", title: "The basics", lead: "Who you are, where to find you online, and what you want from Prodo." },
+  website: { nav: "Website", title: "What's your website?", lead: "We'll read it and fill in your products, photos, prices, logo and social profiles for you. You just check them." },
+  content: { nav: "Your content", title: "Your content", lead: "What your posts should look and sound like." },
+  basics: { nav: "Basics", title: "The basics", lead: "We filled this in from your website. Check it and fix anything that's off." },
   business: { nav: "Your business", title: "Your business", lead: "What you offer and the proof that it works." },
-  style: { nav: "Style & rules", title: "Style and rules", lead: "How you sound, what you never say, and how much Prodo does by itself." },
   connect: { nav: "Connect accounts", title: "Connect your accounts", lead: "So we can post for you and learn from what you've already posted." },
   review: { nav: "Review", title: "Review and submit", lead: "Check everything looks right. You can change any of it later." },
 };
 
 export const PRODUCTS_META = { nav: "Your products", title: "Your products", lead: "What you sell, what it costs, and the proof that it works." };
 export const SERVICES_META = { nav: "Your services", title: "Your services", lead: "What you offer, how it works, and why clients trust you." };
-
-export type WhyItem = { term: string; desc: string };
-
-export const WHY_WE_ASK: Record<StepKey | "products" | "services", WhyItem[]> = {
-  basics: [
-    { term: "Name and logo", desc: "Every agent uses these. Your logo goes on every ad." },
-    { term: "Website", desc: "The Website Analyst reads it for facts, prices and FAQs." },
-    { term: "Social profiles", desc: "The Social & Market Analyst studies what already works." },
-    { term: "Products or services", desc: "Picks the next step and the ad formats that fit." },
-    { term: "Language and timezone", desc: "Copy language, voice-over and posting times." },
-    { term: "Main goal", desc: "Content mix, call to action and what counts as success." },
-  ],
-  business: [],
-  products: [
-    { term: "Products", desc: "The Planner picks what to promote each week." },
-    { term: "Real photos", desc: "The Producer uses them so your real product appears in ads." },
-    { term: "Benefits, audience, objections", desc: "The Creative Director builds angles from these." },
-    { term: "Offers with end dates", desc: "Urgency copy only while a deal is live." },
-    { term: "Reviews", desc: "Social-proof ads, always quoted exactly." },
-    { term: "Seasonality", desc: "The Planner times content around these dates." },
-  ],
-  services: [
-    { term: "Services and pricing", desc: "The Planner and the copywriting." },
-    { term: "Service area", desc: "Local copy, and Google reviews for local businesses." },
-    { term: "Process and turnaround", desc: "How-it-works videos and carousels." },
-    { term: "Case studies", desc: "Proof and before/after ads." },
-    { term: "Credentials", desc: "Builds authority in ads." },
-    { term: "Booking and WhatsApp", desc: "Every call to action links here." },
-    { term: "FAQs", desc: "Objection-handling posts." },
-  ],
-  style: [
-    { term: "Tone", desc: "Copywriting and voice choice." },
-    { term: "Brands you admire", desc: "The Brand Strategist and your visual style." },
-    { term: "Competitors", desc: "We study their angles and find the gaps." },
-    { term: "Never-say list", desc: "A hard rule checked on every post." },
-    { term: "Posts per week", desc: "How many slots the Planner fills." },
-    { term: "Autopilot and budget", desc: "When posts go out, and when agents stop spending." },
-  ],
-  connect: [
-    { term: "Connected accounts", desc: "The Publisher posts here. We also read your past posts and results." },
-    { term: "Not stored by us", desc: "Accounts are read live through our publishing partner. We never see your password." },
-  ],
-  review: [{ term: "Submitting", desc: "Starts the research agents. Your answers stay editable later in Brand and Settings." }],
-};
 
 export const BUSINESS_TYPE_OPTIONS: { value: BusinessType; label: string; description: string }[] = [
   { value: "product", label: "Products", description: "Physical or digital products: a shop, D2C brand, packaged goods." },
@@ -77,6 +36,35 @@ export const GOAL_OPTIONS: { value: Goal; label: string; description: string }[]
   { value: "sales", label: "Sales", description: "Orders on your site or store" },
   { value: "bookings", label: "Bookings", description: "Appointments and slots" },
   { value: "followers", label: "Followers", description: "Grow your audience" },
+];
+
+/** Where customers go, and the link or number each choice needs. */
+export const CTA_OPTIONS: { value: CtaChoice; label: string; description: string; field: string; placeholder: string; phone?: boolean }[] = [
+  { value: "shop", label: "Shop on your website", description: "Buy online", field: "Shop page link", placeholder: "https://yourshop.com/collections/all" },
+  { value: "whatsapp", label: "WhatsApp", description: "Message you directly", field: "WhatsApp number", placeholder: "+44 7700 900123", phone: true },
+  { value: "book", label: "Book online", description: "Pick a time", field: "Booking link", placeholder: "e.g. a Calendly or booking page" },
+  { value: "call", label: "Call you", description: "Phone", field: "Phone number", placeholder: "+44 20 7946 0123", phone: true },
+];
+
+export const INDUSTRY_OPTIONS: { value: Industry; label: string }[] = [
+  { value: "fashion", label: "Fashion and accessories" },
+  { value: "beauty", label: "Beauty and personal care" },
+  { value: "health", label: "Health and wellness" },
+  { value: "food", label: "Food and drink" },
+  { value: "home", label: "Home and furniture" },
+  { value: "fitness", label: "Fitness and sport" },
+  { value: "travel", label: "Travel and hospitality" },
+  { value: "education", label: "Education and courses" },
+  { value: "finance", label: "Finance and insurance" },
+  { value: "real_estate", label: "Real estate" },
+  { value: "tech", label: "Technology and software" },
+  { value: "professional", label: "Professional services" },
+  { value: "automotive", label: "Cars and transport" },
+  { value: "kids", label: "Kids and family" },
+  { value: "pets", label: "Pets" },
+  { value: "art", label: "Art, crafts and gifts" },
+  { value: "events", label: "Events and weddings" },
+  { value: "other", label: "Something else" },
 ];
 
 export const LANGUAGE_OPTIONS = [
@@ -92,54 +80,13 @@ export const LANGUAGE_OPTIONS = [
   { value: "it", label: "Italian" },
   { value: "mt", label: "Maltese" },
   { value: "pt", label: "Portuguese" },
+  { value: "he", label: "Hebrew" },
+  { value: "nl", label: "Dutch" },
+  { value: "tr", label: "Turkish" },
+  { value: "ru", label: "Russian" },
 ];
 
-const EURO_COUNTRIES = ["AT", "BE", "CY", "DE", "EE", "ES", "FI", "FR", "GR", "HR", "IE", "IT", "LT", "LU", "LV", "MT", "NL", "PT", "SI", "SK"];
-
-const COUNTRY_CURRENCY: Record<string, string> = {
-  ...Object.fromEntries(EURO_COUNTRIES.map((c) => [c, "EUR"])),
-  US: "USD",
-  GB: "GBP",
-  IN: "INR",
-  AE: "AED",
-  SA: "SAR",
-  QA: "QAR",
-  AU: "AUD",
-  NZ: "NZD",
-  CA: "CAD",
-  SG: "SGD",
-  CH: "CHF",
-  JP: "JPY",
-  ZA: "ZAR",
-  BR: "BRL",
-  MX: "MXN",
-};
-
-export const CURRENCY_SYMBOL: Record<string, string> = {
-  USD: "$",
-  EUR: "€",
-  GBP: "£",
-  INR: "₹",
-  AED: "AED",
-  SAR: "SAR",
-  QAR: "QAR",
-  AUD: "A$",
-  NZD: "NZ$",
-  CAD: "C$",
-  SGD: "S$",
-  CHF: "CHF",
-  JPY: "¥",
-  ZAR: "R",
-  BRL: "R$",
-  MXN: "MX$",
-};
-
-export const CURRENCY_OPTIONS = Object.keys(CURRENCY_SYMBOL).map((c) => ({ value: c, label: c }));
-
-/** Currency for new prices, from the main (first) country. */
-export function currencyFor(countries: string[]): string {
-  return COUNTRY_CURRENCY[countries[0] ?? ""] ?? "USD";
-}
+export { CURRENCY_OPTIONS, CURRENCY_SYMBOL, currencyFor } from "@/config/currencies";
 
 export const PRICE_MODEL_OPTIONS: { value: PriceModel; label: string }[] = [
   { value: "fixed", label: "Fixed price" },

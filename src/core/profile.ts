@@ -25,7 +25,6 @@ export interface BusinessProfile {
   cta_links: Record<string, string>;
   /** Sliders 0–100: formal, playful, bold, technical */
   tone: Record<string, number>;
-  liked_brands: string[];
   compliance: Compliance;
   /** {platforms: {instagram: 4, …}, formats: […]} */
   posting_prefs: Record<string, unknown>;

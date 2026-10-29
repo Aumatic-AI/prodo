@@ -2,18 +2,29 @@ import { z } from "zod";
 import { LIMITS } from "@/config/limits";
 import { isCountryCode } from "@/config/countries";
 import {
-  AUTOPILOT_MODES,
+  BRAND_RELATIONS,
   BUSINESS_TYPES,
+  CONTENT_MIXES,
   CREDENTIAL_KINDS,
+  CTA_CHOICES,
   DATE_KINDS,
   GOALS,
+  IMAGE_STYLES,
+  INDUSTRIES,
+  LOGO_CHOICES,
+  MAX_GOALS,
+  MAX_STYLES,
   MUSIC_MOODS,
+  PEOPLE_CHOICES,
   POSTING_PLATFORMS,
   PRICE_MODELS,
   SERVICE_AREAS,
   TEAM_PHOTO_KINDS,
   TONE_AXES,
+  VIDEO_STYLES,
 } from "./options";
+import type { ScanState } from "./scan";
+import type { StepKey } from "./steps";
 
 // One schema per step, used for form errors in the browser and for checks on the server.
 // Drafts (z.input) allow empty choices; saved data (z.output) does not.
@@ -26,16 +37,67 @@ const link = z
   .trim()
   .max(500)
   .refine((v) => v === "" || /^https?:\/\/[^\s.]+\.\S+/.test(v), "Enter a full link starting with https://");
+const phone = z
+  .string()
+  .trim()
+  .refine((v) => v === "" || /^\+?[0-9 ()-]{7,20}$/.test(v), "Enter a phone number with country code");
+const hex = z.string().regex(/^#[0-9a-fA-F]{6}$/, "Use a colour like #1A2B3C");
 const list = (max: number, itemMax = 200) => z.array(z.string().trim().min(1).max(itemMax)).max(max);
 const choice = <T extends readonly [string, ...string[]]>(values: T, message: string) =>
   z.enum(values).nullable().refine((v): v is T[number] => v !== null, message);
+/** An ordered pick list with no repeats; the first item matters most. */
+const ranked = <T extends readonly [string, ...string[]]>(values: T, max: number) =>
+  z
+    .array(z.enum(values))
+    .max(max, `Pick up to ${max}`)
+    .refine((v) => new Set(v).size === v.length, "Pick each one once");
 
 /** A file already uploaded to storage. */
 export const uploadSchema = z.object({ id, key: z.string().min(1) });
+const mediaUploadSchema = uploadSchema.extend({ video: z.boolean() });
 
-// ---------- Step 1 · Basics ----------
+// ---------- Start · Website ----------
 
-export const basicsSchema = z.object({
+export const websiteSchema = z.object({ website: link });
+
+// ---------- Step 1 · Your content ----------
+
+export const contentSchema = z.object({
+  // In order: the first goal drives most posts
+  goals: ranked(GOALS, MAX_GOALS).refine((v) => v.length > 0, "Pick your main goal"),
+  mix: choice(CONTENT_MIXES, "Pick images, videos or a mix"),
+  postsPerWeek: z
+    .record(z.enum(POSTING_PLATFORMS), z.number().int().min(0).max(21))
+    .refine((v) => Object.values(v).some((n) => n > 0), "Plan at least one post a week"),
+  // Empty = Prodo tries a wide mix and learns what works
+  imageStyles: ranked(IMAGE_STYLES, MAX_STYLES),
+  videoStyles: ranked(VIDEO_STYLES, MAX_STYLES),
+  people: choice(PEOPLE_CHOICES, "Pick who appears in your posts"),
+  peoplePhotos: z.array(uploadSchema).max(10, "Up to 10 photos"),
+  voiceId: z.string().nullable(),
+  voiceName: z.string().nullable(),
+  musicMood: z.enum(MUSIC_MOODS),
+  logo: z.enum(LOGO_CHOICES),
+  ownMedia: z.array(mediaUploadSchema).max(30, "Up to 30 files"),
+  references: z.array(mediaUploadSchema).max(8, "Up to 8 files"),
+  referenceLinks: z
+    .array(
+      z
+        .string()
+        .trim()
+        .max(500)
+        .regex(/^https?:\/\/[^\s.]+\.\S+/, "Paste a full link starting with https://")
+    )
+    .max(10, "Up to 10 links"),
+  brands: z
+    .array(z.object({ id, name: required("Name the brand", 120), link: text(300), relation: z.enum(BRAND_RELATIONS) }))
+    .max(6, "Up to 6 brands"),
+});
+
+// ---------- Step 2 · Basics ----------
+
+/** Who the business is and where it sells. Settings → Business profile edits the same fields. */
+export const profileSchema = z.object({
   name: required("Add your business name", 120),
   logoKey: z.string().nullable(),
   description: z
@@ -54,10 +116,35 @@ export const basicsSchema = z.object({
   cities: text(300),
   language: required("Pick a language", 40),
   timezone: required("Pick a timezone", 60),
-  primaryGoal: choice(GOALS, "Pick your main goal"),
+  industry: choice(INDUSTRIES, "Pick your industry"),
+  currency: z.string().length(3, "Pick a currency"),
 });
 
-// ---------- Step 2A · Products ----------
+/** Settings → Business profile: the profile plus the goals from "Your content". */
+export const businessProfileSchema = profileSchema.extend({ goals: contentSchema.shape.goals });
+
+export const basicsSchema = profileSchema
+  .extend({
+    colors: z.object({ primary: hex.nullable(), secondary: hex.nullable(), accent: hex.nullable(), bg: hex, text: hex }),
+    fonts: z.object({ heading: z.string().trim().max(80).nullable(), body: z.string().trim().max(80).nullable() }),
+    cta: choice(CTA_CHOICES, "Pick where customers should go"),
+    ctaLinks: z.object({ shop: link, whatsapp: phone, book: link, call: phone }),
+    tone: z.object(Object.fromEntries(TONE_AXES.map((a) => [a, z.number().int().min(0).max(100)])) as Record<
+      (typeof TONE_AXES)[number],
+      z.ZodNumber
+    >),
+    avoidWords: list(50, 60),
+    disclaimers: list(10, 500),
+  })
+  .superRefine((b, ctx) => {
+    // The chosen next step needs its link or number
+    if (b.cta && !b.ctaLinks[b.cta]) {
+      const isPhone = b.cta === "whatsapp" || b.cta === "call";
+      ctx.addIssue({ code: "custom", path: ["ctaLinks", b.cta], message: isPhone ? "Add the phone number" : "Add the link" });
+    }
+  });
+
+// ---------- Step 3A · Products ----------
 
 export const productSchema = z
   .object({
@@ -67,10 +154,12 @@ export const productSchema = z
     currency: z.string().length(3),
     url: link,
     isHero: z.boolean(),
-    photos: z.array(uploadSchema).max(5, "Up to 5 photos"),
+    photos: z.array(uploadSchema).max(LIMITS.offeringPhotosMax, `Up to ${LIMITS.offeringPhotosMax} photos`),
     benefits: list(10),
     audience: text(500),
     objections: list(10),
+    /** Found on the website and not confirmed yet */
+    found: z.boolean().optional(),
   })
   .refine((p) => !p.isHero || p.photos.length >= 2, {
     message: "Hero products need at least 2 real photos",
@@ -82,7 +171,9 @@ export const offerSchema = z.object({
   title: required("Describe the offer"),
   details: text(500),
   offeringId: id.nullable(),
-  endsAt: required("Add the end date", 10),
+  // Without an end date the offer is used, but never with "ends soon" copy
+  endsAt: text(10),
+  found: z.boolean().optional(),
 });
 
 export const reviewSchema = z.object({
@@ -91,6 +182,7 @@ export const reviewSchema = z.object({
   author: text(100),
   offeringId: id.nullable(),
   sourceUrl: link,
+  found: z.boolean().optional(),
 });
 
 export const dateSchema = z.object({
@@ -102,7 +194,7 @@ export const dateSchema = z.object({
 
 export const productsSchema = z
   .object({
-    products: z.array(productSchema).min(1, "Add at least one product").max(50),
+    products: z.array(productSchema).min(1, "Add at least one product").max(LIMITS.offeringsMax, `Up to ${LIMITS.offeringsMax} products`),
     offers: z.array(offerSchema).max(20),
     reviews: z.array(reviewSchema).max(30),
     dates: z.array(dateSchema).max(30),
@@ -116,7 +208,7 @@ export const productsSchema = z
     });
   });
 
-// ---------- Step 2B · Services ----------
+// ---------- Step 3B · Services ----------
 
 export const serviceSchema = z.object({
   id,
@@ -128,6 +220,7 @@ export const serviceSchema = z.object({
   url: link,
   turnaround: text(100),
   steps: list(8, 300),
+  found: z.boolean().optional(),
 });
 
 export const caseStudySchema = z.object({
@@ -146,48 +239,20 @@ export const credentialSchema = z.object({
 export const teamPhotoSchema = uploadSchema.extend({ kind: z.enum(TEAM_PHOTO_KINDS) });
 
 export const servicesSchema = z.object({
-  services: z.array(serviceSchema).min(1, "Add at least one service").max(50),
+  services: z.array(serviceSchema).min(1, "Add at least one service").max(LIMITS.offeringsMax, `Up to ${LIMITS.offeringsMax} services`),
   area: choice(SERVICE_AREAS, "Pick where you serve"),
   areas: text(300),
   caseStudies: z.array(caseStudySchema).max(20),
   yearsInBusiness: z.number().int().min(0).max(200).nullable(),
   credentials: z.array(credentialSchema).max(20),
   teamPhotos: z.array(teamPhotoSchema).max(12, "Up to 12 photos"),
-  bookingUrl: link,
-  whatsapp: z
-    .string()
-    .trim()
-    .refine((v) => v === "" || /^\+?[0-9 ()-]{7,20}$/.test(v), "Enter a phone number with country code"),
   leadMagnetUrl: link,
   faqs: list(5, 300),
 });
 
-// ---------- Step 3 · Style and rules ----------
-
-export const styleSchema = z.object({
-  tone: z.object(Object.fromEntries(TONE_AXES.map((a) => [a, z.number().int().min(0).max(100)])) as Record<
-    (typeof TONE_AXES)[number],
-    z.ZodNumber
-  >),
-  likedBrands: list(3, 100),
-  competitors: z
-    .array(z.object({ id, name: required("Name the competitor", 120), link: text(300) }))
-    .max(5, "Up to 5 competitors"),
-  competitorVideos: z.array(uploadSchema).max(4, "Up to 4 videos"),
-  avoidWords: list(50, 60),
-  disclaimers: list(10, 500),
-  postsPerWeek: z
-    .record(z.enum(POSTING_PLATFORMS), z.number().int().min(0).max(21))
-    .refine((v) => Object.values(v).some((n) => n > 0), "Plan at least one post a week"),
-  voiceId: z.string().nullable(),
-  voiceName: z.string().nullable(),
-  musicMood: z.enum(MUSIC_MOODS),
-  autopilotMode: z.enum(AUTOPILOT_MODES),
-  planWeekday: z.number().int().min(0).max(6),
-  planTime: z.string().regex(/^\d{2}:\d{2}$/, "Pick a time"),
-  monthlyBudgetUsd: z.number({ invalid_type_error: "Enter a monthly budget" }).min(1, "Budget must be at least $1").max(100_000),
-});
-
+export type ContentDraft = z.input<typeof contentSchema>;
+export type ProfileDraft = z.input<typeof profileSchema>;
+export type BusinessProfileDraft = z.input<typeof businessProfileSchema>;
 export type BasicsDraft = z.input<typeof basicsSchema>;
 export type ProductDraft = z.input<typeof productSchema>;
 export type OfferDraft = z.input<typeof offerSchema>;
@@ -199,22 +264,26 @@ export type CaseStudyDraft = z.input<typeof caseStudySchema>;
 export type CredentialDraft = z.input<typeof credentialSchema>;
 export type TeamPhotoDraft = z.input<typeof teamPhotoSchema>;
 export type ServicesDraft = z.input<typeof servicesSchema>;
-export type StyleDraft = z.input<typeof styleSchema>;
 export type Upload = z.infer<typeof uploadSchema>;
+export type MediaUpload = z.infer<typeof mediaUploadSchema>;
 
+export type Content = z.output<typeof contentSchema>;
+export type Profile = z.output<typeof profileSchema>;
+export type BusinessProfile = z.output<typeof businessProfileSchema>;
 export type Basics = z.output<typeof basicsSchema>;
 export type Products = z.output<typeof productsSchema>;
 export type Services = z.output<typeof servicesSchema>;
-export type Style = z.output<typeof styleSchema>;
 
 /** Everything the wizard edits, plus how far the client has got. */
 export interface OnboardingDraft {
-  step: import("./steps").StepKey;
+  step: StepKey;
   status: "not_started" | "collecting" | "analyzing" | "review" | "done";
+  content: ContentDraft;
   basics: BasicsDraft;
   products: ProductsDraft;
   services: ServicesDraft;
-  style: StyleDraft;
+  /** The website read that fills Basics and the products before the client gets there */
+  scan: ScanState | null;
 }
 
 /** Field errors keyed by path, e.g. "products.0.name". */
@@ -229,10 +298,10 @@ export function toFieldErrors(error: z.ZodError): FieldErrors {
   return errors;
 }
 
-/** The schema for the editable steps. Connect and review have nothing to validate. */
+/** The schema for the editable steps. Website, connect and review have their own checks. */
 export const STEP_SCHEMAS = {
+  content: contentSchema,
   basics: basicsSchema,
   products: productsSchema,
   services: servicesSchema,
-  style: styleSchema,
 } as const;

@@ -45,6 +45,12 @@ export const pageFactsSchema = z.object({
         .transform((v) => v ?? null),
       benefits: list(z.string().trim().min(1), 8),
       url: optionalText,
+      // Photos of this offering as shown on the page (relative links are resolved later)
+      imageUrls: list(z.string().trim().min(1).max(1000), 5),
+      inStock: z
+        .boolean()
+        .nullish()
+        .transform((v) => v ?? null),
     }),
     30
   ),
@@ -89,13 +95,15 @@ Rules:
 - Offerings: products, services, plans or packages that any customer can buy from this business. Not categories, section headings, features, tools used, or blog topics.
 - Work done for one specific customer or project (a case study, portfolio piece, client story, before/after) is proof of kind "case_study", never an offering, even when the page gives it a product-like name.
 - One case study is one item: put the customer, what was done and the result together. Don't make separate items for its headline, its numbers and its paragraphs.
+- imageUrls: up to 5 image links (from the page's ![...](link) images) that show this exact offering itself. Not logos, icons, banners, payment badges or other products. Empty when unsure.
+- inStock: false only when the page says this offering is sold out or unavailable; true when it can be bought now; null when the page doesn't say.
 - Offers: current deals, discounts, bundles or codes. endsAt only if the page gives a date (YYYY-MM-DD).
 - Proof: customer reviews and testimonials (quote them), business-wide numbers like "10,000 customers", awards, certifications, case studies.
 - Leave a list empty when the page has nothing for it.
 
 Return JSON:
 {
-  "offerings": [{ "kind": "product" | "service", "name": string, "description": string | null, "price": number | null, "currency": string | null, "priceModel": "fixed" | "from" | "hourly" | "quote" | "subscription" | null, "benefits": string[], "url": string | null }],
+  "offerings": [{ "kind": "product" | "service", "name": string, "description": string | null, "price": number | null, "currency": string | null, "priceModel": "fixed" | "from" | "hourly" | "quote" | "subscription" | null, "benefits": string[], "url": string | null, "imageUrls": string[], "inStock": boolean | null }],
   "offers": [{ "title": string, "details": string | null, "code": string | null, "offeringName": string | null, "endsAt": string | null }],
   "proof": [{ "kind": "review" | "testimonial" | "stat" | "award" | "certification" | "case_study", "content": string, "author": string | null, "rating": number | null, "offeringName": string | null }]
 }`;

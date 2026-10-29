@@ -46,7 +46,7 @@ await check("rankPages: home first, skips cart/legal/other hosts, caps detail pa
   assert.equal(picked[0], "https://acme.com");
   assert.ok(!picked.some((u) => /cart|privacy|other\.com|logo\.png/.test(u)));
   assert.equal(picked.filter((u) => /about/.test(u)).length, 1);
-  assert.equal(picked.filter((u) => /products\/item/.test(u)).length, 12);
+  assert.equal(picked.filter((u) => /products\/item/.test(u)).length, 4);
   assert.ok(picked.indexOf("https://acme.com/products") < picked.indexOf("https://acme.com/blog/post-1"));
 });
 

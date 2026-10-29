@@ -14,6 +14,8 @@
 | `0015_research_agents.sql` | Research agents (1.8): `offerings`/`offers` `source_id` + `verified`, `competitors.source`, `learnings` dimension `baseline`, `agent_runs.run_id`, `set_research_state()` |
 | `0016_weekly_loop.sql` | Weekly loop and learning loop (Sprint 2): `plan_items.status` `ready`, `content_plans.approval_due_at` + `error`, notification email columns, storage types `text/plain` + `font/ttf`, `match_recent_hooks()`, `weekly_reports` |
 | `0017_multi_tenant.sql` | One login = one business: `businesses`, `business_id` on every table, settings rows per business, per-business unique rules, foreign keys inside one business, `own_business` RLS, search functions per business, storage folder per business, a business for every login (see Multi-tenant below) |
+| `0020_research_inputs.sql` | `hook_library.source` allows `reference`; `match_brand_chunks()` and `match_recent_hooks()` search one business's rows exactly (the shared HNSW indexes are dropped: with many businesses they returned too few rows) |
+| `0019_onboarding_v2.sql` | Onboarding v2: `business_profile` gets `industry`, `currency`, `primary_cta`, `content_prefs`, `cities` (from `onboarding.cities`); `liked_brands` moves to `competitors` rows with `relation = 'inspiration'` and is dropped; `brand_assets.source_id` and kinds `person`, `reference_image`, `general`; `brand_sources.kind = 'reference'`; `set_scan_state()` and `merge_onboarding()` |
 | `0018_drop_leftover_policies.sql` | Drops every policy on the business tables except `own_business` (and old ones on the media bucket), whatever their names: leftover allow-all policies on `business_profile`, `media`, `posts`, `post_targets` let every login see every business there |
 
 ### Changes since the Data Model
@@ -29,6 +31,10 @@ The Data Model artifact predates these; this file is the current truth.
 | `app_settings.zernio_profile_id` | Each business gets its own Zernio profile, created automatically |
 | `set_research_state(path, value)` | Research agents running in parallel update `business_profile.onboarding.research` with one atomic statement each (service role only) |
 | `calendar_events.source = 'serp'`, `brand_sources.kind = 'serp'` | Still allowed but unused: SerpAPI was replaced by ScrapeCreators |
+| `business_profile.content_prefs`, `industry`, `currency`, `primary_cta`, `cities` (0019) | Onboarding v2's "Your content" step and Basics. `cities` was a text answer inside `onboarding` |
+| `competitors.relation` (`competitor` \| `inspiration`) (0019) | "Brands to learn from" holds both; replaces `business_profile.liked_brands` (names only, couldn't be studied) |
+| `brand_assets.source_id`, kinds `person`, `reference_image`, `general` (0019) | Product photos found on the website keep their page, like every other found fact; people photos, reference posts and the client's own media |
+| `set_scan_state(path, value)`, `merge_onboarding(patch)` (0019) | The website scan (service role) and the client's own saves both write `business_profile.onboarding`; each writes only its own keys, so neither overwrites the other |
 | `plan_items.status` allows `ready` (0016) | A post that passed both QA gates and waits for the client. `needs_review` stays for posts QA still failed after two redos |
 | `content_plans.approval_due_at`, `content_plans.error` (0016) | When full autopilot approves by itself; the plain reason a plan stopped |
 | `notifications.email_status` (`none|pending|sent|skipped|failed`), `email_to`, `email_error`, `emailed_at` (0016) | Every notification can also be emailed. `skipped` while sending is off (`EMAIL_ENABLED` unset) |
@@ -54,7 +60,7 @@ Never edit an applied migration; add a new one.
 - **Archive, don't delete**: `offerings`, `offers`, `personas`, `content_pillars` use `active = false`. `SET NULL` foreign keys are only a safety net.
 - **Facts trace to a source**: extracted `offerings`/`offers`/`proof_items` keep a `source_id` (or came from the client) and stay inactive/unverified until the client confirms.
 - **Storage keys, never URLs** in every `storage_key` / `logo_key` column.
-- **Embeddings**: `vector(1536)` for OpenAI `text-embedding-3-small`, HNSW cosine indexes. Changing the model = migration + re-embed.
+- **Embeddings**: `vector(1536)` for OpenAI `text-embedding-3-small`; searched exactly within one business (0020; no shared vector index). Changing the model = migration + re-embed.
 - **Access**: RLS on every table, one policy `own_business` for the `authenticated` role (`business_id = current_business_id()`). No `anon` privileges. Jobs and agents use the service role through `businessDb(businessId)`, which filters and stamps `business_id` itself.
 - `updated_at` is maintained by the `set_updated_at` trigger where the column exists.
 
@@ -79,23 +85,27 @@ The client's onboarding answers. Every agent reads it first.
 | `business_id` | uuid PK | The business (0017; was `id`, always 1) |
 | `name`, `logo_key`, `website` | text | Kept |
 | `description` | text | Replaces `about`. 2–3 lines, max 1,500 chars |
-| `business_type` | text | `product` \| `service` — picks onboarding step 2A/2B |
+| `business_type` | text | `product` \| `service` — picks the products or services step |
 | `language` | text | Default `en`. Copy and voice language |
 | `timezone` | text | e.g. `Asia/Kolkata` |
 | `countries` | text[] | ISO 3166-1 codes in priority order (first = main market), e.g. `{MT,IT}`. Names via `countryName()` in `src/config/countries.ts` |
-| `primary_goal` | text | `awareness` \| `leads` \| `sales` \| `bookings` \| `followers` |
+| `primary_goal` | text | `awareness` \| `leads` \| `sales` \| `bookings` \| `followers`. Always the first of `content_prefs.goals` |
+| `content_prefs` | jsonb | "Your content" answers (0019): `{goals (1–2, in order), mix (images \| mostly-images \| balanced \| mostly-videos), image_styles, video_styles (up to 5 each, in order), people (real \| ai \| none), logo (every \| never)}` |
+| `industry` | text | One of the onboarding industries (0019). Health, beauty and finance get extra ad-rule checks |
+| `currency` | text | ISO code (0019). Default for every new price |
+| `cities` | text[] | Cities served, empty = nationwide (0019) |
+| `primary_cta` | text | `shop` \| `whatsapp` \| `book` \| `call` (0019): the one next step on every post; the link is in `cta_links` |
 | `social_urls` | jsonb | `{instagram, facebook, …}` |
-| `cta_links` | jsonb | `{website, shop, booking, whatsapp, lead_magnet}` |
+| `cta_links` | jsonb | `{website, shop, booking, whatsapp, phone, lead_magnet}` |
 | `tone` | jsonb | Sliders 0–100: `formal`, `playful`, `bold`, `technical` |
-| `liked_brands` | text[] | Style inspiration |
 | `compliance` | jsonb | `{avoid_words, forbidden_claims, disclaimers}` — QA hard rule |
 | `posting_prefs` | jsonb | `{platforms: posts per week, formats}` |
 | `voice_id`, `music_mood` | text | Video defaults |
-| `onboarding` | jsonb | Wizard progress and answers with no column: `step` (furthest step), `cities`, `area`, `areas`, `yearsInBusiness`, `faqs`, `voiceName`, `runId`, `submittedAt`, `research` (brand research progress, see technical.md) |
+| `onboarding` | jsonb | Wizard progress and answers with no column: `step` (furthest step), `area`, `areas`, `yearsInBusiness`, `faqs`, `voiceName`, `runId`, `submittedAt`, `scan` (website scan, see technical.md), `research` (brand research progress) |
 | `onboarding_status` | text | `not_started` → `collecting` → `analyzing` → `review` → `done` |
 | `updated_at` | timestamptz | |
 
-Removed: `about` (→ `description`), `products` (→ `offerings`).
+Removed: `about` (→ `description`), `products` (→ `offerings`), `liked_brands` (→ `competitors` with `relation = 'inspiration'`, 0019).
 
 ### `app_settings` — new
 How the system behaves, kept apart from brand facts so agents never see it in prompts.
@@ -167,10 +177,10 @@ Products and services in one table (replaces `business_profile.products`).
 `id`, `offering_id` (null = whole business), `source_id`, `kind` (`review`\|`testimonial`\|`case_study`\|`stat`\|`award`\|`certification`), `content`, `author`, `rating` (0–5), `verified`.
 
 ### `brand_assets` — new
-`id`, `offering_id`, `kind` (`product_photo`\|`team`\|`location`\|`work`\|`reference_video`\|`doc`), `storage_key`, `ai_description`, `tags`. Real photos used as reference images.
+`id`, `offering_id`, `source_id` (the website page a found photo came from, 0019), `kind` (`product_photo`\|`team`\|`location`\|`work`\|`reference_video`\|`doc`\|`person`\|`reference_image`\|`general`), `storage_key`, `ai_description`, `tags`. Real photos used as reference images: `person` = people who appear in posts, `reference_image`/`reference_video` = posts and ads the client likes, `general` = the client's own photos and videos.
 
 ### `competitors` — new
-`id`, `name`, `website`, `social_urls`, `analysis` (`{positioning, angles, offers, formats, hooks, gaps, followers, activeAds}`), `analyzed_at`, `source` (`client` \| `discovered` by the Social & Market Analyst; the wizard only shows and edits `client` rows).
+`id`, `name`, `website`, `social_urls`, `analysis` (`{positioning, angles, offers, formats, hooks, gaps, followers, activeAds}`), `analyzed_at`, `source` (`client` \| `discovered` by the Social & Market Analyst; the wizard only shows and edits `client` rows), `relation` (`competitor` \| `inspiration`, 0019: brands the client admires are studied for style but never treated as rivals).
 
 ### `calendar_events` — new
 `id`, `date`, `name`, `kind` (`holiday`\|`sale`\|`launch`\|`trend`), `relevance` (1–5), `source` (`system`\|`client`\|`serp`; `serp` is unused since SerpAPI was dropped), `notes`.
@@ -178,10 +188,10 @@ Products and services in one table (replaces `business_profile.products`).
 ## Brand Brain
 
 ### `brand_sources` — new
-Every raw document read: `id`, `kind` (`web_page`\|`social_post`\|`competitor`\|`serp` (unused)\|`review`\|`upload`), `competitor_id`, `url`, `title`, `content_md`, `content_hash` (skip unchanged pages), `metadata`, `fetched_at`.
+Every raw document read: `id`, `kind` (`web_page`\|`social_post`\|`competitor`\|`serp` (unused)\|`review`\|`upload`\|`reference`: a post link the client pasted in onboarding), `competitor_id`, `url`, `title`, `content_md`, `content_hash` (skip unchanged pages), `metadata`, `fetched_at`.
 
 ### `brand_chunks` — new
-`id`, `source_id`, `content` (300–800 words), `embedding vector(1536)` (HNSW), `metadata` (`{offering_id, kind}`, GIN-indexed for filters).
+`id`, `source_id`, `content` (300–800 words), `embedding vector(1536)`, `metadata` (`{offering_id, kind}`, GIN-indexed for filters).
 
 Search with:
 
@@ -286,6 +296,7 @@ Every one also includes `business_id` since 0017 (`(col, business_id) → parent
 | `proof_items.offering_id` | `offerings` | SET NULL |
 | `proof_items.source_id` | `brand_sources` | SET NULL |
 | `brand_assets.offering_id` | `offerings` | SET NULL |
+| `brand_assets.source_id` | `brand_sources` | SET NULL (0019) |
 | `brand_sources.competitor_id` | `competitors` | CASCADE |
 | `brand_chunks.source_id` | `brand_sources` | CASCADE |
 | `content_plans.brand_bible_id` | `brand_bible` | RESTRICT |
@@ -322,7 +333,7 @@ Every business file is under `<business id>/` followed by the patterns below. Fi
 | `videos/YYYY/MM/<media-id>.mp4` | Generated or uploaded videos |
 | `logo/<timestamp>.png` | Business logo |
 | `logo/variants/<timestamp>-on-light.png`, `-on-dark.png` | Logo versions made by the Visual Identity Analyst (`brand_kit.logo_variants`) |
-| `brand/photos/…`, `brand/videos/…` | Photos and videos uploaded in onboarding (`brand_assets`) |
+| `brand/photos/…`, `brand/videos/…`, `brand/media/…` | Photos and videos uploaded in onboarding or found on the website (`brand_assets`) |
 | `reference/…` | Reference images for generation |
 | `images/YYYY/MM/<media-id>/<ratio>-r<round>.png` | Agent image ads (main size and renditions) |
 | `carousels/YYYY/MM/<media-id>/slide-<n>-r<round>.png` | Carousel slides (`media_files` role `slide`) |

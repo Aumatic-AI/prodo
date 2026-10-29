@@ -28,7 +28,7 @@ function scrollToFirstError() {
 
 /** The draft slice a step edits on screen. */
 export function sliceFor(step: StepKey, draft: OnboardingDraft): Slice | null {
-  if (step === "basics" || step === "style") return step;
+  if (step === "content" || step === "basics") return step;
   if (step === "business") return draft.basics.businessType === "service" ? "services" : "products";
   return null;
 }

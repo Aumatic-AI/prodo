@@ -4,16 +4,17 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { stepIndex, type StepKey } from "@/core/onboarding/steps";
 import { useOnboarding } from "../store/OnboardingStoreProvider";
+import { WebsiteStep } from "../steps/website/WebsiteStep";
+import { ContentStep } from "../steps/content/ContentStep";
 import { BasicsStep } from "../steps/basics/BasicsStep";
 import { ProductsStep } from "../steps/products/ProductsStep";
 import { ServicesStep } from "../steps/services/ServicesStep";
-import { StyleStep } from "../steps/style/StyleStep";
 import { ConnectStep } from "../steps/connect/ConnectStep";
 import { ReviewStep } from "../steps/review/ReviewStep";
 import { ProgressStep } from "../steps/progress/ProgressStep";
 import { BibleStep } from "../steps/bible/BibleStep";
 
-/** The wizard steps, the research progress screen after submit, and the Brand Bible review after research. */
+/** The website start screen, the wizard steps, the research progress screen after submit, and the Brand Bible review after research. */
 export type StepRoute = StepKey | "progress" | "bible";
 
 /** Where the client should be instead, or null when this page is allowed. */
@@ -39,12 +40,14 @@ export function OnboardingStepPage({ step }: { step: StepRoute }) {
   if (target) return null;
 
   switch (step) {
+    case "website":
+      return <WebsiteStep />;
+    case "content":
+      return <ContentStep />;
     case "basics":
       return <BasicsStep />;
     case "business":
       return isService ? <ServicesStep /> : <ProductsStep />;
-    case "style":
-      return <StyleStep />;
     case "connect":
       return <ConnectStep />;
     case "review":

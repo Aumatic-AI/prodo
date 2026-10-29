@@ -15,6 +15,7 @@ import { submitComposeJob } from "@/providers/ffmpeg/compose-video";
 import { renderPng } from "@/creative/render";
 import { CANVAS, type CanvasRatio } from "@/creative/sizes";
 import { buildAss } from "@/creative/subtitles";
+import { VIDEO_END_CARD, VIDEO_ON_SCREEN_TEXT } from "@/config/video";
 import { EndCard } from "@/creative/templates/carousel";
 import { loadTheme } from "@/creative/theme";
 import { businessKey, storageKeyFor, upload, urlFor } from "@/providers/storage/supabase-storage";
@@ -201,18 +202,21 @@ export const generateVideo = inngest.createFunction(
       const starts = sceneDurations.map((_, i) => sceneDurations.slice(0, i).reduce((a, b) => a + b, 0));
       const words = (voices ?? []).flatMap((v, i) => v.words.map((w) => ({ word: w.word, start: starts[i] + w.start, end: starts[i] + w.end })));
       let subtitlesKey: string | null = null;
-      if (words.length) {
+      if (VIDEO_ON_SCREEN_TEXT && words.length) {
         subtitlesKey = businessKey(businessId, `videos/${media.id}/captions.ass`);
         const ass = buildAss({ canvas, words, font: theme.fonts.heading, highlight: theme.accent.bg, highlightText: theme.accent.text });
         await upload(db, subtitlesKey, Buffer.from(ass, "utf8"), "text/plain");
       }
-      const endCardKey = businessKey(businessId, `videos/${media.id}/end-card.png`);
-      await upload(db, endCardKey, await renderPng(EndCard({ canvas, theme, cta: "Learn more", line: null }), canvas, theme), "image/png");
+      let endCardKey: string | null = null;
+      if (VIDEO_END_CARD) {
+        endCardKey = businessKey(businessId, `videos/${media.id}/end-card.png`);
+        await upload(db, endCardKey, await renderPng(EndCard({ canvas, theme, cta: "Learn more", line: null }), canvas, theme), "image/png");
+      }
       const font = theme.fontFiles.find((f) => f.family === theme.fonts.heading && f.weight >= 700) ?? theme.fontFiles[0];
       // Videos without a voice get a music bed so they aren't silent
       let musicKey: string | null = null;
       if (!voices) {
-        const total = sceneDurations.reduce((a, b) => a + b, 0) + 2.5;
+        const total = sceneDurations.reduce((a, b) => a + b, 0) + (VIDEO_END_CARD ? 2.5 : 0);
         const music = await ai.music("Upbeat, modern instrumental background music for a short social media video, no vocals.", Math.ceil(total)).catch(() => null);
         if (music) {
           musicKey = businessKey(businessId, `audio/${media.id}/music.mp3`);
@@ -220,7 +224,7 @@ export const generateVideo = inngest.createFunction(
           await db.from("media_files").insert({ media_id: media.id, role: "music", storage_key: musicKey });
         }
       }
-      return { subtitlesKey, endCardKey, fontKeys: font ? [font.key] : [], musicKey };
+      return { subtitlesKey, endCardKey, fontKeys: subtitlesKey && font ? [font.key] : [], musicKey };
     });
 
     const renderId = await run("compose", () =>

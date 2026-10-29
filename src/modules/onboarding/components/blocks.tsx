@@ -1,9 +1,10 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Plus, Trash2, X } from "lucide-react";
+import { Check, Plus, Sparkles, Trash2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Alert } from "@/components/kit/Alert";
+import { Badge } from "@/components/kit/Badge";
 import { useFieldError, useHasErrorUnder } from "../store/OnboardingStoreProvider";
 import { button, card, control, focusRing, numberBadge, sectionTitle } from "@/components/kit/styles";
 
@@ -36,6 +37,26 @@ export function Section({ title, description, badge, path, children }: SectionPr
 
 export function OptionalBadge() {
   return <span className="inline-flex items-center rounded-full bg-ob-sunken px-2.5 py-0.5 text-xs font-semibold text-ob-muted">Optional</span>;
+}
+
+/** Shown on answers the website scan filled in. */
+export function FromSiteBadge({ children = "Filled from your website" }: { children?: ReactNode }) {
+  return (
+    <Badge tone="success">
+      <Check size={12} strokeWidth={3} aria-hidden="true" />
+      {children}
+    </Badge>
+  );
+}
+
+/** Shown on answers AI drafted from the website, for the client to check. */
+export function AiDraftBadge() {
+  return (
+    <Badge tone="primary">
+      <Sparkles size={12} aria-hidden="true" />
+      AI draft · check it
+    </Badge>
+  );
 }
 
 interface ItemCardProps {

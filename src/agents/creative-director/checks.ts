@@ -7,6 +7,25 @@ import type { CreativeContext } from "./context";
 
 const URGENCY = /\b(today only|last chance|ends (today|tonight|soon|tomorrow)|hurry|limited time|only \d+ left|while stocks last|don'?t miss out|final hours?)\b/i;
 
+// A money amount: a currency sign or code before or after a number ("$455", "455 ILS", "₪1,400")
+const MONEY = /(?:[$€£₪₹¥]|\b(?:usd|eur|gbp|ils|nis|inr|aed)\b)\s?(\d[\d,]*(?:\.\d+)?)|(\d[\d,]*(?:\.\d+)?)\s?(?:[$€£₪₹¥]|\b(?:usd|eur|gbp|ils|nis|inr|aed|dollars?|euros?|shekels?)\b)/giu;
+
+/** Every money amount in the texts, as numbers. */
+export function pricesIn(texts: string[]): number[] {
+  const found: number[] = [];
+  for (const t of texts) for (const m of t.matchAll(MONEY)) found.push(Number((m[1] ?? m[2]).replace(/,/g, "")));
+  return found.filter((n) => Number.isFinite(n));
+}
+
+/** Prices the brief may show: the product's current price, and amounts in the live offer and reviews. */
+function allowedPrices(ctx: CreativeContext): Set<number> {
+  const allowed = new Set<number>();
+  if (ctx.offering?.price != null) allowed.add(Number(ctx.offering.price));
+  const quoted = [ctx.offer?.title, ctx.offer?.details, ...(ctx.proof ?? []).map((p) => p.content)].filter((t): t is string => !!t);
+  for (const n of pricesIn(quoted)) allowed.add(n);
+  return allowed;
+}
+
 /** Whole-word (or whole-phrase) match, case-insensitive. */
 export function findBanned(texts: string[], banned: string[]): string[] {
   const hits = new Set<string>();
@@ -58,6 +77,14 @@ export function checkBrief(brief: Brief, ctx: CreativeContext): string[] {
     });
     if (total > 40) problems.push(`The voice-over runs about ${Math.round(total)} seconds; keep the whole video under 35 seconds.`);
     if (total < 8) problems.push(`The voice-over is only about ${Math.round(total)} seconds; aim for 15–35 seconds.`);
+  }
+
+  // Website passages can be older than the product row the client edits: only current prices may show
+  const allowed = allowedPrices(ctx);
+  const wrong = [...new Set(pricesIn(briefTexts(brief)).filter((n) => !allowed.has(n)))];
+  if (wrong.length) {
+    const current = ctx.offering?.price != null ? ` The current price is ${ctx.offering.price}${ctx.offering.currency ? ` ${ctx.offering.currency}` : ""}.` : "";
+    problems.push(`Remove prices that aren't the current ones: ${wrong.join(", ")}.${current}`);
   }
 
   const banned = findBanned(briefTexts(brief), [...ctx.avoidWords, ...ctx.bible.neverSay]);

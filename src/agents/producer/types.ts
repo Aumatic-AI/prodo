@@ -29,6 +29,8 @@ export interface Produced {
   previewUrls: string[];
   /** The AI photo behind the design, for the "matches the reference" check */
   photoUrl: string | null;
+  /** Video only: the still image behind each scene, in order, for the painted-in text check */
+  sceneImageUrls?: (string | null)[];
   referenceUrl: string | null;
   /** Colour pairs the design used, with their contrast */
   contrast: { name: string; ratio: number }[];

@@ -1,7 +1,7 @@
 "use client";
 
 import type { ServiceDraft } from "@/core/onboarding/schemas";
-import { ItemCard, NumberedList } from "../../components/blocks";
+import { FromSiteBadge, ItemCard, NumberedList } from "../../components/blocks";
 import { Field } from "../../components/form/Field";
 import { NumberInput, TextArea, TextInput } from "@/components/kit/inputs";
 import { Select } from "@/components/kit/Select";
@@ -27,6 +27,7 @@ export function ServiceCard({ index, service: s, canRemove }: ServiceCardProps) 
       title={s.name || `Service ${index + 1}`}
       pathPrefix={`services.${index}`}
       onRemove={canRemove ? () => removeItem("services", "services", index) : undefined}
+      aside={s.found ? <FromSiteBadge>Found on your website</FromSiteBadge> : undefined}
     >
       <Field label="Service name" htmlFor={id("name")} path={path("name")}>
         <TextInput id={id("name")} value={s.name} onValueChange={(name) => set({ name })} placeholder="e.g. Teeth whitening" />

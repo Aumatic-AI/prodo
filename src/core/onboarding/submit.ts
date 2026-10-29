@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { AppError } from "@/core/errors";
 import { loadOnboarding } from "./load";
 import { newResearch, type ResearchState } from "./research";
+import { scannedSite } from "./scan";
 import { STEP_SCHEMAS } from "./schemas";
 import type { StepKey } from "./steps";
 import { ownRow } from "@/lib/supabase/own-row";
@@ -9,10 +10,10 @@ import { ownRow } from "@/lib/supabase/own-row";
 /** First step whose saved answers are incomplete, or null when everything is ready. */
 export async function firstIncompleteStep(db: SupabaseClient): Promise<StepKey | null> {
   const draft = await loadOnboarding(db);
+  if (!STEP_SCHEMAS.content.safeParse(draft.content).success) return "content";
   if (!STEP_SCHEMAS.basics.safeParse(draft.basics).success) return "basics";
   const business = draft.basics.businessType === "service" ? STEP_SCHEMAS.services.safeParse(draft.services) : STEP_SCHEMAS.products.safeParse(draft.products);
   if (!business.success) return "business";
-  if (!STEP_SCHEMAS.style.safeParse(draft.style).success) return "style";
   return null;
 }
 
@@ -23,7 +24,7 @@ export async function submitOnboarding(db: SupabaseClient): Promise<{ research: 
     throw new AppError("Some steps are not finished yet. Check them and submit again.", "INVALID_INPUT", false);
   }
 
-  const { data: profile, error: readError } = await db.from("business_profile").select("onboarding, onboarding_status").single();
+  const { data: profile, error: readError } = await db.from("business_profile").select("onboarding, onboarding_status, website").single();
   if (readError) throw readError;
   const existing: ResearchState | undefined = profile.onboarding?.research;
   if (profile.onboarding_status !== "collecting" && profile.onboarding_status !== "not_started" && existing) {
@@ -31,6 +32,10 @@ export async function submitOnboarding(db: SupabaseClient): Promise<{ research: 
   }
 
   const research = newResearch();
+  // The website scan already read this site: the Website Analyst has nothing new to do
+  if (scannedSite(profile.onboarding?.scan, profile.website)) {
+    research.agents.website_analyst = { state: "done", summary: "Read your website while you answered the questions", finishedAt: new Date().toISOString() };
+  }
   const { error } = await ownRow(db
     .from("business_profile")
     .update({

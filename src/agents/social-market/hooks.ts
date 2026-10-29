@@ -10,21 +10,25 @@ import { nameKey } from "@/agents/research/text";
 // competitors' best posts and videos (competitor, no score).
 
 export const MAX_OWN_VIDEOS = 6;
-export const MAX_COMPETITOR_VIDEOS = 4;
+/** Videos that aren't the client's: references first, then rivals' best ads, then brands they admire */
+export const MAX_OTHER_VIDEOS = 5;
 
 export interface HookPost {
   platform: string;
   caption: string;
-  source: "own_winner" | "competitor";
+  /** reference: posts the client gave as examples, and brands they admire */
+  source: "own_winner" | "competitor" | "reference";
   score: number | null;
 }
 
 export interface VideoToAnalyze {
   url: string;
   platform: string;
-  source: "own_top" | "own_bottom" | "competitor";
+  source: "own_top" | "own_bottom" | "competitor" | "reference";
   label: string;
   score: number | null;
+  /** The reference link's brand_sources row, to keep what was learned from it */
+  sourceId?: string;
 }
 
 export interface AnalyzedVideo extends VideoToAnalyze {
@@ -35,7 +39,9 @@ export async function analyzeVideo(video: VideoToAnalyze): Promise<{ analysis: V
   const context =
     video.source === "competitor"
       ? `It's from a competitor (${video.label}).`
-      : `It's from the brand's own ${video.platform} account and performed ${video.source === "own_top" ? "well above" : "well below"} its average.`;
+      : video.source === "reference"
+        ? `The brand owner chose it as an example of the content they want (${video.label}).`
+        : `It's from the brand's own ${video.platform} account and performed ${video.source === "own_top" ? "well above" : "well below"} its average.`;
   const res = await ai.analyzeVideo(video.url, videoAnalysisPrompt(context), VIDEO_ANALYSIS_JSON_SCHEMA);
   return {
     analysis: videoAnalysisSchema.parse(res.data ?? {}),
@@ -61,7 +67,7 @@ export async function saveHooks(db: SupabaseClient, posts: HookPost[], videos: A
         posts.map((p) => ({
           platform: p.platform,
           caption: p.caption,
-          note: p.source === "competitor" ? "competitor" : undefined,
+          note: p.source === "own_winner" ? undefined : p.source,
         }))
       ),
       {
@@ -89,8 +95,8 @@ export async function saveHooks(db: SupabaseClient, posts: HookPost[], videos: A
       text: v.analysis.hook.slice(0, 300),
       hook_type: v.analysis.hookType || null,
       platform: v.platform,
-      source: v.source === "competitor" ? "competitor" : "own_winner",
-      score: v.source === "competitor" ? null : v.score,
+      source: v.source === "competitor" || v.source === "reference" ? v.source : "own_winner",
+      score: v.source === "competitor" || v.source === "reference" ? null : v.score,
     });
   }
 

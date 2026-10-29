@@ -8,6 +8,7 @@ import { defineResearchAgent, inGroups } from "@/agents/research/define";
 import { saveBaselines } from "./baseline";
 import {
   givenInstagram,
+  longestRunningVideoAd,
   MAX_COMPETITORS,
   MIN_COMPETITORS,
   readGoogleAds,
@@ -20,14 +21,15 @@ import {
   type Competitor,
   type Footprint,
 } from "./competitors";
-import { analyzeVideo, MAX_COMPETITOR_VIDEOS, MAX_OWN_VIDEOS, saveHooks, type AnalyzedVideo, type HookPost, type VideoToAnalyze } from "./hooks";
+import { analyzeVideo, MAX_OTHER_VIDEOS, MAX_OWN_VIDEOS, saveHooks, type AnalyzedVideo, type HookPost, type VideoToAnalyze } from "./hooks";
+import { readReferences, saveReferenceLessons } from "./references";
 import { ownSources, readOwnPlatform, type PlatformResult } from "./own-posts";
 import { fillSocialsFromWebsite } from "./website-socials";
 
 // Agent 3 · Social & Market Analyst
 // Learns what already works for the client and for competitors.
-// own posts (Zernio or public) → baselines (code) → competitors (find, read, summarise)
-// → videos (Twelve Labs) → hooks (AI) into hook_library
+// own posts (Zernio or public) → baselines (code) → competitors (find, read, summarise; brands the
+// client admires: posts only) → the client's reference links → videos (Twelve Labs) → hooks (AI) into hook_library
 
 const PARALLEL = 3;
 
@@ -37,8 +39,10 @@ export const socialMarketAnalyst = defineResearchAgent("social_market_analyst", 
 
   // ---- The client's own posts ----
   // Profiles the client left empty: taken from their website when it links to them
-  const fromWebsite =
-    (await optional(
+  // (skipped when the onboarding scan already did it for this website)
+  const fromWebsite = ctx.scanned
+    ? {}
+    : (await optional(
       task(
         "socials-from-website",
         () => fillSocialsFromWebsite(db(), ctx.website, ctx.socials),
@@ -98,13 +102,16 @@ export const socialMarketAnalyst = defineResearchAgent("social_market_analyst", 
   }
 
   // ---- Competitors ----
-  let competitors: Competitor[] = ctx.competitors.map(({ id, name, website, socialUrls }) => ({
+  let competitors: Competitor[] = ctx.competitors.map(({ id, name, website, socialUrls, relation }) => ({
     id,
     name,
     website,
     socialUrls,
+    inspiration: relation === "inspiration",
   }));
-  const named = ctx.competitors.filter((c) => !c.discovered).length;
+  // Brands the client admires are studied too, but only real competitors count towards the minimum
+  const rivals = ctx.competitors.filter((c) => c.relation !== "inspiration");
+  const named = rivals.filter((c) => !c.discovered).length;
   if (named < MIN_COMPETITORS) {
     const found = await optional(
       task(
@@ -122,7 +129,7 @@ export const socialMarketAnalyst = defineResearchAgent("social_market_analyst", 
           task(
             "pick-competitors",
             async (track) => {
-              const res = await saveDiscovered(db(), ctx, found ?? [], brief, MIN_COMPETITORS + 1 - ctx.competitors.length);
+              const res = await saveDiscovered(db(), ctx, found ?? [], brief, MIN_COMPETITORS + 1 - rivals.length);
               if (res.usage) track(res.usage);
               return res.added;
             },
@@ -135,6 +142,26 @@ export const socialMarketAnalyst = defineResearchAgent("social_market_analyst", 
   competitors = competitors.slice(0, MAX_COMPETITORS);
 
   const footprints = await inGroups(competitors, PARALLEL, async (c, i) => {
+    // A brand the client admires is studied for its look and hooks only: no ads, no gaps to own
+    if (c.inspiration) {
+      const handle = givenInstagram(c);
+      const insta = handle
+        ? await optional(
+            task(
+              `inspiration-${i}-instagram`,
+              async (track) => {
+                const res = await readInstagram(handle);
+                track(res.usage);
+                return { followers: res.followers, posts: res.posts };
+              },
+              (r) => `${c.name}: read ${r.posts.length} top Instagram posts for their look and hooks`
+            )
+          )
+        : null;
+      if (!insta?.posts.length) return null;
+      const footprint: Footprint = { instagram: handle, followers: insta.followers, posts: insta.posts, metaAds: [], googleAds: [], homepage: null };
+      return { competitor: c, footprint };
+    }
     const meta = await optional(
       task(
         `competitor-${i}-meta-ads`,
@@ -231,28 +258,39 @@ export const socialMarketAnalyst = defineResearchAgent("social_market_analyst", 
         score: v.score,
       })),
   ]);
-  const competitorVideos: VideoToAnalyze[] = [
+  // ---- The client's reference links ----
+  const references = await readReferences({ db, ctx, task });
+
+  // Videos that aren't the client's: their references, each rival's longest-running video ad
+  // (or a top Instagram video when they run no video ads), then brands they admire
+  const firstVideo = (posts: Footprint["posts"]) => posts.find((p) => p.videoUrl)?.videoUrl;
+  const otherVideos: VideoToAnalyze[] = [
     ...ctx.referenceVideoKeys.map((key) => ({
       url: urlFor(env.NEXT_PUBLIC_SUPABASE_URL, key),
       platform: "upload",
-      source: "competitor" as const,
+      source: "reference" as const,
       label: "a video you uploaded",
       score: null,
     })),
-    ...studied.flatMap(({ competitor, footprint }) =>
-      footprint.posts
-        .filter((p) => p.videoUrl)
-        .slice(0, 1)
-        .map((p) => ({
-          url: p.videoUrl!,
-          platform: "instagram",
-          source: "competitor" as const,
-          label: competitor.name,
-          score: null,
-        }))
-    ),
-  ];
-  const videos = [...ownVideos.slice(0, MAX_OWN_VIDEOS), ...competitorVideos.slice(0, MAX_COMPETITOR_VIDEOS)];
+    ...references.filter((r) => r.post.videoUrl).map((r) => ({
+      url: r.post.videoUrl!,
+      platform: r.post.platform,
+      source: "reference" as const,
+      label: `a ${r.post.platform} post you linked`,
+      score: null,
+      sourceId: r.id,
+    })),
+  ].slice(0, 2);
+  for (const { competitor, footprint } of studied.filter((s) => !s.competitor.inspiration)) {
+    const ad = longestRunningVideoAd(footprint.metaAds);
+    const url = ad?.videoUrl ?? firstVideo(footprint.posts);
+    if (url) otherVideos.push({ url, platform: ad ? "meta_ad" : "instagram", source: "competitor", label: ad ? `${competitor.name}, an ad running since ${ad.firstShown!.slice(0, 10)}` : competitor.name, score: null });
+  }
+  for (const { competitor, footprint } of studied.filter((s) => s.competitor.inspiration)) {
+    const url = firstVideo(footprint.posts);
+    if (url) otherVideos.push({ url, platform: "instagram", source: "reference", label: `${competitor.name}, a brand you admire`, score: null });
+  }
+  const videos = [...ownVideos.slice(0, MAX_OWN_VIDEOS), ...otherVideos.slice(0, MAX_OTHER_VIDEOS)];
 
   const analyzed = (
     await inGroups(videos, PARALLEL, (video, i) =>
@@ -265,11 +303,12 @@ export const socialMarketAnalyst = defineResearchAgent("social_market_analyst", 
             return { ...video, analysis: res.analysis };
           },
           (r) =>
-            `Watched a ${r.source === "competitor" ? `video from ${r.label}` : `${r.source === "own_top" ? "top" : "weak"} ${r.platform} video`}: ${r.analysis.hookType || "hook"}, ${r.analysis.pacing} pacing`
+            `Watched ${r.source === "competitor" ? `a video from ${r.label}` : r.source === "reference" ? r.label : `a ${r.source === "own_top" ? "top" : "weak"} ${r.platform} video of yours`}: ${r.analysis.hookType || "hook"}, ${r.analysis.pacing} pacing`
         )
       )
     )
   ).filter((v): v is AnalyzedVideo => !!v);
+  await optional(task("save-reference-lessons", () => saveReferenceLessons(db(), analyzed), (n) => `Kept what ${n} of your reference videos do well`));
 
   // ---- Hooks ----
   const hookPosts: HookPost[] = [
@@ -283,17 +322,18 @@ export const socialMarketAnalyst = defineResearchAgent("social_market_analyst", 
           score: t.score,
         }))
     ),
-    ...studied.flatMap(({ footprint }) =>
+    ...studied.flatMap(({ competitor, footprint }) =>
       footprint.posts
         .filter((p) => p.caption)
         .slice(0, 5)
         .map((p) => ({
           platform: "instagram",
           caption: p.caption!,
-          source: "competitor" as const,
+          source: competitor.inspiration ? ("reference" as const) : ("competitor" as const),
           score: null,
         }))
     ),
+    ...references.filter((r) => r.post.caption).map((r) => ({ platform: r.post.platform, caption: r.post.caption!, source: "reference" as const, score: null })),
   ];
   const hooks =
     hookPosts.length || analyzed.length
@@ -312,7 +352,8 @@ export const socialMarketAnalyst = defineResearchAgent("social_market_analyst", 
 
   const parts = [
     platforms.length ? `measured ${platforms.length} of your platforms` : "no posts of yours to measure yet",
-    `studied ${studied.length} competitor${studied.length === 1 ? "" : "s"}`,
+    `studied ${studied.filter((s) => !s.competitor.inspiration).length} competitors and ${studied.filter((s) => s.competitor.inspiration).length} brands you admire`,
+    references.length && `read ${references.length} of your reference posts`,
     analyzed.length && `watched ${analyzed.length} videos`,
     hooks && `saved ${hooks} hooks`,
   ].filter(Boolean);

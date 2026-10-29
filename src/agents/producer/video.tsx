@@ -2,6 +2,8 @@ import { NonRetriableError } from "inngest";
 import type { VideoBrief } from "@/core/creative/brief";
 import { contrast } from "@/lib/color";
 import { renderPng } from "@/creative/render";
+import { VIDEO_END_CARD, VIDEO_ON_SCREEN_TEXT } from "@/config/video";
+import { pictureOnly } from "./picture-only";
 import { CANVAS } from "@/creative/sizes";
 import { buildAss, type TimedWord } from "@/creative/subtitles";
 import { EndCard } from "@/creative/templates/carousel";
@@ -25,7 +27,7 @@ import type { ProduceArgs, Produced } from "./types";
 
 const CLIP_STYLE =
   "Cinematic, natural colour grade, smooth camera movement only, no cuts, photorealistic, keep the exact composition of the image. Nobody talks or moves their lips. No text, letters or logos.";
-const END_CARD_SEC = 2.5;
+const END_CARD_SEC = VIDEO_END_CARD ? 2.5 : 0;
 const MAX_RENDER_POLLS = 40;
 
 /** What carries over between rounds, so a redo only remakes failed scenes. */
@@ -98,7 +100,7 @@ export async function produceVideo(a: ProduceArgs, brief: VideoBrief, previous: 
         const i = Number(img.key.split("-")[1]) - 1;
         const scene = brief.scenes[i];
         const duration = Math.min(15, Math.max(4, Math.ceil(sceneDurations[i])));
-        const res = await startJob({ key: img.key, kind: "video", prompt: `${scene.motion}. ${scene.visual} ${CLIP_STYLE}`, aspect: "9:16", refs: [], firstFrame: img.url, duration });
+        const res = await startJob({ key: img.key, kind: "video", prompt: `${scene.motion}. ${pictureOnly(scene.visual)} ${CLIP_STYLE}`, aspect: "9:16", refs: [], firstFrame: img.url, duration });
         track(res.usage);
         jobs.push(res.job);
       }
@@ -148,24 +150,33 @@ export async function produceVideo(a: ProduceArgs, brief: VideoBrief, previous: 
         end: i === 0 ? Math.min(starts[i] + sceneDurations[i], 2.4) : starts[i] + sceneDurations[i],
       }));
       const captionFont = theme.fontFiles.find((f) => f.family === theme.fonts.heading && f.weight >= 700) ?? theme.fontFiles[0];
-      const out: Record<string, { subtitles: string; endCard: string }> = {};
+      const out: Record<string, { subtitles: string | null; endCard: string | null }> = {};
       for (const canvas of canvases) {
         const tag = `${canvas.ratio.replace(":", "x")}-r${a.round}`;
-        const ass = buildAss({ canvas, words, overlays, font: theme.fonts.heading, highlight: theme.accent.bg, highlightText: theme.accent.text });
-        const subtitles = dated(a.businessId, "videos", a.mediaId, `captions-${tag}.ass`);
-        await upload(a.db(), subtitles, Buffer.from(ass, "utf8"), "text/plain");
-        const card = await renderPng(<EndCard canvas={canvas} theme={theme} cta={brief.cta.label} line={brief.message.length <= 70 ? brief.message : null} />, canvas, theme);
-        const endCard = dated(a.businessId, "videos", a.mediaId, `end-card-${tag}.png`);
-        await upload(a.db(), endCard, card, "image/png");
+        let subtitles: string | null = null;
+        if (VIDEO_ON_SCREEN_TEXT) {
+          const ass = buildAss({ canvas, words, overlays, font: theme.fonts.heading, highlight: theme.accent.bg, highlightText: theme.accent.text });
+          subtitles = dated(a.businessId, "videos", a.mediaId, `captions-${tag}.ass`);
+          await upload(a.db(), subtitles, Buffer.from(ass, "utf8"), "text/plain");
+        }
+        let endCard: string | null = null;
+        if (VIDEO_END_CARD) {
+          const card = await renderPng(<EndCard canvas={canvas} theme={theme} cta={brief.cta.label} line={brief.message.length <= 70 ? brief.message : null} />, canvas, theme);
+          endCard = dated(a.businessId, "videos", a.mediaId, `end-card-${tag}.png`);
+          await upload(a.db(), endCard, card, "image/png");
+        }
         out[canvas.ratio] = { subtitles, endCard };
       }
       return {
         files: out,
-        fontKeys: captionFont ? [captionFont.key] : [],
+        fontKeys: VIDEO_ON_SCREEN_TEXT && captionFont ? [captionFont.key] : [],
         contrast: themePairs(theme).map((p) => ({ name: p.name, ratio: Math.round(contrast(p.bg, p.text) * 100) / 100 })),
       };
     },
-    () => "Drew the captions, on-screen text and end card"
+    () => {
+      const drawn = [VIDEO_ON_SCREEN_TEXT && "captions and on-screen text", VIDEO_END_CARD && "end card"].filter(Boolean);
+      return drawn.length ? `Drew the ${drawn.join(" and ")}` : "No on-screen text or end card (both switched off)";
+    }
   );
 
   // 6. One ffmpeg run per size on our worker
@@ -221,6 +232,7 @@ export async function produceVideo(a: ProduceArgs, brief: VideoBrief, previous: 
         mainKey: renders[0].key,
         previewUrls: renders.map((r) => urlFor(process.env.NEXT_PUBLIC_SUPABASE_URL!, r.key)),
         photoUrl: state.images[0],
+        sceneImageUrls: state.images,
         referenceUrl: null,
         contrast: parts.contrast,
         canvases: renders.map((r) => ({ ratio: r.ratio, width: CANVAS[r.ratio as "9:16"].width, height: CANVAS[r.ratio as "9:16"].height, key: r.key })),

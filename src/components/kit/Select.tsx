@@ -13,6 +13,8 @@ export interface DropdownOption {
   label: string;
   /** Small muted text on the right, e.g. a country code */
   hint?: string;
+  /** Shows the label in this font, e.g. in a font picker */
+  font?: string;
 }
 
 interface SelectProps {
@@ -37,7 +39,9 @@ export function Select(props: SelectProps) {
 function OptionRow({ item, Indicator }: { item: DropdownOption; Indicator: typeof BaseSelect.ItemIndicator | typeof Combobox.ItemIndicator }) {
   return (
     <>
-      <span className="min-w-0 flex-1 truncate">{item.label}</span>
+      <span className="min-w-0 flex-1 truncate" style={item.font ? { fontFamily: `"${item.font}", var(--font-ob)` } : undefined}>
+        {item.label}
+      </span>
       {item.hint && <span className="text-xs text-ob-faint">{item.hint}</span>}
       <Indicator className="text-ob-primary">
         <Check size={15} strokeWidth={2.5} />

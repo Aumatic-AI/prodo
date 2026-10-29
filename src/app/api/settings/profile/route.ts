@@ -3,22 +3,41 @@ import { apiHandler } from "@/lib/api-handler";
 import { currentBusiness } from "@/core/business";
 import { createClient } from "@/lib/supabase/server";
 import { loadOnboarding } from "@/core/onboarding/load";
-import { basicsSchema } from "@/core/onboarding/schemas";
-import { saveBasics } from "@/core/onboarding/save-basics";
+import { businessProfileSchema, type BusinessProfileDraft, type OnboardingDraft } from "@/core/onboarding/schemas";
+import { saveProfile } from "@/core/onboarding/save-basics";
 import { startPartialRefresh } from "@/core/onboarding/research";
 import { inngest } from "@/jobs/client";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
-// Business profile in Settings: the same fields, checks and save as onboarding's Basics step
-export const GET = apiHandler(async () => {
-  const db = await createClient();
-  return NextResponse.json((await loadOnboarding(db)).basics);
-});
+/** The fields Settings edits: onboarding's profile fields and goals. */
+function pick({ basics: b, content }: OnboardingDraft): BusinessProfileDraft {
+  return {
+    name: b.name,
+    logoKey: b.logoKey,
+    description: b.description,
+    website: b.website,
+    socials: b.socials,
+    businessType: b.businessType,
+    countries: b.countries,
+    cities: b.cities,
+    language: b.language,
+    timezone: b.timezone,
+    industry: b.industry,
+    currency: b.currency,
+    goals: content.goals,
+  };
+}
+
+const load = async (db: SupabaseClient) => pick(await loadOnboarding(db));
+
+// Business profile in Settings: the same fields, checks and save as onboarding
+export const GET = apiHandler(async () => NextResponse.json(await load(await createClient())));
 
 export const PUT = apiHandler(async (req: NextRequest) => {
   const { db, businessId } = await currentBusiness();
-  const input = basicsSchema.parse(await req.json());
+  const input = businessProfileSchema.parse(await req.json());
   const { data: before } = await db.from("business_profile").select("logo_key, onboarding_status").single();
-  await saveBasics(db, input);
+  await saveProfile(db, input);
 
   // A new logo: the Visual Identity Analyst makes the light and dark versions again (and the colours,
   // unless the client set them by hand)
@@ -28,5 +47,5 @@ export const PUT = apiHandler(async (req: NextRequest) => {
       await inngest.send({ name: "onboarding/started", id: research.attempt, data: { businessId, runId: research.id, attempt: research.attempt, agents: ["visual_identity_analyst"] } });
     }
   }
-  return NextResponse.json((await loadOnboarding(db)).basics);
+  return NextResponse.json(await load(db));
 });

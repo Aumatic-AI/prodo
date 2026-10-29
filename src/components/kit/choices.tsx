@@ -95,6 +95,61 @@ export function ChoiceCards<T extends string>({ options, value, onChange, label 
   );
 }
 
+interface RankedChoiceCardsProps<T extends string> {
+  options: readonly Option<T>[];
+  /** Picked values in order; the first matters most */
+  value: T[];
+  onChange: (value: T[]) => void;
+  max: number;
+  label?: string;
+}
+
+/** Cards picked in order, up to `max`. Each picked card shows its place (1, 2…); clicking it again removes it. */
+export function RankedChoiceCards<T extends string>({ options, value, onChange, max, label }: RankedChoiceCardsProps<T>) {
+  const full = value.length >= max;
+  return (
+    <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,200px),1fr))] gap-3" role="group" aria-label={label}>
+      {options.map((o) => {
+        const place = value.indexOf(o.value);
+        const on = place >= 0;
+        return (
+          <button
+            key={o.value}
+            type="button"
+            aria-pressed={on}
+            disabled={!on && full}
+            onClick={() => onChange(on ? value.filter((v) => v !== o.value) : [...value, o.value])}
+            className={cn(
+              "flex items-start gap-3 rounded-ob-md border p-4 text-left transition-[border-color,background-color,box-shadow,opacity] duration-150 disabled:cursor-not-allowed disabled:opacity-50",
+              focusRing,
+              on
+                ? "border-ob-primary bg-ob-primary-soft shadow-[inset_0_0_0_1px_var(--color-ob-primary)]"
+                : "border-ob-line-strong bg-ob-surface enabled:hover:border-ob-primary enabled:hover:shadow-ob-sm"
+            )}
+          >
+            <span
+              className={cn(
+                "grid size-[22px] shrink-0 place-items-center rounded-full border-2 text-xs font-bold transition-colors",
+                on ? "border-ob-primary bg-ob-primary text-ob-on-primary" : "border-ob-line-strong"
+              )}
+              aria-hidden="true"
+            >
+              {on ? place + 1 : ""}
+            </span>
+            <span className="flex min-w-0 flex-col gap-0.5">
+              <span className="text-[15px] font-bold text-ob-ink">
+                {o.label}
+                {on && <span className="sr-only">, picked {place + 1}</span>}
+              </span>
+              {o.description && <span className="text-[13px] text-ob-muted">{o.description}</span>}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 /** Adds or removes a value from a list. For multi-choice Pills. */
 export function toggle<T>(list: T[], value: T): T[] {
   return list.includes(value) ? list.filter((v) => v !== value) : [...list, value];

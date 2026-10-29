@@ -1,6 +1,6 @@
 "use client";
 
-import { AddButton, ItemCard } from "../../components/blocks";
+import { AddButton, FromSiteBadge, ItemCard } from "../../components/blocks";
 import { Field } from "../../components/form/Field";
 import { TextArea, TextInput } from "@/components/kit/inputs";
 import { Select } from "@/components/kit/Select";
@@ -23,7 +23,14 @@ export function ReviewsSection() {
         const set = (patch: Partial<typeof r>) => updateItem("products", "reviews", i, patch);
         const path = (f: string) => `reviews.${i}.${f}`;
         return (
-          <ItemCard key={r.id} index={i} title={r.author || `Review ${i + 1}`} pathPrefix={`reviews.${i}`} onRemove={() => removeItem("products", "reviews", i)}>
+          <ItemCard
+            key={r.id}
+            index={i}
+            title={r.author || `Review ${i + 1}`}
+            pathPrefix={`reviews.${i}`}
+            onRemove={() => removeItem("products", "reviews", i)}
+            aside={r.found ? <FromSiteBadge>Found on your website</FromSiteBadge> : undefined}
+          >
             <Field label="What the customer said" htmlFor={`review-${r.id}`} path={path("content")}>
               <TextArea id={`review-${r.id}`} value={r.content} onValueChange={(content) => set({ content })} placeholder="Paste the review exactly as written" />
             </Field>
@@ -40,9 +47,19 @@ export function ReviewsSection() {
                 />
               </Field>
             </div>
-            <Field label="Source link" htmlFor={`review-${r.id}-src`} path={path("sourceUrl")} optional hint="Where the review is published, e.g. Google or Facebook.">
-              <TextInput id={`review-${r.id}-src`} type="url" inputMode="url" value={r.sourceUrl} onValueChange={(sourceUrl) => set({ sourceUrl })} placeholder="https://" />
-            </Field>
+            {r.found ? (
+              // Found reviews keep the page they were quoted from
+              <p className="m-0 text-[13px] text-ob-muted">
+                Quoted word for word from{" "}
+                <a href={r.sourceUrl} target="_blank" rel="noreferrer" className="break-all font-semibold text-ob-primary underline-offset-2 hover:underline">
+                  {r.sourceUrl.replace(/^https?:\/\/(www\.)?/, "")}
+                </a>
+              </p>
+            ) : (
+              <Field label="Source link" htmlFor={`review-${r.id}-src`} path={path("sourceUrl")} optional hint="Where the review is published, e.g. Google or Facebook.">
+                <TextInput id={`review-${r.id}-src`} type="url" inputMode="url" value={r.sourceUrl} onValueChange={(sourceUrl) => set({ sourceUrl })} placeholder="https://" />
+              </Field>
+            )}
           </ItemCard>
         );
       })}

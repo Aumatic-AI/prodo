@@ -3,6 +3,7 @@ import { generateVideo } from "./generate-video";
 import { publishPost } from "./publish-post";
 import { checkPostStatus } from "./check-post-status";
 import { onboardingRun, regenerateBible } from "./onboarding-run";
+import { onboardingScan } from "./onboarding-scan";
 import { websiteAnalyst } from "@/agents/website-analyst";
 import { visualIdentityAnalyst } from "@/agents/visual-identity";
 import { socialMarketAnalyst } from "@/agents/social-market";
@@ -23,6 +24,7 @@ export const functions = [
   publishPost,
   checkPostStatus,
   // Brand research (agents 1–4)
+  onboardingScan,
   onboardingRun,
   regenerateBible,
   websiteAnalyst,

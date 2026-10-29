@@ -10,7 +10,8 @@ export const visualStyleSchema = z.object({
 export type VisualStyle = z.infer<typeof visualStyleSchema>;
 
 export const VISUAL_STYLE_SYSTEM = `You are an art director describing a brand's visual style so designers and image tools can match it.
-The first image is the homepage screenshot when one is given; the others are the brand's own photos.
+The first image is the homepage screenshot when one is given; then the brand's own photos; last, posts or ads the client gave as the look they want (references).
+Describe the brand as it is, and let the references show the direction it wants to move in.
 
 Describe only what you can see. Be concrete and short (2–3 sentences each):
 - photoStyle: lighting, colour grading, subjects, setting, framing, people or no people, realism vs. illustration.
@@ -18,8 +19,8 @@ Describe only what you can see. Be concrete and short (2–3 sentences each):
 
 Return JSON: { "photoStyle": string, "layoutStyle": string }`;
 
-export function visualStylePrompt(brief: string, hasScreenshot: boolean, photoCount: number): string {
+export function visualStylePrompt(brief: string, hasScreenshot: boolean, photoCount: number, referenceCount = 0): string {
   return `${brief}
 
-Images: ${hasScreenshot ? "1 homepage screenshot, then " : ""}${photoCount} brand photo${photoCount === 1 ? "" : "s"}.`;
+Images: ${hasScreenshot ? "1 homepage screenshot, then " : ""}${photoCount} brand photo${photoCount === 1 ? "" : "s"}${referenceCount ? `, then ${referenceCount} reference${referenceCount === 1 ? "" : "s"}` : ""}.`;
 }

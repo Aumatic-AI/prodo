@@ -98,6 +98,8 @@ export async function metaAds(pageId: string, country?: string): Promise<Result<
       format: snap.display_format,
       firstShown: isoFromSeconds(a.start_date),
       lastShown: isoFromSeconds(a.end_date),
+      videoUrl: snap.videos?.[0]?.video_hd_url ?? snap.videos?.[0]?.video_sd_url ?? snap.cards?.[0]?.video_hd_url ?? snap.cards?.[0]?.video_sd_url ?? undefined,
+      imageUrl: snap.images?.[0]?.original_image_url ?? snap.cards?.[0]?.original_image_url ?? undefined,
     };
   });
   return { data: ads, usage };
@@ -208,6 +210,87 @@ function youtubePost(v: any): SocialPost {
     shares: null,
     saves: null,
   };
+}
+
+/** The platform a public post link belongs to, when we can read it. */
+export function platformOfLink(url: string): ReadablePlatform | null {
+  if (/instagram\.com\/(p|reel|reels|tv)\//i.test(url)) return "instagram";
+  if (/tiktok\.com\//i.test(url)) return "tiktok";
+  if (/(youtube\.com\/(watch|shorts)|youtu\.be\/)/i.test(url)) return "youtube";
+  return null;
+}
+
+/** One public post from its link (Instagram, TikTok or YouTube), or null when it can't be read. */
+export async function post(url: string): Promise<Result<SocialPost | null>> {
+  const platform = platformOfLink(url);
+  if (!platform) return { data: null, usage: usage(0) };
+  switch (platform) {
+    case "instagram": {
+      const { body, usage } = await get("/v1/instagram/post", { url, trim: "true" });
+      // The trimmed answer has the post at the top level; the full one under "data"
+      const m = body?.xdt_shortcode_media ?? body?.data?.xdt_shortcode_media;
+      if (!m) return { data: null, usage };
+      return {
+        data: {
+          id: String(m.shortcode ?? m.id),
+          platform,
+          url,
+          caption: m.edge_media_to_caption?.edges?.[0]?.node?.text,
+          mediaType: m.is_video ? "video" : m.edge_sidecar_to_children ? "carousel" : "image",
+          videoUrl: m.video_url ?? undefined,
+          imageUrl: m.display_url ?? undefined,
+          views: num(m.video_play_count ?? m.video_view_count),
+          likes: num(m.edge_media_preview_like?.count),
+          comments: num(m.edge_media_to_parent_comment?.count),
+          shares: null,
+          saves: null,
+        },
+        usage,
+      };
+    }
+    case "tiktok": {
+      const { body, usage } = await get("/v2/tiktok/video", { url });
+      const v = body?.aweme_detail;
+      if (!v) return { data: null, usage };
+      const s = v.statistics ?? {};
+      return {
+        data: {
+          id: String(v.aweme_id),
+          platform,
+          url,
+          caption: v.desc,
+          mediaType: "video",
+          videoUrl: v.video?.download_no_watermark_addr?.url_list?.[0] ?? v.video?.play_addr?.url_list?.[0],
+          imageUrl: v.video?.cover?.url_list?.[0],
+          views: num(s.play_count),
+          likes: num(s.digg_count),
+          comments: num(s.comment_count),
+          shares: num(s.share_count),
+          saves: num(s.collect_count),
+        },
+        usage,
+      };
+    }
+    case "youtube": {
+      const { body, usage } = await get("/v1/youtube/video", { url });
+      if (!body) return { data: null, usage };
+      return {
+        data: {
+          id: String(body.id ?? url),
+          platform,
+          url,
+          caption: [body.title, body.description].filter(Boolean).join("\n"),
+          mediaType: "video",
+          views: num(body.viewCountInt ?? body.viewCount),
+          likes: num(body.likeCountInt ?? body.likeCount),
+          comments: null,
+          shares: null,
+          saves: null,
+        },
+        usage,
+      };
+    }
+  }
 }
 
 /** Most recent public posts of a profile (one page, up to about 12–30 depending on the platform). */

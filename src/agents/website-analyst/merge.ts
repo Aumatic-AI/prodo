@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { LIMITS } from "@/config/limits";
 import type { Usage } from "@/providers/usage";
 import type { PageFacts } from "@/prompts/agents/website-facts";
 import { nameKey, sameName } from "@/agents/research/text";
@@ -20,7 +21,21 @@ export interface MergeCounts {
   repeats: number;
 }
 
-const MAX_NEW_OFFERINGS = 50;
+/** A new offering found on the site, with what the scan needs to fetch its photos. */
+export interface FoundOffering {
+  id: string;
+  name: string;
+  inStock: boolean | null;
+  /** Absolute links to the offering's photos on its page */
+  imageUrls: string[];
+  /** Its own page, where the scan looks for photos when the text had none */
+  url: string | null;
+  /** The page it was found on */
+  sourceId: string;
+}
+
+/** Sold-out finds kept (hidden) so the client can still add them */
+const MAX_SOLD_OUT = 5;
 const PROOF_LABEL: Record<string, string> = { case_study: "case study", stat: "number", review: "review", testimonial: "testimonial", award: "award", certification: "certification" };
 
 function absoluteUrl(url: string | null, pageUrl: string): string | null {
@@ -40,12 +55,21 @@ function endOfDay(date: string | null): string | null | "past" {
   return end.getTime() < Date.now() ? "past" : end.toISOString();
 }
 
+function mostCommon(values: (string | null | undefined)[]): string | null {
+  const counts = new Map<string, number>();
+  for (const v of values) if (v) counts.set(v, (counts.get(v) ?? 0) + 1);
+  return [...counts].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+}
+
 type Page = { id: string; url: string; facts: PageFacts };
 type Found<T> = T & { fid: string; page: Page };
 
 const proofKey = (content: string) => nameKey(content).slice(0, 160);
 
-export async function mergeFacts(db: SupabaseClient, sourceIds: string[]): Promise<{ counts: MergeCounts; usage: Usage | null }> {
+export async function mergeFacts(
+  db: SupabaseClient,
+  sourceIds: string[]
+): Promise<{ counts: MergeCounts; found: FoundOffering[]; usage: Usage | null }> {
   const [sourcesRes, offeringsRes, offersRes, proofRes] = await Promise.all([
     db.from("brand_sources").select("id, url, metadata").in("id", sourceIds),
     db.from("offerings").select("id, kind, name, description, active, verified, source_id"),
@@ -73,7 +97,16 @@ export async function mergeFacts(db: SupabaseClient, sourceIds: string[]): Promi
       const existing = existingOfferings.find((e) => sameName(e.name, o.name));
       // The client's own rows and rows they already decided on are left alone
       if (existing && !(existing.source_id && !existing.verified)) continue;
-      if (existing) refreshed.push({ id: existing.id, description: o.description, url: absoluteUrl(o.url, page.url) ?? page.url, price: o.price, benefits: o.benefits });
+      if (existing) {
+        refreshed.push({
+          id: existing.id,
+          description: o.description,
+          url: absoluteUrl(o.url, page.url) ?? page.url,
+          price: o.price,
+          benefits: o.benefits,
+          ...(o.inStock === null || o.inStock === undefined ? {} : { attributes: { in_stock: o.inStock } }),
+        });
+      }
       else offerings.push({ ...o, fid: fid(), page });
     }
   }
@@ -114,7 +147,17 @@ export async function mergeFacts(db: SupabaseClient, sourceIds: string[]): Promi
   const kept = <T extends { fid: string }>(list: T[]) => list.filter((x) => !drop.has(x.fid));
 
   // ---- 3. Save ----
-  const newOfferings = kept(offerings).slice(0, MAX_NEW_OFFERINGS);
+  // The main ones only: pages are in rank order, so the homepage's featured products come first.
+  // In-stock items fill the places; a few sold-out ones are kept, hidden, for "Add them anyway".
+  const candidates = kept(offerings);
+  const newOfferings = [
+    ...candidates.filter((o) => o.inStock !== false).slice(0, LIMITS.scanOfferingsMax),
+    ...candidates.filter((o) => o.inStock === false).slice(0, MAX_SOLD_OUT),
+  ];
+  // Shops convert prices for each visitor's country, so pages read from different places can
+  // disagree. A price in a currency other than the usual one is left out rather than shown wrong.
+  const usual = mostCommon(newOfferings.filter((o) => o.price !== null).map((o) => o.currency));
+  const priced = (o: (typeof newOfferings)[number]) => o.price !== null && (!usual || o.currency === usual);
   let insertedOfferings: { id: string; name: string }[] = [];
   if (newOfferings.length) {
     const { data, error } = await db
@@ -125,10 +168,12 @@ export async function mergeFacts(db: SupabaseClient, sourceIds: string[]): Promi
           name: o.name,
           description: o.description,
           url: absoluteUrl(o.url, o.page.url) ?? o.page.url,
-          price: o.price,
-          currency: o.price === null ? null : o.currency,
+          price: priced(o) ? o.price : null,
+          currency: priced(o) ? o.currency : null,
           price_model: o.kind === "service" ? o.priceModel : null,
           benefits: o.benefits,
+          // Sold out stays out of the wizard until the client adds it
+          attributes: o.inStock === null || o.inStock === undefined ? {} : { in_stock: o.inStock },
           source_id: o.page.id,
           active: false,
           verified: false,
@@ -138,6 +183,12 @@ export async function mergeFacts(db: SupabaseClient, sourceIds: string[]): Promi
     if (error) throw error;
     insertedOfferings = data ?? [];
   }
+  const foundOfferings: FoundOffering[] = insertedOfferings.flatMap((row) => {
+    const o = newOfferings.find((x) => x.name === row.name);
+    if (!o) return [];
+    const imageUrls = [...new Set((o.imageUrls ?? []).map((u) => absoluteUrl(u, o.page.url)).filter((u): u is string => !!u && /^https?:/.test(u)))];
+    return [{ id: row.id, name: row.name, inStock: o.inStock ?? null, imageUrls, url: absoluteUrl(o.url, o.page.url), sourceId: o.page.id }];
+  });
   for (const { id, ...fields } of refreshed) {
     const { error } = await db
       .from("offerings")
@@ -183,5 +234,5 @@ export async function mergeFacts(db: SupabaseClient, sourceIds: string[]): Promi
     if (error) throw error;
   }
 
-  return { counts: { offerings: newOfferings.length, offers: newOffers.length, proof: newProof.length, repeats: drop.size }, usage };
+  return { counts: { offerings: newOfferings.length, offers: newOffers.length, proof: newProof.length, repeats: drop.size }, found: foundOfferings, usage };
 }

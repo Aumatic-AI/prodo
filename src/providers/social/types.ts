@@ -20,6 +20,8 @@ export interface SocialPost {
   mediaType: "video" | "image" | "carousel";
   /** Direct video file, when the platform exposes one (needed for video analysis) */
   videoUrl?: string;
+  /** Main image or video cover */
+  imageUrl?: string;
   views: number | null;
   likes: number | null;
   comments: number | null;
@@ -40,6 +42,10 @@ export interface AdCreative {
   firstShown?: string;
   lastShown?: string;
   url?: string;
+  /** The ad's video file, when it is a video ad (Meta) */
+  videoUrl?: string;
+  /** The ad's main image (Meta) */
+  imageUrl?: string;
 }
 
 export interface WebResult {

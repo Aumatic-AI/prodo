@@ -5,16 +5,16 @@ import { useAccounts } from "@/modules/accounts/hooks/useAccounts";
 import { Alert, Section } from "../../components/blocks";
 import { StepLayout } from "../../components/shell/StepLayout";
 import { useOnboarding } from "../../store/OnboardingStoreProvider";
-import { POSTING_LABELS, STEP_META, WHY_WE_ASK } from "../../config";
+import { POSTING_LABELS, STEP_META } from "../../config";
 import { useMissingAccounts } from "./useMissingAccounts";
 
 export function ConnectStep() {
   const { isLoading } = useAccounts();
-  const posting = useOnboarding((s) => s.draft.style.postsPerWeek);
+  const posting = useOnboarding((s) => s.draft.content.postsPerWeek);
   const missing = useMissingAccounts();
 
   return (
-    <StepLayout step="connect" title={STEP_META.connect.title} lead={STEP_META.connect.lead} why={WHY_WE_ASK.connect}>
+    <StepLayout step="connect" title={STEP_META.connect.title} lead={STEP_META.connect.lead}>
       <Section
         title="Social accounts"
         description="Connect the accounts you want Prodo to post to. You'll sign in on each platform's own page; we never see your password."

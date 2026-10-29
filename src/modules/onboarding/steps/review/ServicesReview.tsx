@@ -58,13 +58,9 @@ export function ServicesReview() {
         </Rows>
       </Group>
 
-      <Group title="How clients reach you">
+      <Group title="Lead magnet">
         <Rows>
-          <Row label="Booking link">
-            <ExternalLink href={s.bookingUrl} />
-          </Row>
-          <Row label="WhatsApp">{s.whatsapp}</Row>
-          <Row label="Lead magnet">
+          <Row label="Free guide link">
             <ExternalLink href={s.leadMagnetUrl} />
           </Row>
         </Rows>

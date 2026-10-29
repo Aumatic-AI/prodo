@@ -22,8 +22,9 @@ Sprint 1 and 2 are merged to `main`; multi-tenant work is on branch `multi-tenan
 - UI: every screen uses the kit (`src/components/ui` was deleted). The Dashboard was removed (it was built for Upload-Post); a new one comes with the learning loop.
 - Code written 2026-10-25 (round 2): agent 10 Performance Analyst (daily metrics and followers, weekly learnings, hook scores, weekly report), Performance / Activity / Costs screens, logo change → Visual Identity Analyst, client colour and font edits protected, monthly refresh (public holidays + Social & Market Analyst), pause holds scheduled posts, ad layouts per brand, mobile app shell, "make again with a note" in Media. Dropped on purpose: app theme from the client's brand kit.
 - Multi-tenant (2026-10-26, branch `multi-tenant`): one login = one business. Needs migrations 0017 and **0018** (drops leftover allow-all policies), then regenerated types. Sprint 1–2 work is merged to `main`.
+- Onboarding v2 (2026-10-28): website first (a background scan fills Basics and the products), then Your content, Basics, products or services, connect, review. **Needs migrations 0019 and 0020.** Research (2026-10-28) uses the onboarding answers: photo descriptions, reference posts, admired brands (posts only), rivals' longest-running video ads, goals and industry for the Strategist. The Planner and Producer don't read `content_prefs` (goals, styles, people, logo) yet.
 
-Migrations were applied by pasting them into the Supabase SQL Editor, not `supabase db push`, so the CLI's history doesn't know them. Before the first `db push`, run `npx supabase migration repair --status applied 0001 0002 0003 0004 0005 0006 0007 0008 0009 0010 0011 0012 0013 0014 0015 0016` (add 0017 and 0018 once the user has run them).
+Migrations were applied by pasting them into the Supabase SQL Editor, not `supabase db push`, so the CLI's history doesn't know them. Before the first `db push`, run `npx supabase migration repair --status applied 0001 0002 0003 0004 0005 0006 0007 0008 0009 0010 0011 0012 0013 0014 0015 0016` (add 0017–0020 once the user has run them).
 
 **Deviation from the plan:** the plan had one deploy (Supabase, Vercel, Inngest) per client. Prodo is now multi-tenant: one deploy, one login per business, every row tagged with `business_id`.
 
@@ -80,9 +81,9 @@ No test suite yet. Inngest dev server at `http://localhost:8288` (`INNGEST_DEV=1
 
 ### Onboarding module (`src/modules/onboarding/`)
 
-- Steps `basics → business (products or services) → style → connect → review`, then `progress` (live research) and `bible` (review and approve the Brand Bible). Order and helpers in `src/core/onboarding/steps.ts`.
+- Steps `website` (start screen; starts the website scan, `src/jobs/onboarding-scan.ts`) `→ content → basics → business (products or services) → connect → review`, then `progress` (live research) and `bible` (review and approve the Brand Bible). Order and helpers in `src/core/onboarding/steps.ts`. Rows the scan found load with `found: true`; saving the step confirms them. See `docs/technical.md` → Onboarding flow.
 - One zod schema per step in `src/core/onboarding/schemas.ts`, shared by the browser (field errors) and the server (checks). Error paths are keys like `products.0.name`.
-- Server: `load.ts` builds the whole draft from the tables; `save-*.ts` save one step each (rows are upserted by client-made UUIDs, removed ones archived or deleted); `save.ts` dispatches; `submit.ts` locks it.
+- Server: `load.ts` builds the whole draft from the tables; `save-*.ts` save one step each (`saveProfile` is Settings → Business profile) (rows are upserted by client-made UUIDs, removed ones archived or deleted); `save.ts` dispatches; `submit.ts` locks it.
 - Client: `store/` (Zustand draft, errors, dirty flags), `hooks/useStepSave` (clean → validate → PUT → merge), `components/form/*` (inputs, pills, choice cards, tags, slider, counter, uploader), `steps/<step>/*`.
 - Dropdowns: always the kit `Select` (single, `searchable` for long lists) or `MultiSelect` (searchable, order = priority, numbered pills below). Both are built on Base UI (`@base-ui/react`); never use a native `<select>`. Dates and times: `DatePicker` (popover + react-day-picker, the shadcn pattern) and `TimePicker` (15-minute steps); never `type="date"` or `type="time"`. Floating panels use the `floating`/`popup` styles, which set `font-ob` because portals render outside the page wrapper. Dialogs: `components/Modal` (Base UI Dialog; sticky toolbar and footer, scrolling body). Countries come from `src/config/countries.ts` (all ISO codes, names via `Intl.DisplayNames`).
 - Styling: Tailwind classes only, no CSS files. Colours, radii and shadows are `ob-*` theme tokens in `globals.css` (`bg-ob-primary`, `text-ob-muted`, `rounded-ob-lg`, `shadow-ob-xs`). Shared class sets and the `cva` button live in `src/components/kit/styles.ts`. Onboarding's `components/form/Field` wraps the kit `Field` and reads errors from the onboarding store by path. Field errors use `data-invalid` + `group-data-[invalid=true]/field:`.
@@ -198,7 +199,7 @@ Hand-written utility classes in `globals.css` (`.bg-primary`, `.text-muted`, `.r
 - `media` stores all generation inputs (idea, aspect_ratio, use_logo, offering_id, `creative_spec`, etc.) so "Try again" works
 - Media used by a post cannot be deleted (restrict FK)
 - A carousel is one `media` row; its slides are `media_files` rows (`role = slide`)
-- Settings → Business profile saves through `PUT /api/settings/profile` with the onboarding Basics schema and `saveBasics` (logo uploaded first with a signed link). The old multipart `/api/profile` remains for the Media screens
+- Settings → Business profile saves through `PUT /api/settings/profile` with `businessProfileSchema` (onboarding profile fields plus goals) and `saveProfile` (logo uploaded first with a signed link). The old multipart `/api/profile` remains for the Media screens
 - Until `business_profile.onboarding_status = 'done'` the app redirects to `/onboarding`. To reopen the wizard for a business on a dev project, set its row back to `not_started`
 - `INNGEST_DEV=1` must be unset in production
 - Never mock or fake a vendor response to make a check pass. Post only to test social accounts during development
