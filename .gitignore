@@ -45,3 +45,6 @@ next-env.d.ts
 
 # trace logs (TRACE_LOG=1)
 .logs/
+
+# Video worker: bundled templates (built inside Docker)
+worker/bundle/
