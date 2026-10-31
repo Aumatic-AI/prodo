@@ -6,7 +6,7 @@ import { Alert } from "@/components/kit/Alert";
 import { Badge } from "@/components/kit/Badge";
 import { EmptyState } from "@/components/kit/EmptyState";
 import { Skeleton } from "@/components/kit/Skeleton";
-import { publicUrl } from "@/components/kit/MediaUploader";
+import { isVideoKey, publicUrl } from "@/components/kit/MediaUploader";
 import { useUpload } from "@/components/kit/useUpload";
 import { button } from "@/components/kit/styles";
 import { UPLOAD_RULES } from "@/config/uploads";
@@ -18,7 +18,7 @@ import { ResourceForm } from "./resources/ResourceForm";
 const KIND_LABEL = Object.fromEntries((RESOURCES.assets.fields[0].options ?? []).map((o) => [o.value, o.label]));
 const FILTERS = [{ value: "all", label: "All" }, ...(RESOURCES.assets.fields[0].options ?? [])];
 
-/** The client's own photos and videos: agents use them as references and in ads. */
+/** The client's own photos and videos (agents use them in ads), plus posts from other brands they like (studied, never used as theirs). */
 export function AssetsTab() {
   const { data: assets, isLoading, error } = useResource("assets");
   const { create, update, remove } = useResourceMutations("assets");
@@ -38,7 +38,8 @@ export function AssetsTab() {
     try {
       for (const file of Array.from(files)) {
         const { key } = await (video ? uploadVideo : uploadPhoto)(file);
-        await create.mutateAsync({ storage_key: key, kind: video ? "reference_video" : "product_photo", tags: [] });
+        // The client's own footage; other brands' videos are marked "Video we like" afterwards
+        await create.mutateAsync({ storage_key: key, kind: video ? "general" : "product_photo", tags: [] });
         setUploading((n) => n - 1);
       }
     } catch (err) {
@@ -102,7 +103,10 @@ export function AssetsTab() {
         <div className="grid grid-cols-[repeat(auto-fill,minmax(170px,1fr))] gap-4">
           {shown.map((a) => {
             const key = String(a.storage_key);
-            const isVideo = a.kind === "reference_video";
+            const isVideo = isVideoKey(key);
+            // The client's own videos are watched for moments the ads can use
+            const analysis = a.analysis as { moments?: unknown[]; error?: string } | null | undefined;
+            const footage = isVideo && a.kind !== "reference_video" ? (!analysis ? "Being watched" : analysis.error ? "Couldn't be read" : `${analysis.moments?.length ?? 0} usable moments`) : null;
             return (
               <figure key={a.id} className="group relative m-0 overflow-hidden rounded-ob-md border border-ob-line bg-ob-surface shadow-ob-xs">
                 <div className="relative aspect-square bg-ob-sunken">
@@ -128,7 +132,11 @@ export function AssetsTab() {
                 </div>
                 <figcaption className="flex items-center justify-between gap-2 px-3 py-2.5">
                   <Badge size="sm">{KIND_LABEL[String(a.kind)] ?? String(a.kind)}</Badge>
-                  {Array.isArray(a.tags) && a.tags.length > 0 && <span className="truncate text-xs text-ob-muted">{(a.tags as string[]).join(", ")}</span>}
+                  {footage ? (
+                    <span className="truncate text-xs text-ob-muted">{footage}</span>
+                  ) : (
+                    Array.isArray(a.tags) && a.tags.length > 0 && <span className="truncate text-xs text-ob-muted">{(a.tags as string[]).join(", ")}</span>
+                  )}
                 </figcaption>
               </figure>
             );

@@ -1,5 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { removeFiles } from "@/providers/storage/remove-files";
+import { AppError } from "@/core/errors";
+import { inngest } from "@/jobs/client";
 
 export type MediaType = "image" | "video" | "text" | "carousel";
 export type MediaSource = "generated" | "uploaded";
@@ -123,4 +125,19 @@ export async function productNameFor(db: SupabaseClient, media: Media): Promise<
     if (data?.name) return data.name;
   }
   return media.creative_spec?.product_name || undefined;
+}
+
+/**
+ * Starts making a media item (image or video job). A failed start marks it failed with a plain
+ * message, so it never sits at "generating" with nothing running.
+ */
+export async function startGenerating(db: SupabaseClient, businessId: string, media: { id: string; type: string }, eventId: string): Promise<void> {
+  const name = media.type === "video" ? "media/generate-video" : "media/generate-image";
+  try {
+    await inngest.send({ name, data: { businessId, mediaId: media.id }, id: eventId });
+  } catch {
+    const message = "Couldn't start making it. Try again in a moment.";
+    await markFailed(db, media.id, message);
+    throw new AppError(message, "PROVIDER_DOWN", true);
+  }
 }

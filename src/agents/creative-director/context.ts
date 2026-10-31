@@ -2,16 +2,21 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getItem, getPlan, approvedBible } from "@/core/plans/plans";
 import type { PlanItem } from "@/core/plans/types";
 import { TEMPLATE_IDS, type TemplateId } from "@/core/creative/brief";
+import { contentRules, type ContentRules } from "@/core/content/prefs";
+import { loadMoments, referenceLessons, type Moment } from "@/core/brand/footage";
 import { ai } from "@/providers/ai/registry";
 import type { Usage } from "@/providers/usage";
 
 // Everything the Creative Director may use for one slot. Only confirmed facts: active offerings,
-// verified offers and proof. Brand Brain passages are searched by the slot's angle.
+// verified offers and proof. Brand Brain passages are searched by the slot's angle. The client's
+// content choices (styles, people, logo, next step, music) come along as rules.
 
 export interface CreativeContext {
   item: PlanItem;
   weekStart: string;
-  business: { name: string; language: string; description: string; tone: string; goal: string | null };
+  business: { name: string; language: string; description: string; tone: string; goals: string[] };
+  /** The client's onboarding choices */
+  rules: ContentRules;
   ctaLinks: Record<string, string>;
   avoidWords: string[];
   disclaimers: string[];
@@ -27,6 +32,13 @@ export interface CreativeContext {
   photoStyle: string | null;
   /** Ad layouts the brand uses (Brand kit); all when none were picked */
   layouts: TemplateId[];
+  /** Video slots: usable moments of the client's own videos (best first) */
+  moments: Moment[];
+  /** Video slots: what the client's reference videos do well (pacing, structure), never copied */
+  lessons: string[];
+  /** Brand tone sliders (0–100), for the video look */
+  tone: Record<string, number>;
+  industry: string | null;
 }
 
 const TONE_WORDS: Record<string, [string, string]> = { formal: ["casual", "formal"], playful: ["serious", "playful"], bold: ["calm", "bold"], technical: ["simple", "technical"] };
@@ -64,6 +76,11 @@ export async function loadCreativeContext(db: SupabaseClient, itemId: string): P
   ]);
   for (const r of [profile, persona, pillar, offering, offer, proof, assets, kit, hooks]) if (r.error) throw r.error;
 
+  // Videos: the client's own footage and their reference videos' lessons
+  const video = item.format === "video";
+  const people = contentRules(profile.data).people;
+  const [moments, lessons] = video ? await Promise.all([loadMoments(db, { offeringId: item.offering_id, people }), referenceLessons(db)]) : [[], []];
+
   // Brand Brain passages about this slot's angle and offering
   const query = [item.angle, offering.data?.name, item.objective].filter(Boolean).join(" · ");
   let usage: Usage | null = null;
@@ -79,9 +96,11 @@ export async function loadCreativeContext(db: SupabaseClient, itemId: string): P
   const p = profile.data;
   const c = bible.content ?? {};
   const offerRow = offer.data;
-  // Photos of this offering first, then general brand photos
+  const rules = contentRules(p);
+  // Photos of this offering first, then general brand photos; no photos of people when the client wants none
   const assetRows = (assets.data ?? [])
-    .filter((a) => !/.(mp4|mov)$/i.test(a.storage_key))
+    .filter((a) => !/\.(mp4|mov)$/i.test(a.storage_key))
+    .filter((a) => rules.people !== "none" || !["person", "team"].includes(a.kind))
     .sort((a, b) => Number(b.offering_id === item.offering_id) - Number(a.offering_id === item.offering_id))
     .slice(0, 12);
 
@@ -90,9 +109,11 @@ export async function loadCreativeContext(db: SupabaseClient, itemId: string): P
     ctx: {
       item,
       weekStart: plan.week_start,
-      business: { name: p.name, language: p.language || "en", description: p.description ?? "", tone: toneLine(p.tone), goal: p.primary_goal },
+      business: { name: p.name, language: p.language || "en", description: p.description ?? "", tone: toneLine(p.tone), goals: rules.goals },
+      rules,
       ctaLinks: Object.fromEntries(Object.entries({ website: p.website, ...(p.cta_links ?? {}) }).filter(([, v]) => typeof v === "string" && v)) as Record<string, string>,
-      avoidWords: p.compliance?.avoid_words ?? [],
+      // The client's list, plus the claims their industry may never make in ads
+      avoidWords: [...new Set([...(p.compliance?.avoid_words ?? []), ...rules.industryNeverSay])],
       disclaimers: p.compliance?.disclaimers ?? [],
       bible: {
         positioning: c.positioning?.text ?? "",
@@ -140,6 +161,10 @@ export async function loadCreativeContext(db: SupabaseClient, itemId: string): P
       passages,
       recentHooks: (hooks.data ?? []).map((h) => h.text),
       photoStyle: kit.data?.photo_style ?? null,
+      moments,
+      lessons,
+      tone: (p.tone ?? {}) as Record<string, number>,
+      industry: p.industry ?? null,
       layouts: ((kit.data?.template_ids ?? []) as string[]).filter((t): t is TemplateId => (TEMPLATE_IDS as readonly string[]).includes(t)).length
         ? (kit.data!.template_ids as TemplateId[])
         : [...TEMPLATE_IDS],

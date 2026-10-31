@@ -10,15 +10,18 @@ import { buildVideoScriptPrompt, sceneCountForDuration } from "@/prompts/video-s
 import { buildScenesPrompt } from "@/prompts/video-scenes";
 import { withVideoReferenceInstruction } from "@/prompts/image";
 import { ai } from "@/providers/ai/registry";
-import { assertVideoReady, getJob } from "@/providers/ffmpeg/client";
-import { submitComposeJob } from "@/providers/ffmpeg/compose-video";
-import { renderPng } from "@/creative/render";
+import { assertVideoReady, getJob, submitRender } from "@/providers/ffmpeg/client";
 import { CANVAS, type CanvasRatio } from "@/creative/sizes";
-import { buildAss } from "@/creative/subtitles";
-import { VIDEO_END_CARD, VIDEO_ON_SCREEN_TEXT } from "@/config/video";
-import { EndCard } from "@/creative/templates/carousel";
 import { loadTheme } from "@/creative/theme";
-import { businessKey, storageKeyFor, upload, urlFor } from "@/providers/storage/supabase-storage";
+import { buildTimeline, type BuildScene } from "@/creative/video/timeline";
+import { linkText, timelineTheme, videoCanvas } from "@/creative/video/parts";
+import { choosePreset } from "@/creative/video/preset";
+import { sfxUrls } from "@/config/sfx";
+import { MODELS } from "@/config/models";
+import { SCENE_LAYOUT_SYSTEM, sceneLayoutPrompt, sceneLayoutSchema } from "@/prompts/agents/scene-layout";
+import { copyToStorage } from "@/agents/producer/media";
+import { mediaKey, publicUrl, ratioName, workKey } from "@/providers/storage/paths";
+import { upload } from "@/providers/storage/r2";
 import { NonRetriableError } from "inngest";
 
 const MAX_IMAGE_POLLS = 12; // ~4.5 min
@@ -80,7 +83,7 @@ export const generateVideo = inngest.createFunction(
     const durationSec = media.duration_sec || 15;
     const sceneCount = sceneCountForDuration(durationSec);
     const referenceUrl = media.reference_image_key
-      ? urlFor(process.env.NEXT_PUBLIC_SUPABASE_URL!, media.reference_image_key)
+      ? publicUrl(media.reference_image_key)
       : undefined;
     // The size picked in Create content; scenes are shot portrait, square or landscape and cropped to fit
     const canvas = CANVAS[(media.aspect_ratio as CanvasRatio) ?? "9:16"] ?? CANVAS["9:16"];
@@ -112,8 +115,8 @@ export const generateVideo = inngest.createFunction(
       const result: { key: string; durationSec: number; words: { word: string; start: number; end: number }[] }[] = [];
       for (let i = 0; i < script.length; i++) {
         const { data } = await ai.voice(script[i], media.voice_id!, ai.languageCode(media.language));
-        const key = businessKey(businessId, `audio/${media.id}/voice-${i}.mp3`);
-        await upload(db, key, data.buffer, "audio/mpeg");
+        const key = workKey(businessId, media.id, `voice-${i}.mp3`);
+        await upload(key, data.buffer, "audio/mpeg");
         result.push({ key, durationSec: data.durationSec, words: data.words });
       }
       // Track the files so they are cleaned up with the media
@@ -193,54 +196,81 @@ export const generateVideo = inngest.createFunction(
     }
     if (!clipsDone) throw new NonRetriableError("Making the scene clips took too long. Try again.");
 
-    // 6. Captions (from the voice's word timings), end card and music drawn by our code, then one
-    // ffmpeg run on our worker that saves the result straight to storage
-    const outputKey = storageKeyFor(businessId, "video", media.id);
+    // 6. Our renderer draws the video (the same one as the agents' videos): clips copied into our
+    // storage, word-by-word captions from the voice, the brand's look, music, the closing card
+    const outputKey = mediaKey(businessId, media.id, `${ratioName(media.aspect_ratio || "9:16")}.mp4`);
     const sceneDurations = clips.map((c) => c.targetDuration);
     const parts = await run("video-parts", async () => {
-      const theme = await loadTheme(db);
-      const starts = sceneDurations.map((_, i) => sceneDurations.slice(0, i).reduce((a, b) => a + b, 0));
-      const words = (voices ?? []).flatMap((v, i) => v.words.map((w) => ({ word: w.word, start: starts[i] + w.start, end: starts[i] + w.end })));
-      let subtitlesKey: string | null = null;
-      if (VIDEO_ON_SCREEN_TEXT && words.length) {
-        subtitlesKey = businessKey(businessId, `videos/${media.id}/captions.ass`);
-        const ass = buildAss({ canvas, words, font: theme.fonts.heading, highlight: theme.accent.bg, highlightText: theme.accent.text });
-        await upload(db, subtitlesKey, Buffer.from(ass, "utf8"), "text/plain");
+      const kept: { clip: string; still: string }[] = [];
+      for (const c of clips) {
+        const clip = workKey(businessId, media.id, `scene-${c.scene}.mp4`);
+        const still = workKey(businessId, media.id, `scene-${c.scene}.png`);
+        await copyToStorage(c.url!, clip);
+        await copyToStorage(c.imageUrl, still);
+        kept.push({ clip, still });
       }
-      let endCardKey: string | null = null;
-      if (VIDEO_END_CARD) {
-        endCardKey = businessKey(businessId, `videos/${media.id}/end-card.png`);
-        await upload(db, endCardKey, await renderPng(EndCard({ canvas, theme, cta: "Learn more", line: null }), canvas, theme), "image/png");
-      }
-      const font = theme.fontFiles.find((f) => f.family === theme.fonts.heading && f.weight >= 700) ?? theme.fontFiles[0];
       // Videos without a voice get a music bed so they aren't silent
       let musicKey: string | null = null;
       if (!voices) {
-        const total = sceneDurations.reduce((a, b) => a + b, 0) + (VIDEO_END_CARD ? 2.5 : 0);
+        const total = sceneDurations.reduce((a, b) => a + b, 0) + 2.5;
         const music = await ai.music("Upbeat, modern instrumental background music for a short social media video, no vocals.", Math.ceil(total)).catch(() => null);
         if (music) {
-          musicKey = businessKey(businessId, `audio/${media.id}/music.mp3`);
-          await upload(db, musicKey, music.data, "audio/mpeg");
+          musicKey = workKey(businessId, media.id, "music.mp3");
+          await upload(musicKey, music.data, "audio/mpeg");
           await db.from("media_files").insert({ media_id: media.id, role: "music", storage_key: musicKey });
         }
       }
-      return { subtitlesKey, endCardKey, fontKeys: subtitlesKey && font ? [font.key] : [], musicKey };
+      // Where the subject is in each scene, so captions sit beside it
+      const look = await ai
+        .structured(sceneLayoutSchema, sceneLayoutPrompt(kept.length), { system: SCENE_LAYOUT_SYSTEM, images: kept.map((k) => publicUrl(k.still)), model: MODELS.vision })
+        .then((r) => r.data.scenes)
+        .catch(() => []);
+      return { kept, musicKey, look };
     });
 
-    const renderId = await run("compose", () =>
-      submitComposeJob({
-        width: canvas.width,
-        height: canvas.height,
-        clipUrls: clips.map((c) => c.url!),
-        sceneDurations,
-        voiceKeys: voices ? clips.map((c) => voices[c.scene - 1].key) : null,
-        musicKey: parts.musicKey,
-        subtitlesKey: parts.subtitlesKey,
-        fontKeys: parts.fontKeys,
-        endCardKey: parts.endCardKey,
-        outputKey,
-      })
-    );
+    const renderId = await run("render", async () => {
+      // The ad's own "use logo" box decides here
+      const theme = await loadTheme(db, { showLogo: media.use_logo !== false });
+      const { data: profile } = await db.from("business_profile").select("tone, industry, website").single();
+      const preset = choosePreset(profile?.tone ?? {}, profile?.industry ?? null, "faceless");
+      // The product's name and any numbers stand out in the captions
+      const keywords = [...(productName ?? "").split(/\s+/), ...script.join(" ").split(/\s+/).filter((w) => /\d/.test(w))].filter((w) => w.length > 1);
+      const scenes: BuildScene[] = clips.map((c, i) => {
+        const look = parts.look.find((l) => l?.image === i + 1);
+        const voice = voices?.[c.scene - 1];
+        return {
+          kind: i === 0 ? "hook" : "benefit",
+          media: { kind: "video", url: publicUrl(parts.kept[i].clip), trimStartSec: 0, trimEndSec: c.kieDuration, volume: 0, playbackRate: 1 },
+          reveal: null,
+          layout: look ? { subject: look.subject, zone: look.textZone, light: look.light } : { subject: null, zone: null, light: null },
+          voice: voice ? { url: publicUrl(voice.key), durationSec: voice.durationSec, words: voice.words } : null,
+          speech: null,
+          seconds: voice ? null : c.targetDuration,
+          overlay: "",
+          keywords,
+          sticker: null,
+          stat: null,
+          review: null,
+          price: null,
+          offer: null,
+          transition: "smooth",
+        };
+      });
+      // The closing card on the first scene's picture
+      scenes.push({ ...scenes[0], kind: "cta", voice: null, seconds: 2.5, keywords: [], media: { kind: "image", url: publicUrl(parts.kept[0].still), motion: { fromScale: 1, toScale: 1, fromX: 0, toX: 0, fromY: 0, toY: 0 } } });
+      const timeline = buildTimeline({
+        canvas: videoCanvas(canvas.ratio),
+        preset,
+        theme: timelineTheme(theme),
+        scenes,
+        hook: "",
+        cta: { label: "Learn more", line: "", link: linkText(profile?.website) },
+        music: parts.musicKey ? { url: publicUrl(parts.musicKey) } : null,
+        sfx: sfxUrls(),
+        progressBar: false,
+      });
+      return submitRender("ad", timeline as unknown as Record<string, unknown>, outputKey);
+    });
 
     let rendered = false;
     for (let i = 0; i < MAX_RENDER_POLLS && !rendered; i++) {

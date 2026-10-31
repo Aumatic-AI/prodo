@@ -84,7 +84,7 @@ export const onboardingScan = inngest.createFunction(
           if (data.logo_key) return { key: data.logo_key as string, added: false };
           const html = await fetchHtml(website).catch(() => null);
           const url = (html && findLogoUrl(html, website)) || basics?.logoUrl;
-          const key = url ? await saveLogo(db(), businessId, url) : null;
+          const key = url ? await saveLogo(businessId, url) : null;
           if (!key) return { key: null, added: false };
           // The client may have uploaded one meanwhile: theirs wins
           const { data: saved, error: saveError } = await ownRow(db().from("business_profile").update({ logo_key: key }))
@@ -111,14 +111,14 @@ export const onboardingScan = inngest.createFunction(
             if (count) return 0;
             // Page text has no image links, so the photos usually come from the product's own page
             const urls = product.imageUrls.length ? product.imageUrls : product.url ? await findProductImages(product.url) : [];
-            const keys = await saveProductPhotos(db(), businessId, urls, LIMITS.scanPhotosPerOffering);
-            if (keys.length) {
+            const photos = await saveProductPhotos(businessId, urls, LIMITS.scanPhotosPerOffering);
+            if (photos.length) {
               const { error: insertError } = await db()
                 .from("brand_assets")
-                .insert(keys.map((key) => ({ kind: "product_photo", storage_key: key, offering_id: product.id, source_id: product.sourceId })));
+                .insert(photos.map(({ id, key }) => ({ id, kind: "product_photo", storage_key: key, offering_id: product.id, source_id: product.sourceId })));
               if (insertError) throw insertError;
             }
-            return keys.length;
+            return photos.length;
           },
           (n) => (n ? `Saved ${n} photos of ${product.name}` : `No usable photos of ${product.name}`)
         )

@@ -4,7 +4,7 @@ import { useRef, useState, type DragEvent } from "react";
 import { Loader2, Upload as UploadIcon, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { UPLOAD_RULES, type UploadPurpose } from "@/config/uploads";
-import { urlFor } from "@/providers/storage/supabase-storage";
+import { publicUrl } from "@/providers/storage/paths";
 import type { Upload } from "@/core/onboarding/schemas";
 import { useUpload } from "@/components/kit/useUpload";
 import { focusRing } from "@/components/kit/styles";
@@ -17,7 +17,7 @@ interface Pending {
 }
 
 interface MediaUploaderProps<T extends Upload> {
-  purpose: Extract<UploadPurpose, "photo" | "video" | "media">;
+  purpose: Extract<UploadPurpose, "photo" | "video" | "media" | "reference">;
   value: T[];
   onChange: (value: T[]) => void;
   max: number;
@@ -27,12 +27,10 @@ interface MediaUploaderProps<T extends Upload> {
   tagOf?: (item: T) => string | undefined;
 }
 
-export function publicUrl(key: string): string {
-  return urlFor(process.env.NEXT_PUBLIC_SUPABASE_URL!, key);
-}
+export { publicUrl };
 
 /** True for a stored video file (by its extension). */
-export const isVideoKey = (key: string) => /.(mp4|mov)$/i.test(key);
+export const isVideoKey = (key: string) => /\.(mp4|mov)$/i.test(key);
 
 /** Drag-and-drop gallery. Files upload at once; the list holds storage keys. */
 export function MediaUploader<T extends Upload>({ purpose, value, onChange, max, extend, tagOf }: MediaUploaderProps<T>) {

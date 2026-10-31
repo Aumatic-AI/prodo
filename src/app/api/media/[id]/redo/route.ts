@@ -3,8 +3,7 @@ import { z } from "zod";
 import { apiHandler } from "@/lib/api-handler";
 import { currentBusiness } from "@/core/business";
 import { AppError } from "@/core/errors";
-import { getMedia, type Media } from "@/core/media";
-import { inngest } from "@/jobs/client";
+import { getMedia, startGenerating, type Media } from "@/core/media";
 import { assertVideoReady } from "@/providers/ffmpeg/client";
 
 const schema = z.object({ note: z.string().trim().min(2, "Say what should change").max(500) });
@@ -47,7 +46,6 @@ export const POST = apiHandler(async (req: NextRequest, { params }: { params: Pr
   if (error) throw error;
   const media = data as Media;
 
-  const event = media.type === "video" ? "media/generate-video" : "media/generate-image";
-  await inngest.send({ name: event, data: { businessId, mediaId: media.id }, id: media.id });
+  await startGenerating(db, businessId, media, media.id);
   return NextResponse.json(media, { status: 201 });
 });

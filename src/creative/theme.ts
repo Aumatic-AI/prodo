@@ -1,8 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getKit } from "@/core/brand/kit";
+import { contentRules } from "@/core/content/prefs";
 import { BLACK, contrast, luminance, MIN_TEXT_CONTRAST, WHITE } from "@/lib/color";
 import { loadFont, type FontFile } from "@/providers/fonts/google-fonts";
-import { urlFor } from "@/providers/storage/supabase-storage";
+import { publicUrl } from "@/providers/storage/paths";
 
 // The brand as exact values for our renderer: colour pairs that pass WCAG AA, the brand fonts
 // loaded as files, and the right logo version for light and dark backgrounds.
@@ -26,6 +27,8 @@ export interface CreativeTheme {
   /** Loaded font files (Satori needs the data; the video renderer the storage keys) */
   fontFiles: FontFile[];
   logo: { onLight: string | null; onDark: string | null };
+  /** False when the client chose "no logo on my posts": ads show no brand mark, closing frames only the name */
+  showLogo: boolean;
 }
 
 const FALLBACK_FONT = "Inter";
@@ -64,8 +67,10 @@ async function fontsFor(heading: string | null, body: string | null): Promise<{ 
   };
 }
 
-export async function loadTheme(db: SupabaseClient): Promise<CreativeTheme> {
-  const [kit, { data: profile }] = await Promise.all([getKit(db), db.from("business_profile").select("name, logo_key").single()]);
+/** `showLogo` overrides the client's onboarding choice (a manual ad's own "use logo" box). */
+export async function loadTheme(db: SupabaseClient, options: { showLogo?: boolean } = {}): Promise<CreativeTheme> {
+  const [kit, { data: profile }] = await Promise.all([getKit(db), db.from("business_profile").select("name, logo_key, content_prefs").single()]);
+  const showLogo = options.showLogo ?? contentRules(profile).showLogo;
   const c = kit.colors;
   const textOptions = [WHITE, BLACK, c.text, c.bg];
 
@@ -80,7 +85,7 @@ export async function loadTheme(db: SupabaseClient): Promise<CreativeTheme> {
   const lightColor = luminance(c.bg) > 0.6 ? c.bg : WHITE;
 
   const fonts = await fontsFor(kit.fonts.heading, kit.fonts.body);
-  const url = (key?: string | null) => (key ? urlFor(process.env.NEXT_PUBLIC_SUPABASE_URL!, key) : null);
+  const url = (key?: string | null) => (key ? publicUrl(key) : null);
   const fallbackLogo = kit.logo_variants.full ?? profile?.logo_key ?? null;
 
   return {
@@ -91,7 +96,8 @@ export async function loadTheme(db: SupabaseClient): Promise<CreativeTheme> {
     dark: { bg: darkColor, text: WHITE },
     fonts: { heading: fonts.heading, body: fonts.body },
     fontFiles: fonts.files,
-    logo: { onLight: url(kit.logo_variants.light ?? fallbackLogo), onDark: url(kit.logo_variants.dark ?? null) },
+    logo: showLogo ? { onLight: url(kit.logo_variants.light ?? fallbackLogo), onDark: url(kit.logo_variants.dark ?? null) } : { onLight: null, onDark: null },
+    showLogo,
   };
 }
 

@@ -1,6 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { MODELS } from "@/config/models";
-import { VIDEO_ON_SCREEN_TEXT } from "@/config/video";
 import { platformMeta } from "@/config/platforms";
 import type { Brief } from "@/core/creative/brief";
 import { getItem, updateItem } from "@/core/plans/plans";
@@ -73,14 +72,14 @@ async function reviewImages(brief: Brief, produced: Produced, track: (u: any) =>
 }
 
 async function reviewVideo(brief: Brief, produced: Produced, track: (u: any) => void) {
-  const res = await ai.analyzeVideo<VideoReview>(produced.previewUrls[0], videoReviewPrompt(brief.hook.text, produced.scenes ?? [], VIDEO_ON_SCREEN_TEXT), VIDEO_REVIEW_JSON_SCHEMA);
+  const res = await ai.analyzeVideo<VideoReview>(produced.previewUrls[0], videoReviewPrompt(brief.hook.text, produced.scenes ?? []), VIDEO_REVIEW_JSON_SCHEMA);
   track(res.usage);
   const r = res.data;
   const bad = (r.scenes ?? []).filter((s) => !s.matches || s.glitch || s.aiText);
   const redoScenes = bad.map((s) => s.scene - 1).filter((i) => i >= 0 && i < (produced.scenes?.length ?? 0));
   if (!r.hookVisible && !redoScenes.includes(0)) redoScenes.unshift(0);
   const checks: QaCheck[] = [
-    { name: VIDEO_ON_SCREEN_TEXT ? "Hook in the first 3 seconds" : "Strong opening shot", passed: !!r.hookVisible },
+    { name: "Hook in the first 3 seconds", passed: !!r.hookVisible },
     { name: "Scenes match the script", passed: !(r.scenes ?? []).some((s) => !s.matches), detail: bad.filter((s) => !s.matches).map((s) => `Scene ${s.scene}: ${s.note}`).join(" ") || undefined },
     { name: "No glitches", passed: !(r.scenes ?? []).some((s) => s.glitch || s.aiText), detail: bad.filter((s) => s.glitch || s.aiText).map((s) => `Scene ${s.scene}: ${s.note}`).join(" ") || undefined },
   ];

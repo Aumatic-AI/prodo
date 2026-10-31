@@ -22,6 +22,7 @@ import {
   TEAM_PHOTO_KINDS,
   TONE_AXES,
   VIDEO_STYLES,
+  type CtaChoice,
 } from "./options";
 import type { ScanState } from "./scan";
 import type { StepKey } from "./steps";
@@ -123,12 +124,31 @@ export const profileSchema = z.object({
 /** Settings → Business profile: the profile plus the goals from "Your content". */
 export const businessProfileSchema = profileSchema.extend({ goals: contentSchema.shape.goals });
 
+/** Where customers go: the choice and its link or number (Basics, and Settings → Content). */
+const ctaShape = {
+  cta: choice(CTA_CHOICES, "Pick where customers should go"),
+  ctaLinks: z.object({ shop: link, whatsapp: phone, book: link, call: phone }),
+};
+
+/** The chosen next step needs its link or number. */
+function ctaHasLink(b: { cta: CtaChoice; ctaLinks: Record<CtaChoice, string> }, ctx: z.RefinementCtx) {
+  if (b.cta && !b.ctaLinks[b.cta]) {
+    const isPhone = b.cta === "whatsapp" || b.cta === "call";
+    ctx.addIssue({ code: "custom", path: ["ctaLinks", b.cta], message: isPhone ? "Add the phone number" : "Add the link" });
+  }
+}
+
+/** Settings → Content: the "Your content" choices the weekly agents follow, and where customers go. */
+export const contentSettingsSchema = contentSchema
+  .pick({ mix: true, imageStyles: true, videoStyles: true, people: true, voiceId: true, voiceName: true, musicMood: true, logo: true })
+  .extend(ctaShape)
+  .superRefine(ctaHasLink);
+
 export const basicsSchema = profileSchema
   .extend({
     colors: z.object({ primary: hex.nullable(), secondary: hex.nullable(), accent: hex.nullable(), bg: hex, text: hex }),
     fonts: z.object({ heading: z.string().trim().max(80).nullable(), body: z.string().trim().max(80).nullable() }),
-    cta: choice(CTA_CHOICES, "Pick where customers should go"),
-    ctaLinks: z.object({ shop: link, whatsapp: phone, book: link, call: phone }),
+    ...ctaShape,
     tone: z.object(Object.fromEntries(TONE_AXES.map((a) => [a, z.number().int().min(0).max(100)])) as Record<
       (typeof TONE_AXES)[number],
       z.ZodNumber
@@ -136,13 +156,7 @@ export const basicsSchema = profileSchema
     avoidWords: list(50, 60),
     disclaimers: list(10, 500),
   })
-  .superRefine((b, ctx) => {
-    // The chosen next step needs its link or number
-    if (b.cta && !b.ctaLinks[b.cta]) {
-      const isPhone = b.cta === "whatsapp" || b.cta === "call";
-      ctx.addIssue({ code: "custom", path: ["ctaLinks", b.cta], message: isPhone ? "Add the phone number" : "Add the link" });
-    }
-  });
+  .superRefine(ctaHasLink);
 
 // ---------- Step 3A · Products ----------
 
@@ -253,6 +267,7 @@ export const servicesSchema = z.object({
 export type ContentDraft = z.input<typeof contentSchema>;
 export type ProfileDraft = z.input<typeof profileSchema>;
 export type BusinessProfileDraft = z.input<typeof businessProfileSchema>;
+export type ContentSettingsDraft = z.input<typeof contentSettingsSchema>;
 export type BasicsDraft = z.input<typeof basicsSchema>;
 export type ProductDraft = z.input<typeof productSchema>;
 export type OfferDraft = z.input<typeof offerSchema>;
@@ -270,6 +285,7 @@ export type MediaUpload = z.infer<typeof mediaUploadSchema>;
 export type Content = z.output<typeof contentSchema>;
 export type Profile = z.output<typeof profileSchema>;
 export type BusinessProfile = z.output<typeof businessProfileSchema>;
+export type ContentSettings = z.output<typeof contentSettingsSchema>;
 export type Basics = z.output<typeof basicsSchema>;
 export type Products = z.output<typeof productsSchema>;
 export type Services = z.output<typeof servicesSchema>;

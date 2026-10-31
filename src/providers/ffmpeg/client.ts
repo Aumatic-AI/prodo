@@ -39,11 +39,31 @@ export async function getJob(jobId: string): Promise<RenderStatus> {
 }
 
 /**
+ * Renders a Remotion composition on our worker (ads are drawn there: captions, cards, transitions).
+ * Returns a job id for getJob.
+ */
+export async function submitRender(template: string, props: Record<string, unknown>, outputKey: string): Promise<string> {
+  const id = await workerBackend.render!(template, props, outputKey);
+  return ["worker", id, outputKey].join(SEP);
+}
+
+/**
+ * Whether the worker that draws videos (Remotion) is set up and answering. Upload-Post can run
+ * ffmpeg but not Remotion, so agent videos need our worker.
+ */
+export async function renderReady(): Promise<Readiness> {
+  if (!env.FFMPEG_WORKER_URL || !env.FFMPEG_WORKER_SECRET) {
+    return { ok: false, reason: "Videos aren't set up yet: connect the video worker (FFMPEG_WORKER_URL and FFMPEG_WORKER_SECRET)." };
+  }
+  return workerBackend.ready();
+}
+
+/**
  * Whether videos can be made right now (settings present; our worker also answers its health
  * check). Checked before any money is spent on scene images, clips or voice.
  */
 export async function videoReady(): Promise<Readiness> {
-  return renderBackend().ready();
+  return renderReady();
 }
 
 /** Throws a plain, non-retryable error when videos can't be made, before anything is spent. */

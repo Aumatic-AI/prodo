@@ -1,18 +1,26 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { Bot, Building2, Share2 } from "lucide-react";
+import { Bot, Building2, Palette, Share2 } from "lucide-react";
 import { Card } from "@/components/kit/Card";
 import { PageHeader } from "@/components/kit/PageHeader";
 import { SectionNav, type SectionNavItem } from "@/components/kit/SectionNav";
 import { AccountsList } from "@/modules/accounts/components/AccountsList";
 import { AutomationForm } from "../components/AutomationForm";
 import { BusinessProfileForm } from "../components/BusinessProfileForm";
+import { ContentSettingsForm } from "../components/ContentSettingsForm";
 
-type Tab = "profile" | "automation" | "accounts";
+type Tab = "profile" | "content" | "automation" | "accounts";
 
 const TABS: (SectionNavItem<Tab> & { title: string; description: string })[] = [
   { value: "profile", label: "Business profile", icon: Building2, title: "Business profile", description: "Your business basics. Offerings, tone and personas live in Brand." },
+  {
+    value: "content",
+    label: "Content",
+    icon: Palette,
+    title: "Content",
+    description: "What your posts look and sound like, and where customers go. The agents follow these from the next plan.",
+  },
   { value: "automation", label: "Automation", icon: Bot, title: "Automation", description: "How much the agents do on their own, when they plan, and how much they may spend." },
   { value: "accounts", label: "Connected accounts", icon: Share2, title: "Connected accounts", description: "Where Prodo publishes. You sign in on each platform's own page; we never see your password." },
 ];
@@ -36,6 +44,7 @@ export function SettingsPage() {
             <p className="m-0 text-sm text-ob-muted">{active.description}</p>
           </div>
           {active.value === "profile" && <BusinessProfileForm />}
+          {active.value === "content" && <ContentSettingsForm />}
           {active.value === "automation" && <AutomationForm />}
           {active.value === "accounts" && (
             <Card>

@@ -57,6 +57,7 @@ export async function savePlan(db: SupabaseClient, planId: string, items: Planne
         slot_at: i.slotAt,
         platforms: i.platforms,
         format: i.format,
+        style: i.style,
         pillar_id: i.pillarId,
         persona_id: i.personaId,
         offering_id: i.offeringId,

@@ -17,8 +17,13 @@ export function LogoImg({ src, height, maxWidth }: { src: string | null; height:
   return <img src={src} height={height} width={maxWidth} style={{ objectFit: "contain", height, width: maxWidth }} />;
 }
 
-/** Logo, or the business name in the heading font when there's no logo for this background. */
-export function Brand({ theme, bg, height, maxWidth, color }: { theme: CreativeTheme; bg: string; height: number; maxWidth: number; color: string }) {
+/**
+ * Logo, or the business name in the heading font when there's no logo for this background. When
+ * the client chose no logo, nothing shows, except the name on closing frames (`closing`), so
+ * viewers still know who the call to action is from.
+ */
+export function Brand({ theme, bg, height, maxWidth, color, closing = false }: { theme: CreativeTheme; bg: string; height: number; maxWidth: number; color: string; closing?: boolean }) {
+  if (!theme.showLogo && !closing) return null;
   const src = logoFor(theme, bg);
   if (src) return <LogoImg src={src} height={height} maxWidth={maxWidth} />;
   return (

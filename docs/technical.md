@@ -1,6 +1,6 @@
 # Technical Details
 
-Spec: **Prodo Agent Blueprint** (https://claude.ai/artifact/FdBQTmEf44xghnbi2hua4a). All ten agents are built (Sprint 1: 1–4; Sprint 2: 5–10).
+How Prodo works, flow by flow, and the rules the code follows. Tables and file locations are in [`database.md`](database.md); the video worker is in [`../worker/README.md`](../worker/README.md). All ten agents are built.
 
 ## Principle: code, AI, vendor
 
@@ -11,18 +11,19 @@ Our own code handles anything rule-based (maths, layout, rendering, scheduling, 
 | Service | Used for | Used by |
 |---|---|---|
 | OpenAI | Text, vision, embeddings (`text-embedding-3-small`, 1536 dims) | All agents |
-| Kie | nano-banana images, Seedance video clips | Producer, manual create |
+| Kie | nano-banana pictures, Seedance clips (only where no real photo or video fits) | Producer, manual create |
 | ElevenLabs | Voice-over with word timestamps, music | Producer, manual create |
 | Zernio | Publishing, scheduling, connected accounts, per-post analytics. Replaces Upload-Post | Social & Market Analyst, Publisher, Performance Analyst |
-| Upload-Post | Legacy publisher, kept registered so posts made before Zernio still resolve | Publish jobs |
-| Twelve Labs (Pegasus 1.5) | Video understanding: hook, structure, pacing. Pegasus 1.2 was retired; 1.5 needs no index | Social & Market Analyst, QA Critic, Performance Analyst |
+| Upload-Post | Legacy publisher, kept registered so posts made before Zernio still resolve; fallback for small ffmpeg jobs | Publish jobs |
+| Twelve Labs (Pegasus 1.5) | Watching videos: the client's own footage (usable moments), reference and competitor videos (hook, structure, pacing), the finished video (QA). No index needed | Visual Identity Analyst, Social & Market Analyst, QA Critic, Performance Analyst |
 | Firecrawl | Website map, crawl, screenshots | Website Analyst, Visual Identity Analyst |
 | ScrapeCreators | Public profiles and posts (Instagram, TikTok, YouTube), Meta and Google ad libraries, Google search. Replaces SerpAPI (see below) | Social & Market Analyst |
-| FFmpeg worker (`worker/`) | Self-hosted on a **Hostinger** VPS. Scene clips, burned-in captions, music under the voice, end card, 9:16 and 4:5, loudness | Producer, manual create |
+| Video worker (`worker/`) | Self-hosted on a **Hostinger** VPS. Remotion draws every video from our Timeline (9:16 and 4:5); ffmpeg levels the sound and runs small jobs | Producer, manual create |
 | Resend | Email for notifications. Off until `EMAIL_ENABLED=1` (emails are only logged) | Notifications |
-| Google Fonts | Brand fonts as files for our renderers (Satori and captions), kept in storage | Producer |
+| Google Fonts | Brand fonts as files for our renderers (Satori and Remotion), cached in storage under `shared/fonts/` | Producer |
 | Nager.Date | Public holidays per country (free, no key) | Monthly refresh |
-| Supabase | Postgres, storage, auth, pgvector | All |
+| Supabase | Postgres, auth, pgvector | All |
+| Cloudflare R2 | Every file: brand photos and videos, finished ads, voices, music, fonts, sound effects | All |
 | Inngest | Jobs, weekly cron, approval waits, retries | All |
 
 ## Provider Adapter Pattern
@@ -46,7 +47,7 @@ External services are isolated behind interfaces in `src/providers/`. Nothing ou
 | `ai.ads.google(domain)`, `ai.ads.metaAdvertisers(name)`, `ai.ads.meta(pageId, country?)` | ScrapeCreators | ad creatives |
 | `ai.social.profile(platform, handle)`, `ai.social.posts(platform, handle, limit)` | ScrapeCreators | normalised `SocialProfile` / `SocialPost` (Instagram, TikTok, YouTube) |
 
-**SerpAPI was replaced by ScrapeCreators** (decision, Phase 1.8): one key covers search, ads and public social data. Google Trends and Maps reviews are dropped for now; dates come from the client's answers and reviews from the website and the client.
+**SerpAPI was replaced by ScrapeCreators**: one key covers search, ads and public social data. Google Trends and Maps reviews are dropped for now; dates come from the client's answers and reviews from the website and the client.
 
 `usage` is `{ provider, model, tokensIn, tokensOut, costUsd }`. Model names live in `src/config/models.ts`; estimated prices in `src/config/pricing.ts` (update them from each vendor's pricing page).
 
@@ -64,24 +65,48 @@ Zernio (`https://zernio.com/api/v1`, Bearer key): one Zernio post per target (`P
 
 ### Video rendering (`providers/ffmpeg/`)
 
-Two backends behind one client (`client.ts`: `submitJob`, `getJob`, `videoReady`). New jobs go to **our worker** when `FFMPEG_WORKER_URL` and `FFMPEG_WORKER_SECRET` are set, otherwise to **Upload-Post's FFmpeg API** (`UPLOAD_POST_API_KEY`); `RENDERER` forces one. Job ids carry their backend and output key, so a job always finishes where it started. Connecting the worker later needs no code change.
+Videos are drawn by **Remotion on our worker**: `submitRender("ad", timeline, outputKey)` sends a Timeline (`worker/remotion/shared/timeline.ts`, imported in the app as `@video/timeline`), `getJob` polls it. `videoReady()` / `renderReady()` need the worker (Upload-Post can't run Remotion), so without `FFMPEG_WORKER_URL` and `FFMPEG_WORKER_SECRET` no video is planned or started. See "Videos" below.
 
-Upload-Post (`backends/upload-post.ts`), rules found with real jobs: files go in as public URLs and the command uses `{input}` (first file), `{input1}`… and `{output}`; `; | & $` and backticks aren't allowed, so the filter graph is uploaded as a file (`-filter_complex_script`); placeholders aren't filled in inside that file, so captions are burned in by a second job (`-vf subtitles={input1}`) with Upload-Post's own font (the worker uses the brand font). The finished file is downloaded into our storage; working files live under `render-jobs/<id>/` and are removed afterwards. It uses Upload-Post's monthly processing minutes. Check it with `npm run smoke scripts/smoke/upload-post-render.ts`.
+ffmpeg jobs (small tasks) still have two backends behind the same client (`submitJob`, `getJob`). New jobs go to **our worker** when `FFMPEG_WORKER_URL` and `FFMPEG_WORKER_SECRET` are set, otherwise to **Upload-Post's FFmpeg API** (`UPLOAD_POST_API_KEY`); `RENDERER` forces one. Job ids carry their backend and output key, so a job always finishes where it started. Connecting the worker later needs no code change.
 
-### FFmpeg worker (`worker/`)
+Upload-Post (`backends/upload-post.ts`), rules found with real jobs: files go in as public URLs and the command uses `{input}` (first file), `{input1}`… and `{output}`; `; | & $` and backticks aren't allowed, so the filter graph is uploaded as a file (`-filter_complex_script`); placeholders aren't filled in inside that file, so captions are burned in by a second job (`-vf subtitles={input1}`) with Upload-Post's own font (the worker uses the brand font). The finished file is downloaded into our storage; working files live under `tmp/render-jobs/<id>/` and are removed afterwards. It uses Upload-Post's monthly processing minutes. Check it with `npm run smoke scripts/smoke/upload-post-render.ts`.
 
-A small Node 24 service with no npm dependencies, deployed with Docker + Caddy (HTTPS) on a Hostinger VPS. See `worker/README.md`.
+### Video worker (`worker/`)
 
-- `POST /jobs { inputs, args, outputKey }` (header `x-worker-secret`) returns a job id at once; `GET /jobs/:id` gives `queued | running | done | failed`.
-- Inputs are storage keys or `https` URLs on our Supabase host or `ALLOWED_INPUT_HOSTS` (Kie result hosts). Anything else is rejected.
+A Node 24 service (Remotion 4.0.539 for renders, ffmpeg for sound and small jobs), deployed with Docker + Caddy (HTTPS) on a Hostinger VPS. See `worker/README.md`.
+
+- `POST /render { template: "ad", props: Timeline, outputKey }` and `POST /jobs { inputs, args, outputKey }` (header `x-worker-secret`) return a job id at once; `GET /jobs/:id` gives `queued | running | done | failed`. One render and two ffmpeg jobs at a time.
+- After each render one ffmpeg pass levels the sound to -14 LUFS and copies the picture unchanged, then the file is saved at `outputKey`.
+- Inputs are storage keys or `https` URLs on our storage's public host (`R2_PUBLIC_URL`) or `ALLOWED_INPUT_HOSTS` (Kie result hosts). Anything else is rejected.
 - ffmpeg runs with an argument list, never a shell string. Two jobs at a time, 10 minutes each. The result is uploaded straight to storage at `outputKey`, and temp files are deleted.
-- `compose-video.ts` builds the whole video in one run (clips, captions, end card, voice, music, loudness); the Producer and manual `generate-video` submit it and poll with `step.sleep`. `{dir}` in an argument is the job's folder, so captions find the brand font downloaded as an input. Per-scene voice files are saved at `audio/<mediaId>/voice-<n>.mp3` and tracked as `media_files` rows (`role = voice`). Deleting media removes all its files from storage.
+- `compose-video.ts` (one ffmpeg run for a whole video) is no longer used by the Producer or manual videos; both render with Remotion. It stays for the Upload-Post check script.
 
 ### Storage (`providers/storage/`)
 
-`supabase-storage.ts` is the only file that turns a storage key into a URL. Everything else stores and passes keys.
+Files live in **Cloudflare R2** (bucket `prodo-media`). R2 speaks Amazon S3's API; requests are signed with the R2 key through `aws4fetch`.
 
-A business's files live under `<business id>/…`: `businessKey(businessId, path)` and `storageKeyFor(businessId, type, id)` build keys; the Producer's `dated(businessId, …)` too. Logged-in users can only create files in their own folder (signed upload links from `POST /api/uploads`) and can't list the bucket; replacing and deleting is done by the server (`removeFiles(businessId, keys)` in `remove-files.ts`), which only deletes keys in that business's folder (or old unfoldered files, for the business that owns them). A key sent by the browser must be in the business's folder or already one of its files (`assertOwnKey()`). Files made before multi-tenant keep their old paths. Shared files with no business: `fonts/` (Google Fonts cache) and `render-jobs/` (Upload-Post working files).
+- `r2.ts` (server only): `upload`, `download` (null when missing), `deleteFiles`, `signedUploadUrl` (a 15-minute PUT link signed for one key and one content type).
+- `paths.ts` (safe in the browser): where every file lives (`brandKey`, `logoVariantKey`, `mediaKey`, `workKey`, `tmpKey`, `fontKey`, `finalName`), the ownership checks (`inBusinessFolder`, `ownedBy`) and `publicUrl(key)`, the only place a key becomes a URL (`NEXT_PUBLIC_MEDIA_URL`). Everything else stores and passes keys.
+- Public address: `r2.dev` during development (rate-limited); a custom domain (e.g. `media.<domain>`, DNS on Cloudflare) before launch. Changing it only changes `NEXT_PUBLIC_MEDIA_URL` (and the worker's `R2_PUBLIC_URL`), since rows store keys.
+- Browser uploads: `POST /api/uploads` returns `{ id, key, url }` (the file is named by the id its row will get), then `useUpload` PUTs the file to `url` with its content type.
+- Bucket rules: `npm run smoke scripts/setup/r2-bucket.ts [origin…]` sets auto-delete (`work/` after 90 days, `tmp/` after 7) and CORS (reading from any page, since the renderer fetches clips, music and fonts from its own local page; uploads only from localhost, `APP_URL` and any origin given). Run it for every new bucket and when the app gets a new address.
+- Sound effects: `npm run smoke scripts/setup/sfx.ts` puts them in `shared/sfx/` (Remotion's CC0 whoosh, whip, click and shutter, plus pop, ding and rise made by our own code).
+- Check it: `npm run smoke scripts/smoke/r2.ts` (upload, public link, signed upload, delete; free).
+
+Layout (full table in `docs/database.md` → File storage):
+
+```
+<business id>/brand/logo|photos|videos|references/<id>.<ext>   kept
+<business id>/media/<media id>/<ratio or slide>.<ext>            finished files, kept
+work/<business id>/<media id>/…                                  in-between files, deleted after 90 days
+tmp/…                                                            job and test files, deleted after 7 days
+shared/fonts/<family>-<weight>.ttf                               font cache
+shared/sfx/<name>.wav                                            sound effects for videos
+```
+
+Finished files and in-between files are kept apart so R2's auto-delete rules (by prefix) clean up the in-between ones; "Make again" can reuse them while they last. One media item's finished files are in one folder. Deleting a business means deleting `<business id>/` and `work/<business id>/`.
+
+Logged-in users can only create files in their own brand folders (signed upload links from `POST /api/uploads`) and can't list or delete anything; replacing and deleting is done by the server (`removeFiles(businessId, keys)` in `remove-files.ts`), which only deletes the business's own files (`ownedBy`: `<business id>/` and `work/<business id>/`, or old unfoldered files for the business that owns them). A key sent by the browser must be in the business's folder or already one of its files (`assertOwnKey()`). Files made before multi-tenant keep their old paths.
 
 ## Multi-tenant
 
@@ -107,10 +132,10 @@ Ten agents, each an Inngest function with one step per outside call.
 | # | Agent | Runs | Writes |
 |---|---|---|---|
 | 1 | Website Analyst | Onboarding website scan (first screen), onboarding submit when the scan didn't read the site, Refresh brand | `brand_sources`, `brand_chunks`, `offerings`, `proof_items`, `offers` |
-| 2 | Visual Identity Analyst | Onboarding website scan (colours and fonts only), onboarding submit, logo change | `brand_kit` |
+| 2 | Visual Identity Analyst | Onboarding website scan (colours and fonts only), onboarding submit, logo change; a video added in Brand → Assets (`watch-footage`) | `brand_kit`, `brand_assets.ai_description`, `brand_assets.analysis` |
 | 3 | Social & Market Analyst | Onboarding, monthly refresh | `brand_sources`, `competitors.analysis`, `proof_items`, `calendar_events`, `learnings` (baseline), `hook_library` |
 | 4 | Brand Strategist | After 1–3; on Regenerate | `brand_bible` (draft), `personas`, `content_pillars`, `hook_library` |
-| 5 | Planner | Weekly cron, "Plan next week" | `content_plans`, `plan_items` |
+| 5 | Planner | Weekly cron, "Plan this week", the first Brand Bible approval | `content_plans`, `plan_items` (with `style`) |
 | 6 | Creative Director | Each new slot | `plan_items.brief`, `captions`, `hook_library` |
 | 7 | Producer | Brief passes QA Gate 1 | `media`, `media_files` |
 | 8 | QA Critic | Gate 1 after each brief, Gate 2 after each asset | `brief_score`, `qa_score`, `qa_report`, `selected_media_id` |
@@ -164,20 +189,20 @@ Removed list items: offerings and offers are archived (`active = false`; found o
 
 **Submit.** Sets `onboarding_status = analyzing`, writes `onboarding.research` (all agents queued; the Website Analyst is marked done when the scan already read the same website) and sends `onboarding/started` (event id = attempt id, so a double submit runs once). The client moves to `/onboarding/progress`.
 
-### Brand research (Phase 1.8)
+### Brand research
 
 `onboarding-run` (`src/jobs/onboarding-run.ts`) runs the agents in parallel with `step.invoke`. Each agent is its own Inngest function made by `defineResearchAgent` (`src/agents/research/define.ts`): it marks itself running, loads the business context, runs, and records a one-line summary (or its error, in `onFailure`). One failed agent doesn't stop the others. When all three succeed, the Brand Strategist (agent 4) writes the Brand Bible draft; during onboarding the run then sets `onboarding_status = review` (after onboarding, "Refresh brand" leaves it `done`).
 
 | Agent | Folder | Steps | Writes |
 |---|---|---|---|
 | 1 Website Analyst | `agents/website-analyst/` | map site → rank up to 15 pages by URL shape (code): at most 4 single product or service pages and 3 collection pages; sale pages, about, reviews, contact and shipping or refund policies are always worth a place; site maps, .md files and legal pages are skipped → read each page (Firecrawl; unchanged pages skipped by hash) → embed changed pages → pull facts per page (AI, zod) → merge: near-identical names matched in code, then one AI check that drops repeats across pages and items the client already entered (it only drops, never rewrites) | `brand_sources` (web_page), `brand_chunks`, `offerings`, `offers`, `proof_items` (extracted rows inactive/unverified, with `source_id`) |
-| 2 Visual Identity Analyst | `agents/visual-identity/` | homepage HTML, CSS and screenshot (Firecrawl) → logo palette and light/dark versions (sharp, node-vibrant) → brand colours and WCAG AA text pairs (code); all skipped when the onboarding scan already read the same website and logo → photo and layout style (AI vision, with up to 3 of the client's reference images) → one line per photo without one (AI vision, 8 per call, up to 48) | `brand_kit`, logo variants in storage (`<business id>/logo/variants/`), `brand_assets.ai_description` and `tags` |
+| 2 Visual Identity Analyst | `agents/visual-identity/` | homepage HTML, CSS and screenshot (Firecrawl) → logo palette and light/dark versions (sharp, node-vibrant) → brand colours and WCAG AA text pairs (code); all skipped when the onboarding scan already read the same website and logo → photo and layout style (AI vision, with up to 3 of the client's reference images) → one line per photo without one (AI vision, 8 per call, up to 48) → the client's own videos watched for usable moments (Twelve Labs, new videos only, up to 6; see Videos) | `brand_kit`, logo variants in storage (`<business id>/brand/logo/<id>-on-dark.png`), `brand_assets.ai_description`, `tags` and `analysis` |
 | 3 Social & Market Analyst | `agents/social-market/` | social profiles the client left empty, taken from their homepage links (skipped when the scan did it) → own posts (Zernio when connected, otherwise public profiles) → baselines and top/bottom 20% (code) → competitors: find if fewer than 2 rivals (Google search + AI); each rival (max 5): 12 Meta ads, 12 Google ads, 8 top Instagram posts, homepage → summary (AI); brands the client admires (`relation = inspiration`): top Instagram posts only, no ads or gaps → the client's reference links (ScrapeCreators, up to 10) → videos (Twelve Labs: up to 6 own, plus 5 others: 2 references, then each rival's longest-running Meta video ad or a top Instagram video, then brands they admire) → what reference videos do well (kept on `brand_sources` kind reference) → hooks (AI; `reference` source for references and admired brands) | `brand_sources` (social_post, competitor, reference), `brand_chunks`, `learnings` (baseline, format), `competitors` (+ discovered), `hook_library` |
 
 Rules every agent follows:
 - One `task(id, work, summary)` per outside call (a few make two dependent calls, e.g. find a Meta page, then read its ads). Every task is logged to `agent_runs` with `run_id` = the research id, its cost and a plain summary.
 - Work the agent can do without (one page, one competitor, one video) is wrapped in `optional()`: after Inngest's retries it's skipped and shows as "Skipped a step" in the activity list.
-- Hard caps: 15 pages, 5 competitors, 10 reference links, 6 own videos, 5 other videos, 48 photo descriptions, 50 posts per platform.
+- Hard caps: 15 pages, 5 competitors, 10 reference links, 6 own posted videos, 5 other videos, 6 footage videos to watch, 48 photo descriptions, 50 posts per platform.
 - Pages the site no longer has (missing from the site map and answering 404 or 410) are removed with their Brand Brain passages on the next read; facts found on them keep their row.
 - Brand Brain passages can be older than what the client edits in the app. The Creative Director is told product, offer and review facts win, and a code check rejects any price in a brief that isn't the product's current price or an amount in the live offer or a review.
 - The research right after onboarding reuses what the website scan did (kit, socials); "Refresh brand" later reads everything again.
@@ -192,7 +217,7 @@ Rules every agent follows:
 
 **Retry.** `POST /api/onboarding/retry` (allowed when failed or stale) keeps the research id, makes a new attempt id and runs only the agents that aren't done. Unchanged pages aren't paid for twice.
 
-### Brand Strategist and Brand Bible (Phase 1.9)
+### Brand Strategist and Brand Bible
 
 Agent 4 (`agents/brand-strategist/`) runs after agents 1–3, and again on "Regenerate with a note" (`brand/regenerate` → `regenerate-bible` invokes it with the note).
 
@@ -200,20 +225,53 @@ load facts (answers, offerings incl. pending, proof, kit, market notes) → sear
 
 - **Sources.** The model sees numbered sources: `[A]` the client's answers, `[O]` offerings, `[R]` proof, `[K]` brand kit, `[C]` Brand Brain passages, `[M]` market notes (competitor gaps, baselines; context only, never citable). `sources.ts` maps cited labels back to refs (`answer:<key>`, `offering:<id>`, `proof:<id>`, `kit`, `chunk:<id>`). Edits by the client add `client`.
 - **Checks** (`checks.ts`, code): a claim with no real source is dropped; never-say words (the client's avoid list + the model's) can't appear anywhere; 3–4 personas and 4–5 pillars, otherwise a retryable error; pillar shares rescaled to add up to exactly 1; offer stack only uses known offerings and marks website finds as pending.
-- **Versions.** Every draft (generated or edited) is a new `brand_bible` version; older drafts become `superseded`, so there's one draft at a time. Approving: the previous approved version is superseded, the draft's personas and pillars replace the active rows (old ones archived), `onboarding_status = done`, and `brand/approved` is sent (Sprint 2 listens).
+- **Versions.** Every draft (generated or edited) is a new `brand_bible` version; older drafts become `superseded`, so there's one draft at a time. Approving: the previous approved version is superseded, the draft's personas and pillars replace the active rows (old ones archived), `onboarding_status = done`, and `brand/approved` is sent (it starts the first plan).
 - **Facts to confirm.** Offerings, offers and proof the Website Analyst found (`verified = false`) are listed for Confirm / Reject (`core/brand/pending.ts`). Rejecting an offering also removes it from the draft's offer stack.
 
-**Review screen.** `/onboarding/bible` during onboarding (shown after research; `analyzing` only allows `/onboarding/progress`, `review` allows progress and bible), and Brand → Brand Bible afterwards. Same component (`modules/brand/components/bible/BibleReview`): read every section, "Show sources" on each statement, confirm found facts, edit (saves a new version), regenerate with a note, approve. Approving during onboarding opens the dashboard.
+**Review screen.** `/onboarding/bible` during onboarding (shown after research; `analyzing` only allows `/onboarding/progress`, `review` allows progress and bible), and Brand → Brand Bible afterwards. Same component (`modules/brand/components/bible/BibleReview`): read every section, "Show sources" on each statement, confirm found facts, edit (saves a new version), regenerate with a note, approve. Approving during onboarding opens This week.
 
-### Brand Hub and Settings (Phase 1.10)
+### Brand Hub and Settings
 
-**Brand** (`/brand?tab=…`, `modules/brand/`): Brand Bible (with version history), Offerings, Offers, Proof, Photos and videos, Personas, Pillars, Competitors (with the research's analysis; "Found by Prodo" for discovered ones), Brand kit. Every list is defined once in `core/brand/resources.ts` (fields, archive or delete, verify); the API (`/api/brand/resources/[resource]`) and the forms are built from it. Brand rows are archived, never deleted, and can be restored. Editing a row an agent found counts as confirming it.
+**Brand** (`/brand?tab=…`, `modules/brand/`): Brand Bible (with version history), Offerings, Offers, Proof, Photos and videos (the client's own, people, and posts from other brands they like; their own videos show how many usable moments were found), Personas, Pillars, Competitors (with the research's analysis; "Found by Prodo" for discovered ones), Brand kit. Every list is defined once in `core/brand/resources.ts` (fields, archive or delete, verify); the API (`/api/brand/resources/[resource]`) and the forms are built from it. Brand rows are archived, never deleted, and can be restored. Editing a row an agent found counts as confirming it.
 
 **Refresh brand** runs a new research (new research id, all four agents); its progress shows on the Brand page, and the approved Bible stays in use until the new draft is approved.
 
-**Settings**: Business profile (name, website, logo, description, language, timezone, main goal), Automation (`app_settings`: pause, autopilot mode, plan day and time, auto-approve timeout, monthly budget with this month's spend, notification email), Connected accounts. Products moved to Brand → Offerings; `/api/offerings` is now read-only (Create Content's picker).
+**Settings**: Business profile (name, website, logo, description, socials, market, language, timezone, industry, currency, goals; `/api/settings/profile`), Content (images or videos, image and video styles, people, voice and music, logo, where customers go; `/api/settings/content` → `core/content/settings.ts`, which writes the same columns onboarding does), Automation (`app_settings`: pause, autopilot mode, plan day and time, posts per week, auto-approve timeout, monthly budget with this month's spend, notification email), Connected accounts. Products live in Brand → Offerings; `/api/offerings` is read-only (Create Content's picker).
 
-### Weekly loop (Sprint 2: agents 5–9)
+### Videos (Remotion)
+
+The whole video flow, from the client's answers to the rendered file:
+
+1. **Onboarding and Settings → Content** give the styles (in order), the content mix, people, music mood, logo and next step (`core/content/prefs.ts`).
+2. **The client's own videos** are watched once by Twelve Labs (`agents/footage/watch.ts`: in the Visual Identity Analyst, and the `watch-footage` job when a video is added in Brand → Assets). The log (`brand_assets.analysis`) lists usable moments: times, what they show, shot, people, whether someone talks to camera (with their words and times), where the subject is and where text can go. Other brands' videos (`reference_video`) are only studied for pacing and structure (their lessons reach the Creative Director), never used as footage.
+3. **Planner** gives each video slot a style. Talking to camera and customer videos stay real when the client has a talking moment (`hasTalkingFootage`), otherwise they become voice-over explainers.
+4. **Creative Director** fills the style's **storyline** (`core/creative/video.ts`: a fixed opening and close, a flexible middle) with scenes from the **scene library** (hook, problem, product, detail, benefit, step, stat, review, offer, before, after, reveal, process, talking, result, cta). Each scene picks its picture: a moment of the client's video `[V…]`, one of their photos `[G…]` or AI; plus key words, an optional sticker, a stat or review (facts only), the price (facts only) and the feel of the cut. The **sound** follows the style: music only, a voice-over, voice over music, or real speech from talking moments. The **look** (preset) is chosen by code from the brand's tone sliders and industry (`creative/video/preset.ts`). Code checks the storyline's shape, timing, footage length, facts behind numbers and sticker count (`checks-video.ts`).
+5. **Producer** (`agents/producer/video.tsx`): voice for voiced scenes → AI stills only where no real picture was chosen (product scenes use the real product photo as reference; a reveal's "after" is made from its "before") → AI clips for moving scenes (card scenes and slideshows keep stills) → everything copied into `work/` → music → one vision call for where the subject and the calm area are (`prompts/agents/scene-layout.ts`; real moments use their footage log) → a Timeline per size (`creative/video/timeline.ts`) → rendered on the worker. A QA redo remakes only the failed AI scenes.
+6. **QA**: Gate 1 judges the brief against the client's choices and the sound; Gate 2 has Twelve Labs watch the finished video (our captions, cards and real footage are expected) and checks AI stills for painted-in words.
+
+**Timeline rules** (all from data, `creative/video/timeline.ts`): scene length = its voice + a breath, its talking moment, or the brief's seconds; voices run back to back and transitions sit in the pauses; captions come from the voice's word timings (talking moments: their lines spread over each line's time) in pages of 1–3 words with key words lit; the on-screen line goes in the calm zone, captions in another free zone, never over the subject; stickers and price tags appear beside the subject at the moment their key word is said; the stat counts up when its number is said; sound effects sit on transitions, text, reveals and the closing card; music ducks under every voice and talking clip; the closing card ends every video; video safe areas keep text out of the platform buttons (9:16: 260 px top, 620 bottom, 90/110 sides).
+
+**Sound effects**: `shared/sfx/` in storage (`npm run smoke scripts/setup/sfx.ts` puts them there): Remotion's CC0 whoosh, whip, click and shutter, plus pop, ding and rise generated by our own code. The bucket allows reads from any page (the renderer fetches clips, music and fonts from its own local page); uploads only from the app.
+
+**Manual videos** (Media → Create, `jobs/generate-video.ts`) keep their own script and clips but are drawn by the same renderer (captions, the brand's look, music when there's no voice, the closing card).
+
+Checks: `npm run smoke scripts/check/video-logic.ts` (offline), and `scripts/check/video-timeline.ts` + `worker/scripts/render-local.ts` to render a real brand's timeline on your own computer (free).
+
+### Weekly loop (agents 5–9)
+
+**The client's content choices.** `core/content/prefs.ts` (`contentRules()`) reads the onboarding answers (`business_profile.content_prefs`, `primary_cta`, `music_mood`, `industry`) into one set of rules every weekly agent uses; `core/content/styles.ts` says what each style means (formats it fits, sound, people, a description for the AI). The client changes them in Settings → Content (`/api/settings/content`), and goals in Business profile.
+
+| Choice | Where it acts |
+|---|---|
+| Goals (ranked, up to 2) | Planner: the first goal gets about two thirds of the slots and each slot names its goal; the funnel stage follows the goal when the slot has no pillar. The Creative Director and QA see both |
+| Images or videos (`mix`) | Planner: video share 0 / 15% / 45% / 70%; images only also drops video-only platforms. A format meant for more than half the posts may repeat back to back |
+| Image and video styles (ranked) | The Planner's code gives each slot a style (`plan_items.style`): only styles that fit the format (tips → carousel, offer → single image), higher picks more often, learnings (`style` dimension) adjust, never the same twice in a row. A format with no fitting style isn't planned; no picks = any style. The Creative Director follows the style; QA judges against it |
+| Video sound (from the style) | Music only (showcase, before/after, slideshow, behind the scenes): no voice-over, scenes have set lengths. Voice only: no music. Talking to camera and customer videos use the client's talking moments with their own sound; without one they're made as voice-over videos. A photo slideshow builds every scene on the brand's own photos |
+| People (real / AI / none) | None: no people styles, no person photos offered, image and clip prompts say no people, and a code check sends back briefs that describe a person. Real: people only from the client's own photos |
+| Logo (every / never) | Never: our layouts draw no logo (closing frames show the business name) and `media.use_logo` is false. Manual ads keep their own "use logo" box |
+| Customers' next step (`primary_cta`) | The Creative Director points every call to action there; the brief's link defaults to it (`phone` is a CTA link now) |
+| Music mood | Overrides the mood the Creative Director suggests |
+| Industry | Its never-say claims join the client's own list in the brief checks and QA |
 
 ```
 weekly cron (hourly, one `plan/check-due` per business; fires on that business's plan day and hour, in its time zone) or "Plan this week" or the first Brand Bible approval
@@ -227,26 +285,26 @@ Each slot is one run of `produce-plan-item` (`agents/weekly/produce-item.ts`, 3 
 
 | Agent | Folder | What | Code does | AI does |
 |---|---|---|---|---|
-| 5 Planner | `agents/planner/` | Plans one week | Slot count from posts per week (Settings → Automation), days spread evenly, platforms per slot, local posting times (defaults until learnings have 10+ posts), format mix weighted by learnings and supported by every platform in the slot, pillar mix by largest remainder, 30% experiments, no back-to-back repeat of format, offering or angle on a platform, offers only while live | Offering, offer, persona, angle, objective, hook type, levers and the reason per slot; the week's theme |
-| 6 Creative Director | `agents/creative-director/` | One slot → a brief (`core/creative/brief.ts`) | Numbered fact book (`[O1]` offering, `[F1]` offer, `[R…]` verified proof, `[C…]` Brand Brain passages, `[G…]` real photos); labels → stored refs; claims, badges and fact levers without a source dropped; word limits (headline 8, overlay 7, slide title 8, body 30, ~2.5 spoken words/s), caption length per platform, never-say words, no urgency without a live offer; one rewrite when a check fails; hook swapped when ≥ 0.9 similar to one used in 60 days (`match_recent_hooks`); hook saved to `hook_library` | 8 hooks (one per type), framework, levers, CTA, claims, captions per platform, and per format: headline/subhead/badge/photo prompt/layout, 5–8 slides, or 3–6 scenes with voice-over, overlay, visual and camera move |
+| 5 Planner | `agents/planner/` | Plans one week | Slot count from posts per week (Settings → Automation), days spread evenly, platforms per slot, local posting times (defaults until learnings have 10+ posts), format mix from the client's content mix, weighted by learnings and supported by every platform in the slot, a content style and goal per slot, pillar mix by largest remainder, 30% experiments, no back-to-back repeat of format, offering or angle on a platform, offers only while live | Offering, offer, persona, angle, objective, hook type, levers and the reason per slot; the week's theme |
+| 6 Creative Director | `agents/creative-director/` | One slot → a brief (`core/creative/brief.ts`) | Numbered fact book (`[O1]` offering, `[F1]` offer, `[R…]` verified proof, `[C…]` Brand Brain passages, `[G…]` real photos, `[V…]` the client's video moments); for videos the storyline, sound and look of the slot's style; labels → stored refs (V → a clip with start and end, G → a photo); claims, badges and fact levers without a source dropped; word limits (headline 8, overlay 7, slide title 8, body 30, ~2.5 spoken words/s), caption length per platform, never-say words, no urgency without a live offer; one rewrite when a check fails; hook swapped when ≥ 0.9 similar to one used in 60 days (`match_recent_hooks`); hook saved to `hook_library` | 8 hooks (one per type), framework, levers, CTA, claims, captions per platform, and per format: headline/subhead/badge/photo prompt/layout, 5–8 slides, or video scenes (kind, picture source, voice-over or set length, on-screen line, key words, sticker, stat, review, price, transition) |
 | 8 QA Gate 1 | `agents/qa-critic/gate1.ts` | Before any money is spent | Weighted score; pass = overall ≥ 7, compliance ≥ 7 and no open code problems | Scores hook, one message, persona fit, CTA, proof, compliance (0–10) and lists fixes |
-| 7 Producer | `agents/producer/` | Makes the asset | Sizes per platform (`canvases.ts`); our layouts draw every word (`src/creative/`); captions as an `.ass` file from voice word timings (switched off for now: `VIDEO_ON_SCREEN_TEXT` in `src/config/video.ts`, so videos have no captions or hook text until the new editor); end card (also off: `VIDEO_END_CARD`); scene descriptions pass through `pictureOnly()` so the image and video models never get asked for words; QA Gate 2 also checks each scene still for painted-in words; compose on the FFmpeg worker | Kie photo (real product photo as reference), Kie clips, ElevenLabs voice per scene and music |
-| 8 QA Gate 2 | `agents/qa-critic/gate2.ts` | After the asset | Sizes, every text colour pair ≥ 4.5:1, safe zones, caption length, video length, loudness | OpenAI vision for images and carousels (product matches the reference, no stray AI text, on brand); Twelve Labs for video (hook visible in 3 s, scenes match the script, no glitches) |
+| 7 Producer | `agents/producer/` | Makes the asset | Sizes per platform (`canvases.ts`); images and slides drawn by our Satori layouts (`src/creative/`); videos: real moments and photos used as they are, everything copied into `work/`, the video Timeline built by code (`creative/video/timeline.ts`) and drawn by Remotion on the worker; scene descriptions pass through `pictureOnly()` so the image and video models never get asked for words | Kie picture (real product photo as reference) and clips where no real one fits, ElevenLabs voice per voiced scene and music, one vision call for where the subject is in each picture |
+| 8 QA Gate 2 | `agents/qa-critic/gate2.ts` | After the asset | Sizes, every text colour pair ≥ 4.5:1, safe zones, caption length, video length, loudness | OpenAI vision for images and carousels (product matches the reference, no stray AI text, on brand); Twelve Labs for video (hook visible in 3 s, scenes match the script, no glitches) and OpenAI vision on the AI stills (no painted-in words) |
 | 9 Publisher | `agents/publisher/` | Approved slot → scheduled post | One target per connected account on the slot's platforms, caption per platform (+ CTA link where links work), at the slot time (or 10 min from now), `origin = agent`; each platform gets its best size from the renditions (`publish-post`) | — |
 
 **Days and video.** Planning the current week only uses days from tomorrow (a part week gets its share of the posts; on the last day the client is sent to next week). While the video renderer isn't connected (`videoReady()`: settings present and `/health` answers), the Planner plans no video slots and leaves video-only platforms out; every video path (`produce-plan-item`, manual `generate-video`, `/api/ads`, `/api/media` create, retry, redo) checks it first, so nothing is spent on a video that can't be put together.
 
-**Redos.** Gate 1 below the bar sends the fixes back to the Creative Director (at most 2 rewrites, then `needs_review` with nothing spent). Gate 2 makes again only what failed: a new photo with QA's fix for images and carousels (all text is ours), only the flagged scenes for video (voice, other clips and music are kept), at most twice, then `needs_review` with the reason in `qa_report.reason`.
+**Redos.** Gate 1 below the bar sends the fixes back to the Creative Director (at most 2 rewrites, then `needs_review` with nothing spent). Gate 2 makes again only what failed: a new photo with QA's fix for images and carousels (all text is ours), only the flagged AI scenes for video (voice, real footage, other clips and music are kept), at most twice, then `needs_review` with the reason in `qa_report.reason`.
 
 **Statuses.** Slot: `planned → briefed → producing → ready | needs_review → approved → scheduled → published` (or `rejected`, `failed`). Plan: `planning → producing → review → approved → scheduled` (or `failed`).
 
 **Approval modes** (`app_settings.autopilot_mode`). `approve_plan`: the client approves the plan (all `ready` slots) or single slots. `approve_each`: single slots. `full`: `plan-auto-approve` sleeps until `approval_due_at` (`approval_timeout_hours` after review starts) and approves the ready slots if the client hasn't; `needs_review` slots never go out without the client. Approving one slot schedules it straight away in every mode.
 
-**Single ads ("Create an ad").** `POST /api/ads` adds one slot to the plan of the week it goes out in (made on the spot with `strategy.adhoc = true` when there is none) and runs the same chain with `oneOff`. The weekly Planner still plans a week that only holds single ads and keeps them.
+**Single ads ("Create an ad").** `POST /api/ads` adds one slot to the plan of the week it goes out in (made on the spot with `strategy.adhoc = true` when there is none) and runs the same chain with `oneOff`. The slot gets the style the client picked in the dialog, else their top style for the format. The weekly Planner still plans a week that only holds single ads and keeps them.
 
-**Client actions on a slot.** Approve, skip (`rejected`, with an optional reason), make again with a note ("make it punchier": the whole chain runs again with the note), edit captions, schedule again (after connecting a missing account). Every action is saved in `feedback` for the learning loop. Cancelling an agent post in Posts puts its slot back to `approved`.
+**Client actions on a slot.** Approve, skip (`rejected`, with an optional reason), make again with a note ("make it punchier": the whole chain runs again with the note; `restartItem()` marks the slot failed with a plain message if the agents can't be started), edit captions, schedule again (after connecting a missing account). Every action is saved in `feedback` for the learning loop. Cancelling an agent post in Posts puts its slot back to `approved`.
 
-**Rendering (`src/creative/`, our code).** `theme.ts` turns the brand kit into colour pairs that pass WCAG AA, loads the brand fonts from Google Fonts (kept in storage under `fonts/`, Inter as fallback) and picks the logo version per background. `templates/ads.tsx` has four layouts (`spotlight`, `split`, `frame`, `bold`) that work at 1:1, 4:5, 9:16 and 16:9 with safe zones; `templates/carousel.tsx` has the cover, content and CTA slides and the video end card; `fit.ts` sizes text to its box; `render.tsx` renders with Satori (`next/og`). `subtitles.ts` builds the burned-in captions (2–3 words at a time, the spoken word highlighted, big on-screen lines at the top, the hook first). `providers/ffmpeg/compose-video.ts` builds the one ffmpeg run: clips filled to the canvas → captions with the brand font (`fontsdir={dir}`) → end card → voice with music under it → loudness -14 LUFS. Manual "Create video" in Media uses the same composer.
+**Rendering (`src/creative/`, our code).** `theme.ts` turns the brand kit into colour pairs that pass WCAG AA, loads the brand fonts from Google Fonts (cached in storage under `shared/fonts/`, Inter as fallback), picks the logo version per background and follows the client's logo choice. Images: `templates/ads.tsx` has four layouts (`spotlight`, `split`, `frame`, `bold`) that work at 1:1, 4:5, 9:16 and 16:9 with safe zones; `templates/carousel.tsx` has the cover, content and CTA slides; `fit.ts` sizes text to its box; `render.tsx` renders with Satori (`next/og`). Videos: `video/timeline.ts` builds the Timeline, `video/preset.ts` picks the look, `video/parts.ts` holds the video safe areas, theme, price and link text; the worker draws it (see Videos). `subtitles.ts` and `providers/ffmpeg/compose-video.ts` (the old ffmpeg video assembly) are only used by the Upload-Post check script.
 
 **Notifications** (`core/notifications/`). `notify()` writes a `notifications` row and, when asked and a notification email is set, emails it through Resend (`providers/email/`). Until `EMAIL_ENABLED=1`, the email is built and logged, and the row says `skipped`. Sent for: plan ready, single ad ready or needs a look, posts scheduled, post failed, planning stopped, budget reached (once a month). The sidebar bell shows them.
 
@@ -303,7 +361,7 @@ Before the body runs, `assertBudget` (`src/agents/budget.ts`) stops it with `PAU
 - `src/middleware.ts` runs on every page and `/api` route. Logged-out page requests redirect to `/login?next=…`; logged-out API requests get `401 { error: { code: "UNAUTHORIZED", message } }`. Public: `/login`, `/api/auth/callback`, `/api/inngest` (Inngest signs its own requests).
 - `apiHandler()` checks the session again as a second layer. Pass `{ public: true }` only for routes that must work logged out.
 - Database: RLS on every table, `authenticated` role only and only its own business (migration `0017`), no `anon` privileges (migration `0009`). Jobs and agents use `businessDb(businessId)` (service role, one business).
-- Storage bucket `media`: public read; logged-in users may only create files in their own `<business id>/` folder; the server replaces and deletes files.
+- File storage (R2 bucket `prodo-media`): public read by link; only the server holds the key. The browser can only PUT to a signed link the server made for a key in its own business folder; the server replaces and deletes files.
 - Signups are off in Supabase Auth (keep "Allow new users to sign up" off); users are created in the dashboard, and each one gets its own business.
 
 ## Error Handling Chain
@@ -333,11 +391,22 @@ Events carry their run, agent, step and attempt through `AsyncLocalStorage` (`sr
 
 `npm run trace` builds an HTML report for the latest run (`.logs/research/<run>.html`); `-- <run id>`, `-- --list`, `-- --follow` (live lines in the terminal), `-- --out <file>` (page without wrapper, for an artifact). The viewer is `scripts/trace/viewer.html`; it can also load a `.jsonl` file directly.
 
-## Smoke tests
+## Checks
 
-Offline checks (no vendors, no database): `npm run smoke scripts/check/research-logic.ts` (agents 1–4), `npm run smoke scripts/check/weekly-logic.ts` (time zones, Planner slots, brief checks, captions, compose arguments) and `npm run smoke scripts/check/learning-logic.ts` (engagement rate, baselines, scores, learnings). `npm run smoke scripts/check/render-samples.tsx <dir>` renders every ad layout, carousel slide and end card with a sample brand so the designs can be looked at.
+There is no unit test suite; these are the tests. Run the ones that cover a change before merging it.
 
-`npm run smoke scripts/smoke/<name>.ts` makes one small real call and prints the result and its estimated cost: `openai`, `kie`, `elevenlabs`, `firecrawl [url]`, `scrapecreators [instagramHandle]` (one Google search; with a handle, also that profile and its posts), `twelvelabs [videoUrl]` (defaults to a 5 s sample), `zernio` (read-only), `ffmpeg-worker`, `agent-step` (writes one `agent_runs` row and checks a $0 budget blocks agents). Never fake a vendor response to make one pass.
+**Offline** (no vendors, no database writes):
+
+| Command | Covers |
+|---|---|
+| `npm run smoke scripts/check/research-logic.ts` | Agents 1–4: page ranking, chunking, colours, baselines |
+| `npm run smoke scripts/check/weekly-logic.ts` | Time zones, Planner slots, content rules (mix, styles, goals, people), brief checks, captions |
+| `npm run smoke scripts/check/video-logic.ts` | Video styles and sound, looks, labels → footage and facts, storyline checks, the Timeline (timing, captions, placement, sound) |
+| `npm run smoke scripts/check/learning-logic.ts` | Engagement rate, baselines, scores, learnings |
+| `npm run smoke scripts/check/render-samples.tsx <dir>` | Every ad layout, carousel slide and end card as PNGs, to look at |
+| `npm run smoke scripts/check/video-timeline.ts <out.json> [preset] [ratio]` | A sample video Timeline with a real business's brand and photos (database read only); render it with `cd worker && node scripts/render-local.ts <out.json> <out.mp4>` or `scripts/stills-local.ts` for frames |
+
+**Real calls**: `npm run smoke scripts/smoke/<name>.ts` makes one small call and prints the result and its estimated cost. Paid: `openai`, `kie`, `elevenlabs`, `firecrawl [url]`, `scrapecreators [instagramHandle]`, `twelvelabs [videoUrl]`, `upload-post-render`. Free: `zernio` (read-only), `r2` (storage round trip), `render-worker` (a short check video on the worker), `render-ad` (a full sample ad on the worker), `ffmpeg-worker`, `agent-step` (writes one `agent_runs` row and checks a $0 budget blocks agents). Never fake a vendor response to make one pass.
 
 Raw vendor error messages never reach the browser. Every `AppError` has a plain, user-facing message.
 
@@ -348,11 +417,12 @@ Raw vendor error messages never reach the browser. Every `AppError` has a plain,
 3. Every fetch has a timeout (60s default, 5min for downloads)
 4. Event ID = media/post ID — Inngest deduplicates double-clicks
 5. `cancelOn` stops a run when the item is deleted mid-job (matching the item and the business)
-6. Concurrency: per business 5 images, 2 videos, 3 plan slots, 1 plan, 1 research; 1 run per post
+6. Concurrency: per business 5 images, 2 videos, 3 plan slots, 1 plan, 1 research, 1 footage watch; 1 run per post
 7. `onFailure` writes status + message to the DB row
 8. `step.sleep` for polling — no server runs while waiting
 9. Large files go to storage first; steps pass only the key (Inngest caps step output size)
 10. Every event carries `businessId`; functions open the database with `businessDb(businessId)`
+11. Reads that decide what a run does (which videos to watch, which photos to describe) happen inside a step, so a replay sees the same list
 
 ## Kie Gotcha
 
@@ -371,7 +441,12 @@ src/agents/                       → agentStep and optional() (run.ts), budget 
 src/agents/research/              → shared by research agents: context, Brand Brain (brain.ts), defineResearchAgent
 src/agents/<agent-name>/          → one folder per agent: index.ts runs the steps, other files do one job each
 src/agents/weekly/                → the weekly loop around agents 5–9: produce-item (one slot end to end), plan-flow (cron, review, auto-approve), task helpers
-src/creative/                     → our renderer: brand theme, text fitting, Satori layouts (ads, carousel, end card), captions (.ass)
+src/creative/                     → our renderers: brand theme, text fitting, Satori layouts (ads, carousel)
+src/creative/video/               → the video Timeline builder, looks, placement and safe areas
+src/core/content/                 → the client's content choices as rules (prefs.ts), what each style means (styles.ts), Settings → Content (settings.ts)
+src/core/creative/video.ts        → video storylines, the scene library, stickers
+src/agents/footage/               → watching the client's own videos
+worker/remotion/shared/           → the Timeline contract and the looks, shared with the worker (imported as @video/*)
 src/core/plans/                   → plans and slots: types, queries, approval actions, week clock
 src/core/creative/brief.ts        → the creative brief schema and limits
 src/core/notifications/           → notify() (in-app + email), email layout
@@ -396,16 +471,19 @@ Every route wraps its handler with `apiHandler()` from `src/lib/api-handler.ts`,
 | `/api/brand/bible/[id]`, `…/approve`, `/api/brand/bible/regenerate` | GET, POST | One version; approve a draft; new draft with a note |
 | `/api/brand/sources?refs=` | GET | The text behind a claim |
 | `/api/brand/pending` | GET, POST | Facts found on the website; confirm or reject |
-| `/api/brand/resources/[resource]`, `…/[id]` | GET, POST, PATCH, DELETE | Brand Hub lists (archive or delete; PATCH `{active:true}` restores) |
+| `/api/brand/resources/[resource]`, `…/[id]` | GET, POST, PATCH, DELETE | Brand Hub lists (archive or delete; PATCH `{active:true}` restores). Adding the client's own video sends `brand/footage-added` |
 | `/api/brand/kit` | GET, PUT | Brand kit; saving recomputes readable colour pairs |
 | `/api/brand/refresh` | POST | Start "Refresh brand" |
+| `/api/settings/profile` | GET, PUT | Business profile and goals (same checks as onboarding) |
+| `/api/settings/content` | GET, PUT | Content choices and where customers go |
 | `/api/settings/automation` | GET, PUT | `app_settings` + this month's spend |
-| `/api/media`, `/api/media/[id]`, `…/retry`, `…/captions`, `/api/media/reference`, `/api/media/improve-idea` | | Media library and generation |
+| `/api/uploads` | POST | A signed link for one browser upload: `{ id, key, url }` |
+| `/api/media`, `/api/media/[id]`, `…/retry`, `…/redo`, `…/captions`, `/api/media/reference`, `/api/media/improve-idea` | | Media library and generation (`startGenerating()` marks an item failed if its job can't be started) |
 | `/api/posts`, `/api/posts/[id]`, `…/publish`, `…/cancel` | | Posts and publishing |
 | `/api/accounts`, `/api/accounts/connect?platform=` | GET | Live accounts; connect link for a platform |
 | `/api/plans?week=` (this, next or a date), `/api/plans/request`, `/api/plans/[id]/approve` | GET, POST | A week's plan with its slots; plan a week (again); approve a plan |
 | `/api/plan-items/[id]` (GET, PATCH captions), `…/approve`, `…/reject`, `…/regenerate`, `…/schedule` | | One slot and the client's actions on it |
-| `/api/ads` | POST | "Create an ad": one slot through the full chain |
+| `/api/ads` | POST | "Create an ad": one slot through the full chain, with an optional style |
 | `/api/activity?planId=&itemId=` | GET | Agent steps (the activity feed) |
 | `/api/notifications`, `/api/notifications/read` | GET, POST | The bell |
 | `/api/calendar?from&to`, `/api/calendar/events`, `…/[id]` | GET, POST, DELETE | Calendar data; the client's own key dates |
@@ -413,10 +491,11 @@ Every route wraps its handler with `apiHandler()` from `src/lib/api-handler.ts`,
 
 ## Key Design Decisions
 
-- **Storage keys over URLs** — only `supabase-storage.ts` builds full URLs.
+- **Storage keys over URLs** — only `publicUrl()` (`providers/storage/paths.ts`) builds full URLs.
 - **Connected accounts fetched live** — no `connected_accounts` table.
 - **Captions at post time** — the same media can be reposted, and captions differ by platform.
 - **All inputs saved** — `media` stores every generation input, plus `creative_spec`, so "Try again" reruns the same thing.
 - **Products and services are offerings** — one table with `kind`, archived instead of deleted. Media points at an offering by id; a free-text "Other" product is kept in `creative_spec.product_name`.
 - **Settings apart from brand facts** — `app_settings` holds autopilot, budget and pause, so agents only see brand facts.
-- **Single profile API** — `PUT /api/profile` is multipart, fields + logo in one request.
+- **Old profile API** — `PUT /api/profile` (multipart, fields + logo) remains for the Media screens; Settings uses `/api/settings/profile`.
+- **Timing and placement are code** — the video Timeline is built from data (voice timings, picture analysis, facts); models never decide where or when anything appears.

@@ -2,7 +2,7 @@ import { inngest } from "./client";
 import { businessDb } from "@/lib/supabase/business";
 import { getPost, updatePost } from "@/core/posts";
 import { publisherFor } from "@/providers/publishing/registry";
-import { urlFor } from "@/providers/storage/supabase-storage";
+import { publicUrl } from "@/providers/storage/paths";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { platformMeta } from "@/config/platforms";
 
@@ -13,19 +13,18 @@ async function slideUrls(db: SupabaseClient, mediaId: string): Promise<string[]>
     .eq("media_id", mediaId)
     .eq("role", "slide")
     .order("position");
-  return (data ?? []).map((f) => urlFor(process.env.NEXT_PUBLIC_SUPABASE_URL!, f.storage_key));
+  return (data ?? []).map((f) => publicUrl(f.storage_key));
 }
 
 /** The size each platform shows best: a rendition made for it, else the main file. */
 async function sizedUrls(db: SupabaseClient, media: { id: string; storage_key: string | null; aspect_ratio: string | null }): Promise<(platform: string) => string | null> {
   const { data } = await db.from("media_files").select("storage_key, aspect_ratio").eq("media_id", media.id).eq("role", "rendition");
-  const base = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   return (platform) => {
     const wanted = platformMeta(platform).aspectRatios;
     const sizes = [{ key: media.storage_key, ratio: media.aspect_ratio }, ...(data ?? []).map((f) => ({ key: f.storage_key, ratio: f.aspect_ratio }))];
     const best = wanted.map((r) => sizes.find((s) => s.ratio === r && s.key)).find(Boolean);
     const key = best?.key ?? media.storage_key;
-    return key ? urlFor(base, key) : null;
+    return key ? publicUrl(key) : null;
   };
 }
 

@@ -14,7 +14,7 @@ export interface FfmpegInput {
 }
 
 /** Runs ffmpeg with an argument list (never a shell string). */
-function runFfmpeg(args: string[]): Promise<void> {
+export function runFfmpeg(args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
     const proc = spawn("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", ...args], { stdio: ["ignore", "ignore", "pipe"] });
     let stderr = "";

@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { AppError, NO_BUSINESS_MESSAGE } from "@/core/errors";
-import { inBusinessFolder } from "@/providers/storage/supabase-storage";
+import { inBusinessFolder } from "@/providers/storage/paths";
 
 // One login owns one business. API routes work through the logged-in client, so RLS limits every
 // query to that business; they also need its id for storage paths and for the jobs they start.

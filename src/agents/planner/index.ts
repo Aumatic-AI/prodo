@@ -8,7 +8,7 @@ import { businessDb } from "@/lib/supabase/business";
 import { agentStep } from "@/agents/run";
 import { ai } from "@/providers/ai/registry";
 import { PLANNER_SYSTEM, plannerSchema } from "@/prompts/agents/planner";
-import { bestTimes, formatScores, loadPlannerContext } from "./context";
+import { bestTimes, formatScores, loadPlannerContext, styleScores } from "./context";
 import { mergePlan, pillarMix } from "./merge";
 import { buildPlannerPrompt } from "./prompt";
 import { openPlan, savePlan } from "./save";
@@ -83,13 +83,22 @@ export const planner = inngest.createFunction(
           timezone: ctx.timezone,
           postsPerWeek: ctx.postsPerWeek,
           pillars: ctx.pillars,
-          goal: ctx.goal,
+          goals: ctx.goals,
+          mix: ctx.rules.mix,
+          styles: { image: ctx.rules.imageStyles, video: ctx.rules.videoStyles },
+          people: ctx.rules.people,
+          talkingFootage: ctx.talkingFootage,
+          styleScores: styleScores(ctx),
           formatScores: formatScores(ctx),
           bestTimes: bestTimes(ctx),
         });
         if (!result.length) {
           throw new AppError(
-            video.ok ? "Nothing to plan for the days left this week." : "The only platforms set take video, and videos aren't set up yet. Connect the video renderer first.",
+            !video.ok
+              ? "The only platforms set take video, and videos aren't set up yet. Connect the video renderer first."
+              : ctx.rules.mix === "images"
+                ? "The only platforms set take video, and your content is set to images only. Change it in Settings, then plan again."
+                : "Nothing to plan for the days left this week.",
             "INVALID_INPUT",
             false
           );
@@ -97,7 +106,7 @@ export const planner = inngest.createFunction(
         return { slots: result, firstDay, videoNote: video.ok ? null : video.reason };
       },
       (r) =>
-        `Planned ${r.slots.length} slots from ${r.firstDay}: ${r.slots.filter((s) => s.isExperiment).length} experiments, ${[...new Set(r.slots.map((s) => s.format))].join(", ")}${r.videoNote ? " (no videos: the video renderer isn't set up)" : ""}`
+        `Planned ${r.slots.length} slots from ${r.firstDay}: ${r.slots.filter((s) => s.isExperiment).length} experiments, ${[...new Set(r.slots.map((s) => s.format))].join(", ")}; styles ${[...new Set(r.slots.map((s) => s.style).filter(Boolean))].join(", ")}${r.videoNote ? " (no videos: the video renderer isn't set up)" : ""}`
     );
 
     const slots = planned.slots;

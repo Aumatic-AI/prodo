@@ -4,12 +4,14 @@ import { useState } from "react";
 import { Card } from "@/components/kit/Card";
 import type { PerformanceView } from "@/core/performance/dashboard";
 import { LABELS as BRIEF_LABELS } from "@/core/creative/brief";
+import { STYLE_NAMES } from "@/core/content/styles";
 import { cn } from "@/lib/utils";
 import { Segmented } from "../shared/Segmented";
 
 const DIMENSIONS: Record<string, string> = {
   time_slot: "Posting time",
   format: "Format",
+  style: "Content style",
   hook_type: "Hook type",
   pillar: "Pillar",
   persona: "Persona",
@@ -18,9 +20,9 @@ const DIMENSIONS: Record<string, string> = {
   lever: "Lever",
 };
 
-/** Readable value: format, hook, framework and lever ids get their names. */
+/** Readable value: format, style, hook, framework and lever ids get their names. */
 function valueLabel(dimension: string, label: string): string {
-  const map: Record<string, Record<string, string>> = { format: BRIEF_LABELS.format, hook_type: BRIEF_LABELS.hook, framework: BRIEF_LABELS.framework, lever: BRIEF_LABELS.lever };
+  const map: Record<string, Record<string, string>> = { format: BRIEF_LABELS.format, style: STYLE_NAMES, hook_type: BRIEF_LABELS.hook, framework: BRIEF_LABELS.framework, lever: BRIEF_LABELS.lever };
   return map[dimension]?.[label] ?? label;
 }
 

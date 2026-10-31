@@ -4,12 +4,13 @@ import type { StaticBrief } from "@/core/creative/brief";
 import { renderPng } from "@/creative/render";
 import { AD_TEMPLATES } from "@/creative/templates/ads";
 import { loadTheme, themePairs } from "@/creative/theme";
-import { upload, urlFor } from "@/providers/storage/supabase-storage";
+import { finalName, mediaKey, publicUrl, ratioName } from "@/providers/storage/paths";
+import { upload } from "@/providers/storage/r2";
 import { logUsage } from "@/agents/weekly/task";
 import { canvasesFor, kieRatio } from "./canvases";
 import { startJob, waitForJobs } from "./kie";
-import { dated, keepPhoto, markMediaReady, saveFile } from "./media";
-import { photoPrompt, photoStyle, referencePhoto } from "./photos";
+import { keepPhoto, markMediaReady, saveFile } from "./media";
+import { photoPrompt, photoSettings, referencePhoto } from "./photos";
 import type { ProduceArgs, Produced } from "./types";
 
 // Static ad: one AI photo (with the real product as reference) → our layout draws headline,
@@ -22,7 +23,7 @@ export async function produceStatic(a: ProduceArgs, brief: StaticBrief): Promise
     `photo-start-${a.round}`,
     async (track) => {
       const reference = await referencePhoto(a.db(), brief, a.item);
-      const prompt = photoPrompt(brief.imagePrompt, await photoStyle(a.db()), !!reference, a.fix);
+      const prompt = photoPrompt(brief.imagePrompt, await photoSettings(a.db()), !!reference, a.fix);
       const res = await startJob({ key: "photo", kind: "image", prompt, aspect: kieRatio(canvases[0].ratio), refs: reference ? [reference] : [] });
       track(res.usage);
       return { job: res.job, reference };
@@ -52,14 +53,14 @@ export async function produceStatic(a: ProduceArgs, brief: StaticBrief): Promise
           canvas,
           theme
         );
-        const key = dated(a.businessId, "images", a.mediaId, `${canvas.ratio.replace(":", "x")}-r${a.round}.png`);
+        const key = mediaKey(a.businessId, a.mediaId, finalName(ratioName(canvas.ratio), a.round, "png"));
         // The first size is the main file (media.storage_key); the others are renditions
-        if (i === 0) await upload(a.db(), key, png, "image/png");
+        if (i === 0) await upload(key, png, "image/png");
         else await saveFile(a.db(), a.mediaId, "rendition", key, png, "image/png", { aspect_ratio: canvas.ratio });
         files.push({ ratio: canvas.ratio, width: canvas.width, height: canvas.height, key });
       }
       await markMediaReady(a.db(), a.mediaId, files[0].key);
-      const url = (key: string) => urlFor(process.env.NEXT_PUBLIC_SUPABASE_URL!, key);
+      const url = (key: string) => publicUrl(key);
       return {
         mainKey: files[0].key,
         previewUrls: files.map((f) => url(f.key)),

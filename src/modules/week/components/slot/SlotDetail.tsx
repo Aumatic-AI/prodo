@@ -7,6 +7,7 @@ import { Modal } from "@/components/kit/Modal";
 import { TextArea } from "@/components/kit/inputs";
 import { button } from "@/components/kit/styles";
 import { LABELS } from "@/core/creative/brief";
+import { styleName } from "@/core/content/styles";
 import type { PlanItemView } from "@/core/plans/types";
 import { cn } from "@/lib/utils";
 import { useItemAction } from "../../hooks/usePlan";
@@ -119,7 +120,7 @@ export function SlotDetail({ item, timezone, onClose }: { item: PlanItemView | n
       open={!!item}
       onOpenChange={(open) => !open && onClose()}
       title={item.hook_text ?? item.angle ?? "Planned post"}
-      description={`${LABELS.format[item.format]} · ${slotWhen(item.slot_at, timezone)}`}
+      description={[LABELS.format[item.format], styleName(item.style), slotWhen(item.slot_at, timezone)].filter(Boolean).join(" · ")}
       // A fixed height on tablets and up, so the preview can fit itself into exactly the space left
       className="w-[min(calc(100vw-32px),1080px)] md:h-[min(88vh,820px)]"
       bodyClassName="min-h-0 flex-1 overflow-y-auto md:overflow-hidden"

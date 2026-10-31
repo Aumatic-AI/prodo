@@ -1,12 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { apiHandler } from "@/lib/api-handler";
 import { assertOwnKey, currentBusiness } from "@/core/business";
-import { businessKey } from "@/providers/storage/supabase-storage";
+import { brandFolder } from "@/providers/storage/paths";
 import { createClient } from "@/lib/supabase/server";
-import { listMedia, createMedia, type Media } from "@/core/media";
+import { listMedia, createMedia, startGenerating, type Media } from "@/core/media";
 import { AppError } from "@/core/errors";
-import { UPLOAD_RULES } from "@/config/uploads";
-import { inngest } from "@/jobs/client";
 import type { MediaListItem } from "@/modules/library/types";
 import { assertVideoReady } from "@/providers/ffmpeg/client";
 
@@ -38,7 +36,6 @@ export const GET = apiHandler(async (req: NextRequest) => {
   return NextResponse.json(await withExtras(db, media));
 });
 
-const UPLOAD_FOLDERS = [UPLOAD_RULES.photo.folder, UPLOAD_RULES.video.folder];
 
 export const POST = apiHandler(async (req: NextRequest) => {
   const { db, businessId } = await currentBusiness();
@@ -47,11 +44,12 @@ export const POST = apiHandler(async (req: NextRequest) => {
   // A file the browser already put in storage: saved as ready, nothing to generate
   if (body.source === "uploaded") {
     const key = String(body.storage_key ?? "");
-    if (!UPLOAD_FOLDERS.some((folder) => key.startsWith(businessKey(businessId, `${folder}/`)))) {
+    const isVideo = key.startsWith(brandFolder(businessId, "videos"));
+    if (!isVideo && !key.startsWith(brandFolder(businessId, "photos"))) {
       throw new AppError("This upload couldn't be found. Please upload it again.", "INVALID_INPUT", false);
     }
     const media = await createMedia(db, {
-      type: key.startsWith(businessKey(businessId, `${UPLOAD_RULES.video.folder}/`)) ? "video" : "image",
+      type: isVideo ? "video" : "image",
       source: "uploaded",
       status: "ready",
       storage_key: key,
@@ -87,10 +85,7 @@ export const POST = apiHandler(async (req: NextRequest) => {
     reference_image_key: body.reference_image_key,
   });
 
-  if (!isText) {
-    const event = body.type === "video" ? "media/generate-video" : "media/generate-image";
-    await inngest.send({ name: event, data: { businessId, mediaId: media.id }, id: media.id });
-  }
+  if (!isText) await startGenerating(db, businessId, media, media.id);
 
   return NextResponse.json(media, { status: 201 });
 });

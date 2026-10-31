@@ -5,7 +5,8 @@ const nextConfig: NextConfig = {
   distDir: process.env.NEXT_DIST_DIR || ".next",
   images: {
     remotePatterns: [
-      { protocol: "https", hostname: "**.supabase.co" },
+      // Cloudflare R2 public address (NEXT_PUBLIC_MEDIA_URL)
+      { protocol: "https", hostname: "**.r2.dev" },
     ],
   },
 };

@@ -1,9 +1,9 @@
-import { createAdminClient } from "@/lib/supabase/admin";
 import { request } from "@/providers/http";
-import { upload, urlFor } from "@/providers/storage/supabase-storage";
+import { fontKey } from "@/providers/storage/paths";
+import { download, upload } from "@/providers/storage/r2";
 
 // Brand fonts for our own rendering (Satori ads, burned-in video captions). Google Fonts serves
-// TrueType to plain requests; each file is kept in our storage (fonts/…) so it's fetched once.
+// TrueType to plain requests; each file is kept in our storage (shared/fonts/…) so it's fetched once.
 
 const SERVICE = "Google Fonts";
 const memory = new Map<string, Promise<FontFile | null>>();
@@ -17,11 +17,6 @@ export interface FontFile {
 }
 
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-
-async function fromStorage(key: string): Promise<ArrayBuffer | null> {
-  const res = await fetch(urlFor(process.env.NEXT_PUBLIC_SUPABASE_URL!, key)).catch(() => null);
-  return res?.ok ? res.arrayBuffer() : null;
-}
 
 async function fromGoogle(family: string, weight: number): Promise<ArrayBuffer | null> {
   const name = encodeURIComponent(family).replace(/%20/g, "+");
@@ -38,12 +33,12 @@ async function fromGoogle(family: string, weight: number): Promise<ArrayBuffer |
 }
 
 async function loadOnce(family: string, weight: number): Promise<FontFile | null> {
-  const key = `fonts/${slug(family)}-${weight}.ttf`;
-  const cached = await fromStorage(key);
+  const key = fontKey(`${slug(family)}-${weight}.ttf`);
+  const cached = await download(key).catch(() => null);
   if (cached) return { family, weight, data: cached, key };
   const data = await fromGoogle(family, weight);
   if (!data) return null;
-  await upload(createAdminClient(), key, Buffer.from(data), "font/ttf").catch(() => undefined);
+  await upload(key, Buffer.from(data), "font/ttf").catch(() => undefined);
   return { family, weight, data, key };
 }
 

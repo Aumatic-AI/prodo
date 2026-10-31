@@ -5,7 +5,6 @@ import { ArrowUp, X } from "lucide-react";
 import { IMAGE_STYLES, MAX_STYLES, VIDEO_STYLES, type ImageStyle, type VideoStyle } from "@/core/onboarding/options";
 import { cn } from "@/lib/utils";
 import { focusRing, hint, label } from "@/components/kit/styles";
-import { useOnboarding, useSlice } from "../../store/OnboardingStoreProvider";
 import { StyleArt } from "./StyleArt";
 import { imageStyleWords, soundLabel, videoStyleWords } from "./labels";
 
@@ -13,15 +12,21 @@ type Kind = "image" | "video";
 
 const KEY = { image: "imageStyles", video: "videoStyles" } as const;
 
-/** Tiles for the post styles in one tab, picked in order, plus the picked order below. */
-export function StylePicker({ videos }: { videos: boolean }) {
-  const { value, update } = useSlice("content");
-  const service = useOnboarding((s) => s.draft.basics.businessType === "service");
+export interface StylePicks {
+  imageStyles: ImageStyle[];
+  videoStyles: VideoStyle[];
+}
+
+/**
+ * Tiles for the post styles in one tab, picked in order, plus the picked order below. Used by
+ * onboarding and Settings → Content.
+ */
+export function StylePicker({ videos, service, value, onChange }: { videos: boolean; service: boolean; value: StylePicks; onChange: (patch: Partial<StylePicks>) => void }) {
   const [tab, setTab] = useState<Kind>("image");
   const kind: Kind = videos ? tab : "image";
 
   const picked = (kind === "image" ? value.imageStyles : value.videoStyles) as string[];
-  const set = (next: string[]) => update("content", { [KEY[kind]]: next });
+  const set = (next: string[]) => onChange({ [KEY[kind]]: next });
   const words = (style: string) =>
     kind === "image" ? imageStyleWords(style as ImageStyle, service) : videoStyleWords(style as VideoStyle, service);
   const full = picked.length >= MAX_STYLES;

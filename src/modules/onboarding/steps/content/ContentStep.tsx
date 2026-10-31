@@ -1,6 +1,6 @@
 "use client";
 
-import { MAX_GOALS, soundNeeds, type Goal, type VideoStyle } from "@/core/onboarding/options";
+import { MAX_GOALS, soundNeeds, type Goal, type ImageStyle, type VideoStyle } from "@/core/onboarding/options";
 import type { MediaUpload } from "@/core/onboarding/schemas";
 import { ChoiceCards, Pills, RankedChoiceCards } from "@/components/kit/choices";
 import { MediaUploader, isVideoKey } from "@/components/kit/MediaUploader";
@@ -23,6 +23,8 @@ const asMedia = (upload: { id: string; key: string }): MediaUpload => ({ ...uplo
 // Later sections hide when an earlier answer makes them pointless (images only → no video questions).
 export function ContentStep() {
   const { value: v, update } = useSlice("content");
+  const service = useOnboarding((s) => s.draft.basics.businessType === "service");
+  const language = useOnboarding((s) => s.draft.basics.language);
   const set = (patch: Partial<typeof v>) => update("content", patch);
   const videos = v.mix !== "images";
   const sound = soundNeeds(v.videoStyles as VideoStyle[]);
@@ -48,7 +50,12 @@ export function ContentStep() {
       </Section>
 
       <Section title="What kind of posts do you want?" description="Tap the ones you like, starting with your favourite. We'll make more of your top picks." path="imageStyles">
-        <StylePicker videos={videos} />
+        <StylePicker
+          videos={videos}
+          service={service}
+          value={{ imageStyles: v.imageStyles as ImageStyle[], videoStyles: v.videoStyles as VideoStyle[] }}
+          onChange={set}
+        />
       </Section>
 
       <Section title="People in your posts" description="Decides which photo and video styles Prodo can make for you.">
@@ -72,7 +79,7 @@ export function ContentStep() {
           title="Voice and music for videos"
           description={v.videoStyles.length ? "Only what your video styles use." : "Pick video styles above and we'll only ask what they need."}
         >
-          {sound.voice && <VoicePicker />}
+          {sound.voice && <VoicePicker language={language} value={{ voiceId: v.voiceId, voiceName: v.voiceName }} onChange={set} />}
           {sound.music && (
             <Field label="Music mood">
               <Pills label="Music mood" options={MUSIC_OPTIONS} value={v.musicMood} onChange={(musicMood) => set({ musicMood })} />
@@ -95,7 +102,7 @@ export function ContentStep() {
 
       <Section title="Reference posts and ads" badge={<OptionalBadge />} description="Posts or ads whose look you'd like. The clearest way to show your style.">
         <Field path="references" hint="Images, screenshots or videos you like. Up to 8.">
-          <MediaUploader purpose="media" max={8} value={v.references} extend={asMedia} onChange={(references) => set({ references })} />
+          <MediaUploader purpose="reference" max={8} value={v.references} extend={asMedia} onChange={(references) => set({ references })} />
         </Field>
         <Field
           label="Or paste links"

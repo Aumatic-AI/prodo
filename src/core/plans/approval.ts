@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { AppError } from "@/core/errors";
 import { deleteMedia } from "@/core/media";
+import { inngest } from "@/jobs/client";
 import { getItem, getPlan } from "./plans";
 import type { PlanItem } from "./types";
 
@@ -66,6 +67,23 @@ export async function regenerateItem(db: SupabaseClient, itemId: string, note: s
   const { error } = await db.from("plan_items").update({ status: "planned", attempts: 0, error: null, brief_score: null, qa_score: null, qa_report: null }).eq("id", itemId);
   if (error) throw error;
   return { ...item, status: "planned" };
+}
+
+/**
+ * "Make it again": resets the slot and starts its agents. The reset and the start are two calls,
+ * so when the start fails the slot is marked failed with a plain message instead of staying
+ * "planned" forever (which also blocked any later "make it again").
+ */
+export async function restartItem(db: SupabaseClient, businessId: string, itemId: string, note: string | null): Promise<PlanItem> {
+  const item = await regenerateItem(db, itemId, note);
+  try {
+    await inngest.send({ name: "plan-item/produce", id: `produce-${itemId}-${Date.now()}`, data: { businessId, itemId, planId: item.plan_id, note } });
+  } catch {
+    const message = "Couldn't start the agents. Try again in a moment.";
+    await db.from("plan_items").update({ status: "failed", error: message }).eq("id", itemId);
+    throw new AppError(message, "PROVIDER_DOWN", true);
+  }
+  return item;
 }
 
 /** Client edits to captions (kept on the slot and in feedback). */

@@ -103,7 +103,7 @@ export function CtaSlide({ canvas, theme, index, total, title, body, cta }: Slid
         justifyContent: "space-between",
       })}
     >
-      <Brand theme={theme} bg={surface.bg} height={64 * unit} maxWidth={300 * unit} color={surface.text} />
+      <Brand theme={theme} bg={surface.bg} height={64 * unit} maxWidth={300 * unit} color={surface.text} closing />
       <div style={flex({ flexDirection: "column", gap: 30 * unit })}>
         <div style={flex({ fontFamily: theme.fonts.heading, fontWeight: 800, fontSize: head.size, lineHeight: 1.06, color: surface.text, letterSpacing: -1 })}>{title}</div>
         {body && <div style={flex({ fontFamily: theme.fonts.body, fontSize: 38 * unit, lineHeight: 1.4, color: surface.text, opacity: 0.88 })}>{body}</div>}
@@ -133,7 +133,7 @@ export function EndCard({ canvas, theme, cta, line }: { canvas: Canvas; theme: C
         padding: canvas.safe.left,
       })}
     >
-      <Brand theme={theme} bg={surface.bg} height={150 * unit} maxWidth={620 * unit} color={surface.text} />
+      <Brand theme={theme} bg={surface.bg} height={150 * unit} maxWidth={620 * unit} color={surface.text} closing />
       {line && (
         <div style={flex({ fontFamily: theme.fonts.heading, fontWeight: 800, fontSize: 64 * unit, lineHeight: 1.1, color: surface.text, textAlign: "center", maxWidth: canvas.width * 0.8 })}>
           {line}

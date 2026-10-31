@@ -1,8 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { env } from "@/config/env";
 import { MODELS } from "@/config/models";
 import { ai } from "@/providers/ai/registry";
-import { urlFor } from "@/providers/storage/supabase-storage";
+import { publicUrl } from "@/providers/storage/paths";
 import { PHOTO_DESCRIPTIONS_SYSTEM, photoDescriptionsPrompt, photoDescriptionsSchema } from "@/prompts/agents/photo-descriptions";
 import { optional } from "@/agents/run";
 import { businessBrief, type ResearchContext } from "@/agents/research/context";
@@ -56,7 +55,7 @@ export async function describePhotos({ db, ctx, task, step }: { db: () => Supaba
           const labels = group.map((a) => (a.product ? `${LABEL[a.kind]} of ${a.product}` : LABEL[a.kind]));
           const res = await ai.structured(photoDescriptionsSchema, photoDescriptionsPrompt(businessBrief(ctx), labels), {
             system: PHOTO_DESCRIPTIONS_SYSTEM,
-            images: group.map((a) => urlFor(env.NEXT_PUBLIC_SUPABASE_URL, a.storage_key)),
+            images: group.map((a) => publicUrl(a.storage_key)),
             model: MODELS.vision,
           });
           track(res.usage);

@@ -1,10 +1,14 @@
 import { platformMeta } from "@/config/platforms";
 import type { Format } from "@/core/creative/brief";
+import { MIX_VIDEO_SHARE, stylesFor, type StyleFormat } from "@/core/content/styles";
+import type { ContentMix, ImageStyle, PeopleChoice, VideoStyle } from "@/core/onboarding/options";
 import type { FunnelStage } from "@/core/plans/types";
 import { addDays, zonedToUtc } from "@/lib/zoned-time";
 
 // The Planner's rule-based half (code, no AI): how many slots, on which days, platforms and
-// times, in which format, for which pillar, and which ones are experiments.
+// times, in which format and content style, for which pillar and goal, and which are experiments.
+// The client's content mix sets the share of videos; their styles (in priority order) set which
+// styles rotate through the week.
 
 export interface PillarShare {
   id: string;
@@ -20,6 +24,10 @@ export interface SlotPlan {
   slotAt: string;
   platforms: string[];
   format: Format;
+  /** The client's image or video style for this slot; null for text posts */
+  style: ImageStyle | VideoStyle | null;
+  /** The goal this slot serves (the client's first goal gets about two thirds of the slots) */
+  goal: string | null;
   pillarId: string | null;
   pillarName: string | null;
   funnelStage: FunnelStage;
@@ -32,7 +40,17 @@ export interface SlotInput {
   /** Posts per week per platform */
   postsPerWeek: Record<string, number>;
   pillars: PillarShare[];
-  goal: string | null;
+  /** The client's goals, ranked */
+  goals?: string[];
+  /** The client's content mix; null = Prodo's own balance */
+  mix?: ContentMix | null;
+  /** The client's styles in priority order (empty = any) */
+  styles?: { image: ImageStyle[]; video: VideoStyle[] };
+  people?: PeopleChoice | null;
+  /** The client has a video of someone talking to camera (talking and customer-video styles stay real) */
+  talkingFootage?: boolean;
+  /** Style → score vs. baseline from learnings (1 = average) */
+  styleScores?: Record<string, number>;
   /** Format → score vs. baseline from learnings (1 = average); missing = no data */
   formatScores?: Partial<Record<Format, number>>;
   /** Platform → best "HH:MM" from learnings, when known */
@@ -55,6 +73,9 @@ export const DEFAULT_TIMES: Record<string, string> = {
 
 /** Starting format mix when nothing is known yet. */
 const BASE_WEIGHTS: Record<Format, number> = { static: 0.35, carousel: 0.25, video: 0.32, text: 0.08 };
+
+/** Share of slots for the first goal when the client ranked two. */
+const FIRST_GOAL_SHARE = 2 / 3;
 
 export const EXPERIMENT_SHARE = 0.3;
 export const MAX_SLOTS = 21;
@@ -111,17 +132,64 @@ export function openDays(weekStart: string, firstDay?: string): string[] {
   return Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)).filter((d) => !firstDay || d >= firstDay);
 }
 
-function formatWeights(scores?: SlotInput["formatScores"]): Record<Format, number> {
-  const w = { ...BASE_WEIGHTS };
+/** Starting weights: the client's content mix sets the video share, the rest keeps its balance. */
+export function mixWeights(mix?: ContentMix | null): Record<Format, number> {
+  if (!mix) return { ...BASE_WEIGHTS };
+  const video = MIX_VIDEO_SHARE[mix];
+  const rest = 1 - BASE_WEIGHTS.video;
+  return {
+    static: (BASE_WEIGHTS.static / rest) * (1 - video),
+    carousel: (BASE_WEIGHTS.carousel / rest) * (1 - video),
+    text: (BASE_WEIGHTS.text / rest) * (1 - video),
+    video,
+  };
+}
+
+function formatWeights(scores?: SlotInput["formatScores"], mix?: ContentMix | null): Record<Format, number> {
+  const w = mixWeights(mix);
   for (const [format, score] of Object.entries(scores ?? {}) as [Format, number][]) {
-    // Proven formats get more slots, weak ones fewer, never zero (keep testing)
-    w[format] = Math.max(0.05, w[format] * Math.min(1.8, Math.max(0.5, score)));
+    // Proven formats get more slots, weak ones fewer, never zero (keep testing); a format the
+    // client's mix leaves out stays out
+    if (w[format] > 0) w[format] = Math.max(0.05, w[format] * Math.min(1.8, Math.max(0.5, score)));
   }
   return w;
 }
 
+/** Styles each format may use; a format with none (e.g. carousels when every picked style is a single image) isn't planned. */
+function styleOptions(input: SlotInput): Record<StyleFormat, (ImageStyle | VideoStyle)[]> {
+  const picked = input.styles ?? { image: [], video: [] };
+  const people = input.people ?? null;
+  const video = stylesFor("video", picked, people, input.talkingFootage);
+  return {
+    static: stylesFor("static", picked, people, input.talkingFootage),
+    carousel: stylesFor("carousel", picked, people, input.talkingFootage),
+    // Every video can at least be a voice-over explainer
+    video: video.length ? video : ["faceless"],
+  };
+}
+
+/**
+ * Picks styles in rotation: higher in the client's list = more often, proven in learnings = more
+ * often, never the same style twice in a row when there's a choice.
+ */
+function styleRotation(options: Record<StyleFormat, (ImageStyle | VideoStyle)[]>, scores: Record<string, number> = {}) {
+  const used = new Map<string, number>();
+  let last: string | null = null;
+  return (format: Format): ImageStyle | VideoStyle | null => {
+    if (format === "text") return null;
+    const list = options[format];
+    const weight = (s: ImageStyle | VideoStyle) => (list.length - list.indexOf(s)) * Math.min(1.8, Math.max(0.5, scores[s] ?? 1));
+    const ranked = [...list].sort((a, b) => (used.get(a) ?? 0) / weight(a) - (used.get(b) ?? 0) / weight(b));
+    const pick = ranked.find((s) => s !== last) ?? ranked[0];
+    used.set(pick, (used.get(pick) ?? 0) + 1);
+    last = pick;
+    return pick;
+  };
+}
+
 export function planSlots(input: SlotInput): SlotPlan[] {
-  const videoAllowed = input.videoAllowed !== false;
+  // Images only: no video slots and no video-only platforms
+  const videoAllowed = input.videoAllowed !== false && input.mix !== "images";
   const days = openDays(input.weekStart, input.firstDay);
   if (!days.length) return [];
   // A part week gets its share of the posts; platforms that only take video wait for the video renderer
@@ -136,7 +204,11 @@ export function planSlots(input: SlotInput): SlotPlan[] {
   for (const [platform, n] of counts) spread(Math.min(n, total), total).forEach((i) => platformsBySlot[i].push(platform));
 
   const pillars = pillarSequence(total, input.pillars);
-  const weights = formatWeights(input.formatScores);
+  const weights = formatWeights(input.formatScores, input.mix);
+  const styles = styleOptions(input);
+  const nextStyle = styleRotation(styles, input.styleScores);
+  const goals = (input.goals ?? []).filter(Boolean);
+  const secondGoal = new Set(goals.length > 1 ? spread(Math.round(total * (1 - FIRST_GOAL_SHARE)), total) : []);
   const used: Record<Format, number> = { static: 0, carousel: 0, video: 0, text: 0 };
   const experiments = new Set(spread(Math.round(total * EXPERIMENT_SHARE), total).map((i) => (i + 1) % total));
   const perDay = new Map<string, number>();
@@ -154,13 +226,17 @@ export function planSlots(input: SlotInput): SlotPlan[] {
 
     // Format: the most under-used one (by weight) the platforms take, never the same as the last
     // post on any of these platforms when there's a choice
-    const allowed = allowedFormats(platforms, videoAllowed);
+    const allowed = allowedFormats(platforms, videoAllowed).filter((f) => f === "text" || (weights[f] > 0 && styles[f].length));
     const ranked = [...allowed].sort((a, b) => used[a] / weights[a] - used[b] / weights[b]);
-    const format = ranked.find((f) => platforms.every((p) => lastFormat.get(p) !== f)) ?? ranked[0];
+    // A format meant for more than half the posts (e.g. "mostly videos") may repeat
+    const weightSum = allowed.reduce((sum, f) => sum + weights[f], 0) || 1;
+    const dominant = ranked[0] && weights[ranked[0]] / weightSum > 0.5;
+    const format = (dominant ? ranked[0] : ranked.find((f) => platforms.every((p) => lastFormat.get(p) !== f))) ?? ranked[0] ?? "static";
     used[format]++;
     platforms.forEach((p) => lastFormat.set(p, format));
 
     const pillar = pillars[index];
+    const goal = goals[secondGoal.has(index) ? 1 : 0] ?? null;
     return {
       index,
       day,
@@ -168,9 +244,11 @@ export function planSlots(input: SlotInput): SlotPlan[] {
       slotAt: zonedToUtc(day, time, input.timezone).toISOString(),
       platforms,
       format,
+      style: nextStyle(format),
+      goal,
       pillarId: pillar?.id ?? null,
       pillarName: pillar?.name ?? null,
-      funnelStage: pillar?.funnelStage ?? GOAL_STAGE[input.goal ?? ""] ?? "tofu",
+      funnelStage: pillar?.funnelStage ?? GOAL_STAGE[goal ?? ""] ?? "tofu",
       isExperiment: experiments.has(index),
     };
   });

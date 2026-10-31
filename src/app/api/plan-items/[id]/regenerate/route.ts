@@ -2,9 +2,9 @@ import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { apiHandler } from "@/lib/api-handler";
 import { currentBusiness } from "@/core/business";
-import { regenerateItem } from "@/core/plans/approval";
-import { getItemView } from "@/core/plans/plans";
-import { inngest } from "@/jobs/client";
+import { restartItem } from "@/core/plans/approval";
+import { getItem, getItemView } from "@/core/plans/plans";
+import { assertVideoReady } from "@/providers/ffmpeg/client";
 
 const schema = z.object({ note: z.string().trim().max(1000).nullish() });
 
@@ -13,7 +13,9 @@ export const POST = apiHandler(async (req: NextRequest, { params }: { params: Pr
   const { id } = await params;
   const { note } = schema.parse(await req.json().catch(() => ({})));
   const { db, businessId } = await currentBusiness();
-  const item = await regenerateItem(db, id, note ?? null);
-  await inngest.send({ name: "plan-item/produce", id: `produce-${id}-${Date.now()}`, data: { businessId, itemId: id, planId: item.plan_id, note: note ?? null } });
+  const item = await getItem(db, id);
+  // Videos need our renderer; say so now instead of after the reset
+  if (item.format === "video") await assertVideoReady();
+  await restartItem(db, businessId, id, note ?? null);
   return NextResponse.json(await getItemView(db, id));
 });

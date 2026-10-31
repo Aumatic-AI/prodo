@@ -1,6 +1,6 @@
 # Database Schema
 
-28 tables + `businesses` + one storage bucket, from the **Prodo Data Model** spec (https://claude.ai/artifact/UdFPf3uWR3RRThUyuy9aH3), plus the additions in 0014–0017 listed below (see "Changes since the Data Model"). Migrations live in `supabase/migrations/`, applied in order:
+28 tables + `businesses` in Supabase Postgres; files are in Cloudflare R2 (see File storage). This file is the current truth for the schema: every migration is listed here and every change explained. Migrations live in `supabase/migrations/` and are applied in order:
 
 | Migration | What |
 |---|---|
@@ -11,21 +11,23 @@
 | `0012_migrate_profile_products.sql` | Moves data: `about` → `description`, `products` jsonb → `offerings`, `media.product` → `media.offering_id`; drops the old columns |
 | `0013_zernio_default_provider.sql` | `post_targets.provider` defaults to `zernio` |
 | `0014_zernio_profile.sql` | `app_settings.zernio_profile_id` (each business's own Zernio profile) |
-| `0015_research_agents.sql` | Research agents (1.8): `offerings`/`offers` `source_id` + `verified`, `competitors.source`, `learnings` dimension `baseline`, `agent_runs.run_id`, `set_research_state()` |
-| `0016_weekly_loop.sql` | Weekly loop and learning loop (Sprint 2): `plan_items.status` `ready`, `content_plans.approval_due_at` + `error`, notification email columns, storage types `text/plain` + `font/ttf`, `match_recent_hooks()`, `weekly_reports` |
+| `0015_research_agents.sql` | Research agents: `offerings`/`offers` `source_id` + `verified`, `competitors.source`, `learnings` dimension `baseline`, `agent_runs.run_id`, `set_research_state()` |
+| `0016_weekly_loop.sql` | Weekly loop and learning loop: `plan_items.status` `ready`, `content_plans.approval_due_at` + `error`, notification email columns, storage types `text/plain` + `font/ttf`, `match_recent_hooks()`, `weekly_reports` |
 | `0017_multi_tenant.sql` | One login = one business: `businesses`, `business_id` on every table, settings rows per business, per-business unique rules, foreign keys inside one business, `own_business` RLS, search functions per business, storage folder per business, a business for every login (see Multi-tenant below) |
-| `0020_research_inputs.sql` | `hook_library.source` allows `reference`; `match_brand_chunks()` and `match_recent_hooks()` search one business's rows exactly (the shared HNSW indexes are dropped: with many businesses they returned too few rows) |
-| `0019_onboarding_v2.sql` | Onboarding v2: `business_profile` gets `industry`, `currency`, `primary_cta`, `content_prefs`, `cities` (from `onboarding.cities`); `liked_brands` moves to `competitors` rows with `relation = 'inspiration'` and is dropped; `brand_assets.source_id` and kinds `person`, `reference_image`, `general`; `brand_sources.kind = 'reference'`; `set_scan_state()` and `merge_onboarding()` |
 | `0018_drop_leftover_policies.sql` | Drops every policy on the business tables except `own_business` (and old ones on the media bucket), whatever their names: leftover allow-all policies on `business_profile`, `media`, `posts`, `post_targets` let every login see every business there |
+| `0019_onboarding_v2.sql` | Onboarding v2: `business_profile` gets `industry`, `currency`, `primary_cta`, `content_prefs`, `cities` (from `onboarding.cities`); `liked_brands` moves to `competitors` rows with `relation = 'inspiration'` and is dropped; `brand_assets.source_id` and kinds `person`, `reference_image`, `general`; `brand_sources.kind = 'reference'`; `set_scan_state()` and `merge_onboarding()` |
+| `0020_research_inputs.sql` | `hook_library.source` allows `reference`; `match_brand_chunks()` and `match_recent_hooks()` search one business's rows exactly (the shared HNSW indexes are dropped: with many businesses they returned too few rows) |
+| `0021_content_styles.sql` | `plan_items.style` (the client's content style the Planner gave the slot); `learnings` dimension `style` |
+| `0022_video_footage.sql` | `brand_assets.analysis` (jsonb): what the client's own video shows, logged once by Twelve Labs (usable moments with times, shot, people, talking and their words, subject position, text area) |
 
-### Changes since the Data Model
+### Changes to the original schema
 
-The Data Model artifact predates these; this file is the current truth.
+Every change after the first agentic schema (0011), and why.
 
 | Change | Why |
 |---|---|
-| `offerings.source_id`, `offerings.verified`, `offers.source_id`, `offers.verified` | The Sprint 1 Plan (1.8) says extracted offerings and offers keep their `source_id` and stay unverified until confirmed; the Data Model only gave those columns to `proof_items` |
-| `learnings.dimension` allows `baseline` | The plan seeds per-platform baselines into `learnings`; the original check didn't allow it |
+| `offerings.source_id`, `offerings.verified`, `offers.source_id`, `offers.verified` | Extracted offerings and offers keep their `source_id` and stay unverified until the client confirms (only `proof_items` had these columns at first) |
+| `learnings.dimension` allows `baseline` | The research seeds per-platform baselines into `learnings`; the original check didn't allow it |
 | `competitors.source` (`client` \| `discovered`) | Competitors the agent finds are kept apart from the client's own, so wizard saves never delete them |
 | `agent_runs.run_id` | Groups the steps of one run (e.g. one onboarding research) for the progress screen and its cost |
 | `app_settings.zernio_profile_id` | Each business gets its own Zernio profile, created automatically |
@@ -39,17 +41,19 @@ The Data Model artifact predates these; this file is the current truth.
 | `content_plans.approval_due_at`, `content_plans.error` (0016) | When full autopilot approves by itself; the plain reason a plan stopped |
 | `notifications.email_status` (`none|pending|sent|skipped|failed`), `email_to`, `email_error`, `emailed_at` (0016) | Every notification can also be emailed. `skipped` while sending is off (`EMAIL_ENABLED` unset) |
 | `match_recent_hooks(query_embedding, since, match_count)` (0016) | The Creative Director swaps a hook that is too close (similarity ≥ 0.9) to one used in the last 60 days |
-| Storage allows `text/plain` and `font/ttf` (0016) | Caption files (.ass) and brand fonts for the video renderer |
+| Storage allows `text/plain` and `font/ttf` (0016) | Caption files and brand fonts. Applies to the old Supabase bucket, no longer used since files moved to R2 |
 | `weekly_reports` table (0016) | The Performance Analyst's weekly report: `week_start` (unique), `headline`, `summary`, `next_week` text[], `stats` jsonb. RLS like every table |
 | `brand_kit.colors.manual`, `brand_kit.fonts.manual` (jsonb keys) | Set when the client edits colours or fonts; research runs keep them |
 | `brand_kit.template_ids` now used | The ad layouts the brand uses (Brand kit); empty = all |
 | `calendar_events.source = 'system'` now used | Public holidays added by the monthly refresh |
-| `businesses` table, `business_id` on every table (0017) | Multi-tenant: one deploy serves many businesses, one login each. The Data Model assumed one deploy per client |
+| `businesses` table, `business_id` on every table (0017) | Multi-tenant: one deploy serves many businesses, one login each (before 0017 each client had its own deploy) |
 | Settings tables keyed by `business_id` (0017) | `business_profile`, `app_settings`, `brand_kit`: one row per business instead of the single row with `id = 1` |
 | Unique rules per business (0017) | `brand_bible (business_id, version)` and one approved Bible per business; `content_plans` and `weekly_reports (business_id, week_start)`; `learnings (business_id, dimension, value, platform)`; `account_snapshots (business_id, platform, account_id, captured_on)` |
 | Foreign keys include `business_id` (0017) | `(col, business_id) → parent (id, business_id)`, same names as before. `RESTRICT` became `NO ACTION` (same error for a normal delete, but a whole business can be deleted in one statement); `SET NULL` clears only the id column |
 | `match_brand_chunks(…, p_business_id)`, `match_recent_hooks(…, p_business_id)`, `set_research_state(path, value, p_business_id)` (0017) | Search and write one business. Logged-in callers get their own business without passing it |
 | `content_plans.strategy.adhoc` (jsonb key, no migration) | A week made only to hold single ads ("Create an ad"); the weekly Planner still plans it and keeps them |
+| `plan_items.style`, `learnings` dimension `style` (0021) | The weekly loop follows the client's content styles, and learns which ones work |
+| `brand_assets.analysis` (0022) | The client's own videos are watched for moments the ads can use; null for photos and unwatched videos, `{error}` for a video that couldn't be read |
 
 Never edit an applied migration; add a new one.
 
@@ -73,7 +77,7 @@ One row per business: `id` uuid PK, `owner_id` → `auth.users` (unique; `on del
 - Trigger `prodo_create_business` on `auth.users`: every new login gets a business. Trigger `seed_business` on `businesses`: creates its `business_profile`, `app_settings` (notification email = the owner's email) and `brand_kit` rows.
 - Trigger `keep_business_id` on every table: a row can never move to another business.
 - Trigger `guard_server_columns`: only the server may set `app_settings.zernio_profile_id`, `post_targets.provider_ref` and `post_targets.provider_post_id`; logged-in users may only clear them.
-- The data that existed before 0017 belongs to the first business, owned by `prodo@gmail.com` (or the oldest login).
+- On a database that already had data, 0017 gave it to the first business (the oldest login). A new project starts empty: every business comes from a login.
 
 ## Settings (one row per business)
 
@@ -177,7 +181,11 @@ Products and services in one table (replaces `business_profile.products`).
 `id`, `offering_id` (null = whole business), `source_id`, `kind` (`review`\|`testimonial`\|`case_study`\|`stat`\|`award`\|`certification`), `content`, `author`, `rating` (0–5), `verified`.
 
 ### `brand_assets` — new
-`id`, `offering_id`, `source_id` (the website page a found photo came from, 0019), `kind` (`product_photo`\|`team`\|`location`\|`work`\|`reference_video`\|`doc`\|`person`\|`reference_image`\|`general`), `storage_key`, `ai_description`, `tags`. Real photos used as reference images: `person` = people who appear in posts, `reference_image`/`reference_video` = posts and ads the client likes, `general` = the client's own photos and videos.
+`id`, `offering_id`, `source_id` (the website page a found photo came from, 0019), `kind` (`product_photo`\|`team`\|`location`\|`work`\|`reference_video`\|`doc`\|`person`\|`reference_image`\|`general`), `storage_key`, `ai_description` (one line about a photo, or a video's summary), `tags`, `analysis` (0022).
+
+- The client's own: `product_photo`, `team`, `location`, `work`, `person` (people who appear in posts), `general` (other own photos and videos). Ads use them directly or as reference images.
+- Other brands' posts the client likes: `reference_image`, `reference_video`. Studied for style and pacing, never used as the client's own.
+- `analysis` (own videos only): `{duration, summary, orientation, moments: [{start, end, shows, shot, people, talking, product, quality, use, subject {x, y}, textArea, lines [{start, end, text}]}]}` from one Twelve Labs read; `{error}` when the video couldn't be read; null for photos and videos not watched yet. Partial index `idx_brand_assets_unwatched` finds the unwatched ones.
 
 ### `competitors` — new
 `id`, `name`, `website`, `social_urls`, `analysis` (`{positioning, angles, offers, formats, hooks, gaps, followers, activeAds}`), `analyzed_at`, `source` (`client` \| `discovered` by the Social & Market Analyst; the wizard only shows and edits `client` rows), `relation` (`competitor` \| `inspiration`, 0019: brands the client admires are studied for style but never treated as rivals).
@@ -215,12 +223,13 @@ The core table: one row per slot with every creative decision.
 | `slot_at` | timestamptz | When it posts |
 | `platforms` | text[] | |
 | `format` | text | `static` \| `carousel` \| `video` \| `text` |
+| `style` | text | The client's image or video style for the slot (`tips`, `showcase`…; `IMAGE_STYLES` / `VIDEO_STYLES` in `core/onboarding/options.ts`), picked by the Planner's code (0021). Null for text posts and older plans |
 | `pillar_id`, `persona_id`, `offering_id`, `offer_id` | uuid FKs | |
 | `funnel_stage`, `objective` | text | |
 | `angle`, `framework`, `hook_type`, `hook_text` | text | Tags the learning loop scores |
 | `levers` | text[] | `social_proof`, `scarcity`, `authority`… |
 | `is_experiment` | boolean | The 30% exploration |
-| `brief` | jsonb | Script, scenes, overlays, slides |
+| `brief` | jsonb | The creative brief (`core/creative/brief.ts`): message, hooks, CTA, claims, captions, and per format the headline and layout, the slides, or the video scenes with their sources, sound and look |
 | `captions` | jsonb | `{platform: text}` |
 | `rationale` | text | Shown to the client |
 | `brief_score`, `qa_score` | numeric | QA Gate 1 and Gate 2 |
@@ -231,7 +240,7 @@ The core table: one row per slot with every creative decision.
 | `error` | text | Plain message |
 
 ### `hook_library` — new
-`id`, `text`, `hook_type`, `platform`, `source` (`generated`\|`own_winner`\|`competitor`), `plan_item_id`, `score`, `uses`, `embedding vector(1536)` (similarity check against recent hooks).
+`id`, `text`, `hook_type`, `platform`, `source` (`generated`\|`own_winner`\|`competitor`\|`reference`, 0020), `plan_item_id`, `score`, `uses`, `embedding vector(1536)` (similarity check against recent hooks).
 
 ## Media
 
@@ -271,7 +280,7 @@ One row per target per day for the first 30 days: `post_target_id`, `captured_on
 `platform`, `account_id`, `captured_on` (unique together per business), `followers`, `raw`.
 
 ### `learnings` — new
-`dimension` (`baseline`\|`angle`\|`hook_type`\|`format`\|`framework`\|`lever`\|`pillar`\|`persona`\|`time_slot`), `value` (name, or id as text — no FK on purpose), `platform` (null = all), `sample_size`, `score` (1.0 = baseline), `confidence`, `insight`. Unique on `(business_id, dimension, value, platform)` with nulls not distinct. Baselines: `dimension = baseline`, `value = engagement_rate` or `views`, `score` = the median itself.
+`dimension` (`baseline`\|`angle`\|`hook_type`\|`format`\|`style`\|`framework`\|`lever`\|`pillar`\|`persona`\|`time_slot`), `value` (name, or id as text — no FK on purpose), `platform` (null = all), `sample_size`, `score` (1.0 = baseline), `confidence`, `insight`. Unique on `(business_id, dimension, value, platform)` with nulls not distinct. Baselines: `dimension = baseline`, `value = engagement_rate` or `views`, `score` = the median itself.
 
 ### `feedback` — new
 `plan_item_id`, `media_id`, `action` (`approve`\|`reject`\|`edit`\|`regenerate`), `note`.
@@ -321,29 +330,28 @@ Every one also includes `business_id` since 0017 (`(col, business_id) → parent
 | `agent_runs.plan_item_id` | `plan_items` | SET NULL |
 | `agent_runs.media_id` | `media` | SET NULL |
 
-## Storage bucket (`media`)
+## File storage (Cloudflare R2, bucket `prodo-media`)
 
-Public read (Kie, Zernio and Twelve Labs fetch files by URL). Logged-in users may only create files in their own `<business id>/` folder (0017) and can no longer list the bucket (the old public select policy was dropped; public links still work); replacing and deleting is done by the server. Service role bypasses policies. 100 MB file limit.
+Files moved from the Supabase `media` bucket to R2 (the bucket and its policies from 0001–0018 are no longer used). Public read by link (Kie, Zernio and Twelve Labs fetch files by URL). Only the server holds the R2 key: the browser uploads through a signed link made for a key in its own `<business id>/` folder; replacing and deleting is done by the server. Upload size limits are in `src/config/uploads.ts`.
 
-Every business file is under `<business id>/` followed by the patterns below. Files made before 0017 have no folder. `fonts/` and `render-jobs/` are shared and belong to no business.
+| Key | What | Rows |
+|---|---|---|
+| `<business id>/brand/logo/<id>.png` | The logo | `business_profile.logo_key` |
+| `<business id>/brand/logo/<id>-on-light.png`, `-on-dark.png` | Logo versions made by the Visual Identity Analyst | `brand_kit.logo_variants` |
+| `<business id>/brand/photos/<asset id>.<ext>` | Products, people, place, work: uploads and photos from the website | `brand_assets` |
+| `<business id>/brand/videos/<asset id>.<ext>` | The client's own videos | `brand_assets` |
+| `<business id>/brand/references/<id>.<ext>` | Posts and ads the client likes; reference images for "Create an ad" | `brand_assets`, `media.reference_image_key` |
+| `<business id>/media/<media id>/9x16.mp4`, `4x5.png`, `slide-01.png`… | Finished files of one media item: main size and renditions, slides. A redo adds `-r<round>` (a new name, so no cached copy of the old file shows) | `media.storage_key`, `media_files` (`rendition`, `slide`) |
+| `work/<business id>/<media id>/…` | In-between files: AI pictures and clips (`scene-<n>-r<round>.png/.mp4`), reveal pictures, voice per scene, music. **Deleted by R2 after 90 days** | `media_files` (`thumbnail`, `voice`, `music`) |
+| `tmp/…` | Upload-Post working files (`tmp/render-jobs/`) and test files (`tmp/smoke/`). **Deleted by R2 after 7 days** | none |
+| `shared/fonts/<family>-<weight>.ttf` | Brand fonts from Google Fonts, kept for our renderers | none |
+| `shared/sfx/<name>.wav` | Video sound effects (whoosh, swish, pop, ding, click, shutter, rise), put there by `scripts/setup/sfx.ts` | none |
 
-| Key pattern | What |
-|---|---|
-| `images/YYYY/MM/<media-id>.png` | Generated or uploaded images |
-| `videos/YYYY/MM/<media-id>.mp4` | Generated or uploaded videos |
-| `logo/<timestamp>.png` | Business logo |
-| `logo/variants/<timestamp>-on-light.png`, `-on-dark.png` | Logo versions made by the Visual Identity Analyst (`brand_kit.logo_variants`) |
-| `brand/photos/…`, `brand/videos/…`, `brand/media/…` | Photos and videos uploaded in onboarding or found on the website (`brand_assets`) |
-| `reference/…` | Reference images for generation |
-| `images/YYYY/MM/<media-id>/<ratio>-r<round>.png` | Agent image ads (main size and renditions) |
-| `carousels/YYYY/MM/<media-id>/slide-<n>-r<round>.png` | Carousel slides (`media_files` role `slide`) |
-| `videos/YYYY/MM/<media-id>/…` | Agent videos per size, their `.ass` captions and end cards |
-| `audio/<media-id>/voice-<n>.mp3`, `music.mp3` | Voice-over per scene and the music bed |
-| `fonts/<family>-<weight>.ttf` | Brand fonts from Google Fonts, kept for our renderers |
+Files uploaded by the browser are named by the id their row gets (`POST /api/uploads` returns `{ id, key, url }`). Build every key with the helpers in `src/providers/storage/paths.ts`. The auto-delete and CORS rules are set by `npm run smoke scripts/setup/r2-bucket.ts`.
 
 ## What's NOT stored
 
 - **Connected accounts** — read live from the publishing provider, cached 60s
 - **Captions on media** — written per post (or per plan item), because they differ by platform
-- **File URLs** — built from storage keys by `supabase-storage.ts`
+- **File URLs** — built from storage keys by `publicUrl()` (`providers/storage/paths.ts`)
 - **Job progress** — Inngest owns step state; `agent_runs` holds the human-readable summary and cost

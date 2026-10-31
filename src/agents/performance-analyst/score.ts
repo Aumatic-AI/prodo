@@ -105,7 +105,7 @@ export interface Tagged {
   tags: { dimension: Dimension; value: string }[];
 }
 
-export type Dimension = "angle" | "hook_type" | "format" | "framework" | "lever" | "pillar" | "persona" | "time_slot";
+export type Dimension = "angle" | "hook_type" | "format" | "style" | "framework" | "lever" | "pillar" | "persona" | "time_slot";
 
 export interface Learning {
   dimension: Dimension;

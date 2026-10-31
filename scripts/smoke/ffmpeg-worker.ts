@@ -18,12 +18,12 @@ await smoke("worker rejects a missing secret (expect 401)", async () => {
   return { result: res.status };
 });
 
-// Renders a 2-second blue test clip and saves it to storage as smoke/worker-test.mp4
+// Renders a 2-second blue test clip and saves it to storage as tmp/smoke/worker-test.mp4
 await smoke("worker render", async () => {
   const jobId = await submitJob({
     inputs: [],
     args: ["-f", "lavfi", "-i", "color=c=blue:s=320x240:d=2", "-c:v", "libx264", "-pix_fmt", "yuv420p", "{output}"],
-    outputKey: "smoke/worker-test.mp4",
+    outputKey: "tmp/smoke/worker-test.mp4",
   });
   for (let i = 0; i < 30; i++) {
     await new Promise((r) => setTimeout(r, 3000));

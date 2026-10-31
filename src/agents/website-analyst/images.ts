@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 import sharp from "sharp";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { LIMITS } from "@/config/limits";
 import { request } from "@/providers/http";
-import { businessKey, storageKeyFor, upload } from "@/providers/storage/supabase-storage";
+import { brandKey } from "@/providers/storage/paths";
+import { upload } from "@/providers/storage/r2";
 
 // Logo and product photos taken from the client's own website during the onboarding scan.
 // Plain code: downloads, checks and resizes the images, then stores them in the business's folder.
@@ -109,7 +109,7 @@ export function findLogoUrl(html: string, pageUrl: string): string | null {
 }
 
 /** Downloads the logo, turns it into a PNG and stores it. Returns the storage key, or null when it isn't usable. */
-export async function saveLogo(db: SupabaseClient, businessId: string, url: string): Promise<string | null> {
+export async function saveLogo(businessId: string, url: string): Promise<string | null> {
   const image = await fetchImage(url);
   if (!image) return null;
   const png = await sharp(image, { density: 300 })
@@ -120,18 +120,19 @@ export async function saveLogo(db: SupabaseClient, businessId: string, url: stri
   if (!png) return null;
   const { width = 0, height = 0 } = await sharp(png).metadata();
   if (Math.min(width, height) < 16) return null;
-  const key = storageKeyFor(businessId, "logo", "");
-  await upload(db, key, png, "image/png");
+  const key = brandKey(businessId, "logo", randomUUID(), "png");
+  await upload(key, png, "image/png");
   return key;
 }
 
 /**
  * Downloads one product's photos and stores them. Images that are too small or can't be read are
- * skipped; repeats of the same file in other sizes are dropped by link. Returns the storage keys.
+ * skipped; repeats of the same file in other sizes are dropped by link. Returns each photo's
+ * brand_assets id (its file is named by it) and storage key.
  */
-export async function saveProductPhotos(db: SupabaseClient, businessId: string, urls: string[], max: number): Promise<string[]> {
+export async function saveProductPhotos(businessId: string, urls: string[], max: number): Promise<{ id: string; key: string }[]> {
   const seen = new Set<string>();
-  const keys: string[] = [];
+  const keys: { id: string; key: string }[] = [];
   for (const url of urls) {
     if (keys.length >= max) break;
     // Shops serve the same photo at many sizes: compare without the size query
@@ -150,9 +151,10 @@ export async function saveProductPhotos(db: SupabaseClient, businessId: string, 
     const [file, ext, type] = meta.hasAlpha
       ? [await resized.png().toBuffer(), "png", "image/png"]
       : [await resized.jpeg({ quality: 88 }).toBuffer(), "jpg", "image/jpeg"];
-    const key = businessKey(businessId, `brand/photos/${randomUUID()}.${ext}`);
-    await upload(db, key, file, type);
-    keys.push(key);
+    const id = randomUUID();
+    const key = brandKey(businessId, "photos", id, ext);
+    await upload(key, file, type);
+    keys.push({ id, key });
   }
   return keys;
 }

@@ -4,12 +4,12 @@ import type { CarouselBrief } from "@/core/creative/brief";
 import { renderPng } from "@/creative/render";
 import { ContentSlide, CoverSlide, CtaSlide } from "@/creative/templates/carousel";
 import { loadTheme, themePairs } from "@/creative/theme";
-import { urlFor } from "@/providers/storage/supabase-storage";
+import { finalName, mediaKey, publicUrl } from "@/providers/storage/paths";
 import { logUsage } from "@/agents/weekly/task";
 import { canvasesFor, kieRatio } from "./canvases";
 import { startJob, waitForJobs } from "./kie";
-import { dated, keepPhoto, markMediaReady, saveFile } from "./media";
-import { photoPrompt, photoStyle, referencePhoto } from "./photos";
+import { keepPhoto, markMediaReady, saveFile } from "./media";
+import { photoPrompt, photoSettings, referencePhoto } from "./photos";
 import type { ProduceArgs, Produced } from "./types";
 
 // Carousel: one AI cover photo → our code designs the hook cover, the content slides and the
@@ -22,7 +22,7 @@ export async function produceCarousel(a: ProduceArgs, brief: CarouselBrief): Pro
     `cover-start-${a.round}`,
     async (track) => {
       const reference = await referencePhoto(a.db(), brief, a.item);
-      const prompt = photoPrompt(brief.imagePrompt, await photoStyle(a.db()), !!reference, a.fix);
+      const prompt = photoPrompt(brief.imagePrompt, await photoSettings(a.db()), !!reference, a.fix);
       const res = await startJob({ key: "cover", kind: "image", prompt, aspect: kieRatio(canvas.ratio), refs: reference ? [reference] : [] });
       track(res.usage);
       return { job: res.job, reference };
@@ -59,13 +59,13 @@ export async function produceCarousel(a: ProduceArgs, brief: CarouselBrief): Pro
             <ContentSlide canvas={canvas} theme={theme} index={i} total={total} title={s.title} body={s.body} />
           );
         const png = await renderPng(element, canvas, theme);
-        const key = dated(a.businessId, "carousels", a.mediaId, `slide-${i + 1}-r${a.round}.png`);
+        const key = mediaKey(a.businessId, a.mediaId, finalName(`slide-${String(i + 1).padStart(2, "0")}`, a.round, "png"));
         await saveFile(a.db(), a.mediaId, "slide", key, png, "image/png", { position: i, aspect_ratio: canvas.ratio });
         keys.push(key);
       }
       // The cover is the main file
       await markMediaReady(a.db(), a.mediaId, keys[0]);
-      const url = (key: string) => urlFor(process.env.NEXT_PUBLIC_SUPABASE_URL!, key);
+      const url = (key: string) => publicUrl(key);
       return {
         mainKey: keys[0],
         previewUrls: keys.map(url),

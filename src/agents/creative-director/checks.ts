@@ -1,6 +1,7 @@
 import { platformMeta } from "@/config/platforms";
-import { briefTexts, countWords, LIMITS, spokenSeconds, type Brief } from "@/core/creative/brief";
+import { briefTexts, countWords, LIMITS, type Brief } from "@/core/creative/brief";
 import type { CreativeContext } from "./context";
+import { checkVideoBrief } from "./checks-video";
 
 // Code checks on a brief (no AI): word limits, caption lengths, never-say words, urgency without a
 // live offer. Each problem is a plain instruction the Creative Director gets back on a redo.
@@ -64,20 +65,7 @@ export function checkBrief(brief: Brief, ctx: CreativeContext): string[] {
       over(s.body, LIMITS.slideBodyWords, `Slide ${i + 1}'s body`);
     });
   }
-  if (brief.kind === "video") {
-    if (brief.scenes.length < LIMITS.minScenes || brief.scenes.length > LIMITS.maxScenes) {
-      problems.push(`Use ${LIMITS.minScenes}–${LIMITS.maxScenes} scenes (now ${brief.scenes.length}).`);
-    }
-    let total = 0;
-    brief.scenes.forEach((s, i) => {
-      over(s.overlay, LIMITS.overlayWords, `Scene ${i + 1}'s on-screen text`);
-      const sec = spokenSeconds(s.voiceover);
-      total += sec;
-      if (sec > 8.5) problems.push(`Scene ${i + 1}'s voice-over takes about ${Math.round(sec)} seconds to say; keep each scene under 8 seconds.`);
-    });
-    if (total > 40) problems.push(`The voice-over runs about ${Math.round(total)} seconds; keep the whole video under 35 seconds.`);
-    if (total < 8) problems.push(`The voice-over is only about ${Math.round(total)} seconds; aim for 15–35 seconds.`);
-  }
+  if (brief.kind === "video") problems.push(...checkVideoBrief(brief, ctx));
 
   // Website passages can be older than the product row the client edits: only current prices may show
   const allowed = allowedPrices(ctx);
@@ -93,5 +81,24 @@ export function checkBrief(brief: Brief, ctx: CreativeContext): string[] {
   if (!ctx.offer && briefTexts(brief).some((t) => URGENCY.test(t))) {
     problems.push("Remove the urgency or deadline: there is no live offer behind it.");
   }
+
+  // The client wants no people: no person in any picture we ask for
+  if (ctx.rules?.people === "none") {
+    // Sentences that say "no people" or "without anyone" don't count
+    const withPeople = pictureTexts(brief).filter((t) =>
+      t.split(/(?<=[.!?;])\s+/).some((sentence) => PEOPLE.test(sentence) && !/\b(no|without|never|nobody|empty of)\b/i.test(sentence))
+    );
+    if (withPeople.length) problems.push("The business owner wants no people in their posts: describe pictures with only products, places and details (no person, face or body).");
+  }
   return problems;
+}
+
+// Words that put a person in a picture (hands alone are allowed)
+const PEOPLE = /\b(person|people|man|men|woman|women|girl|boy|guy|lady|model|models|customer|customers|client|clients|face|faces|smiling|portrait|selfie|couple|family|team|staff|worker|chef|stylist|someone|crowd)\b/i;
+
+/** What the image and video models are asked to draw. */
+export function pictureTexts(brief: Brief): string[] {
+  if (brief.kind === "static" || brief.kind === "carousel") return [brief.imagePrompt];
+  if (brief.kind === "video") return brief.scenes.map((s) => s.visual);
+  return [];
 }

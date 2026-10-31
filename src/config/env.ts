@@ -4,6 +4,8 @@ import { z } from "zod";
 const publicSchema = z.object({
   NEXT_PUBLIC_SUPABASE_URL: z.string().url(),
   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: z.string().min(1),
+  /** Public address of the file store (Cloudflare R2: the r2.dev address, later our own media domain) */
+  NEXT_PUBLIC_MEDIA_URL: z.string().url().optional(),
 });
 
 // Server only. Vendor keys are optional so the app boots before every service is set up;
@@ -30,6 +32,13 @@ const serverSchema = z.object({
   ZERNIO_API_KEY: z.string().min(1).optional(),
   UPLOAD_POST_API_KEY: z.string().min(1).optional(),
   UPLOAD_POST_PROFILE: z.string().min(1).optional(),
+
+  /** Cloudflare R2 file store (S3 API). The key needs Object Read & Write on the bucket */
+  R2_ACCOUNT_ID: z.string().min(1).optional(),
+  R2_ACCESS_KEY_ID: z.string().min(1).optional(),
+  R2_SECRET_ACCESS_KEY: z.string().min(1).optional(),
+  R2_BUCKET: z.string().min(1).optional(),
+  R2_ENDPOINT: z.string().url().optional(),
 
   FFMPEG_WORKER_URL: z.string().url().optional(),
   FFMPEG_WORKER_SECRET: z.string().min(1).optional(),

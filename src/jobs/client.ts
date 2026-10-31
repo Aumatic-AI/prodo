@@ -24,6 +24,8 @@ type Events = {
   "research/brand-strategist": ForBusiness<{ runId: string; note?: string | null }>;
   /** New Brand Bible draft from the same research, following the client's note */
   "brand/regenerate": ForBusiness<{ runId: string; note: string | null }>;
+  /** The client added their own video in Brand → Assets: watch it for usable moments */
+  "brand/footage-added": ForBusiness;
   /** A Brand Bible version was approved */
   "brand/approved": ForBusiness<{ bibleId: string; version: number }>;
 

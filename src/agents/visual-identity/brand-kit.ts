@@ -1,8 +1,7 @@
 import { closestFont } from "@/config/google-fonts";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { env } from "@/config/env";
 import { ai } from "@/providers/ai/registry";
-import { urlFor } from "@/providers/storage/supabase-storage";
+import { publicUrl } from "@/providers/storage/paths";
 import { optional } from "@/agents/run";
 import type { Task } from "@/agents/website-analyst/read-website";
 import { ownRow } from "@/lib/supabase/own-row";
@@ -40,7 +39,6 @@ export async function buildKit({
   logoKey: string | null;
   task: Task;
 }): Promise<KitResult> {
-  const publicUrl = (key: string) => urlFor(env.NEXT_PUBLIC_SUPABASE_URL, key);
 
   // A site that blocks reading isn't fatal: the logo alone still gives colours
   const site = website

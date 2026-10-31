@@ -10,7 +10,7 @@ if (!url || !secret) throw new Error("Set FFMPEG_WORKER_URL and FFMPEG_WORKER_SE
 const headers = { "x-worker-secret": secret, "Content-Type": "application/json" };
 console.log("health:", await (await fetch(`${url}/health`)).json());
 
-const outputKey = `smoke/render-check-${Date.now()}.mp4`;
+const outputKey = `tmp/smoke/render-check-${Date.now()}.mp4`;
 const start = await fetch(`${url}/render`, {
   method: "POST",
   headers,

@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getMedia } from "@/core/media";
 import { getProfile } from "@/core/profile";
 import { writeCaptions } from "@/core/captions";
-import { urlFor } from "@/providers/storage/supabase-storage";
+import { publicUrl } from "@/providers/storage/paths";
 
 export const POST = apiHandler(async (req: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
   const { id } = await params;
@@ -32,7 +32,7 @@ export const POST = apiHandler(async (req: NextRequest, { params }: { params: Pr
 
   const imageUrl =
     media.type === "image" && media.storage_key
-      ? urlFor(process.env.NEXT_PUBLIC_SUPABASE_URL!, media.storage_key)
+      ? publicUrl(media.storage_key)
       : null;
 
   const captions = await writeCaptions({ idea, imageUrl, platforms, profile });

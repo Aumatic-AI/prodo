@@ -68,21 +68,15 @@ export const VIDEO_REVIEW_JSON_SCHEMA = {
   required: ["score", "hookVisible", "scenes", "summary"],
 };
 
-export function videoReviewPrompt(hook: string, scenes: { index: number; start: number; end: number; visual: string }[], onScreenText: boolean): string {
-  const opening = onScreenText
-    ? `The hook "${hook}" should be on screen in big text within the first 3 seconds. Captions and on-screen text were added by our editor on purpose.`
-    : `The hook "${hook}" is spoken in the first seconds; there are no captions or on-screen text on purpose (only the closing card has words).`;
-  const hookQuestion = onScreenText
-    ? "hookVisible: is the hook text clearly visible in the first 3 seconds?"
-    : "hookVisible: do the first 3 seconds open on a strong, attention-grabbing shot that fits the hook?";
+export function videoReviewPrompt(hook: string, scenes: { index: number; start: number; end: number; visual: string }[]): string {
   return `You are the final quality check for a short social media video ad before the client sees it.
-${opening}
+The hook "${hook}" should be on screen in big text within the first 3 seconds. Our editor adds on purpose: captions of what is said with key words highlighted, on-screen lines, number counters, review cards, a price tag, emoji stickers, transitions and a closing card with the call to action. Photo scenes with a slow camera move, and a clip briefly holding its last frame, are on purpose too. Some scenes are the business's own real footage: judge them as real video.
 
 The script, scene by scene (seconds):
 ${scenes.map((s) => `Scene ${s.index + 1} (${s.start.toFixed(1)}–${s.end.toFixed(1)} s): ${s.visual}`).join("\n")}
 
 For each scene answer: matches (the picture shows roughly what the script describes), glitch (warped faces, hands or objects, flicker, morphing, frozen frames, broken motion), aiText (garbled letters or fake logos inside the picture itself, not our captions), and a short note.
-${hookQuestion}
+hookVisible: is the hook text clearly visible in the first 3 seconds?
 score 0–10 for the whole video: 7 = good enough to publish for a real brand.
 
 Answer in JSON: { "score": n, "hookVisible": boolean, "scenes": [{ "scene": 1, "matches": boolean, "glitch": boolean, "aiText": boolean, "note": string }], "summary": string }`;

@@ -36,6 +36,18 @@ export const workerBackend: RenderBackend = {
     return data.jobId as string;
   },
 
+  /** A Remotion render: composition id (e.g. "ad-9x16") filled with props, saved at outputKey */
+  async render(template: string, props: Record<string, unknown>, outputKey: string) {
+    const { base, headers } = config();
+    const res = await request(SERVICE, `${base}/render`, {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({ template, props, outputKey }),
+    });
+    const data = await jsonOrThrow(SERVICE, res, (b) => b?.error);
+    return data.jobId as string;
+  },
+
   async status(id: string): Promise<RenderStatus> {
     const { base, headers } = config();
     const res = await request(SERVICE, `${base}/jobs/${encodeURIComponent(id)}`, { headers });

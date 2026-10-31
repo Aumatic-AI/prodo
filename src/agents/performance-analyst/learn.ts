@@ -5,12 +5,13 @@ import { notify } from "@/core/notifications/notify";
 import { businessDb } from "@/lib/supabase/business";
 import { addDays, safeZone, weekStartOf, zonedParts } from "@/lib/zoned-time";
 import { ai } from "@/providers/ai/registry";
-import { urlFor } from "@/providers/storage/supabase-storage";
+import { publicUrl } from "@/providers/storage/paths";
 import { INSIGHTS_SYSTEM, insightsSchema } from "@/prompts/agents/insights";
 import { agentStep, optional } from "@/agents/run";
 import { cronForEveryBusiness } from "@/jobs/every-business";
 import { loadPerformance, loadRejected, storedBaselines, type PerfPost } from "./data";
 import { baselines, groupLearnings, MIN_CONFIDENT, REJECTED_SCORE, REJECTED_WEIGHT, scorePost, type Learning, type Tagged } from "./score";
+import { styleName } from "@/core/content/styles";
 
 // Agent 10 · Performance Analyst, weekly (Sunday early morning, before the Planner):
 // score every post of the last 90 days against the account's baseline (code) → learnings by
@@ -26,6 +27,7 @@ const DIMENSION_NAMES: Record<string, string> = {
   angle: "Angle",
   hook_type: "Hook type",
   format: "Format",
+  style: "Content style",
   framework: "Framework",
   lever: "Lever",
   pillar: "Pillar",
@@ -177,7 +179,7 @@ export const weeklyLearnings = inngest.createFunction(
           const notes: string[] = [];
           for (const v of result.videos) {
             const res = await ai.analyzeVideo<{ answer: string }>(
-              urlFor(process.env.NEXT_PUBLIC_SUPABASE_URL!, v.key),
+              publicUrl(v.key),
               `This ${v.platform} video scored ${v.score.toFixed(2)}× the account's usual engagement. In 2 sentences, say what about its hook, pacing, visuals and message most likely explains that. Answer in JSON: { "answer": string }`
             );
             track(res.usage);
@@ -194,7 +196,7 @@ export const weeklyLearnings = inngest.createFunction(
       async (track) => {
         const [pillars, personas] = await Promise.all([db().from("content_pillars").select("id, name"), db().from("personas").select("id, name")]);
         const names = new Map([...(pillars.data ?? []), ...(personas.data ?? [])].map((r) => [r.id, r.name]));
-        const label = (l: Learning) => names.get(l.value) ?? l.value;
+        const label = (l: Learning) => names.get(l.value) ?? (l.dimension === "style" ? styleName(l.value) : null) ?? l.value;
         // The strongest signals either way, confident ones first
         const ranked = result.learnings
           .filter((l) => l.platform === null)

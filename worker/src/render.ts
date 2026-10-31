@@ -3,11 +3,15 @@
 
 import { join } from "node:path";
 import { makeCancelSignal, renderMedia, selectComposition } from "@remotion/renderer";
-import { BUNDLE_DIR, JOB_TIMEOUT_MS } from "./config.ts";
+import { BUNDLE_DIR, JOB_TIMEOUT_MS, RENDER_CONCURRENCY, VIDEO_CACHE_BYTES } from "./config.ts";
 import { isAllowedUrl, uploadResult } from "./storage.ts";
+import { runFfmpeg } from "./ffmpeg.ts";
+
+/** Social platforms play videos at about -14 LUFS: every render is levelled to that */
+const LOUDNESS = "loudnorm=I=-14:TP=-1.5:LRA=11";
 
 export interface RenderInput {
-  /** Composition id, e.g. "check-9x16" */
+  /** Composition id: "ad" (Prodo's video ads, any size) or "check-9x16" */
   template: string;
   props: Record<string, unknown>;
   outputKey: string;
@@ -46,8 +50,10 @@ export async function runRender(job: RenderInput, dir: string): Promise<void> {
       outputLocation: output,
       inputProps: job.props,
       cancelSignal,
-      // Photos and clips can be slow to load from storage
+      // Photos, clips and fonts can be slow to load from storage
       timeoutInMilliseconds: 60_000,
+      concurrency: RENDER_CONCURRENCY,
+      offthreadVideoCacheSizeInBytes: VIDEO_CACHE_BYTES,
     });
   } catch (err) {
     throw timedOut ? new Error("Render took longer than the time limit") : err;
@@ -55,5 +61,8 @@ export async function runRender(job: RenderInput, dir: string): Promise<void> {
     clearTimeout(timer);
   }
 
-  await uploadResult(output, job.outputKey, "video/mp4");
+  // Even sound on every platform: level the audio, copy the picture as it is (fast, no re-encode)
+  const levelled = join(dir, "levelled.mp4");
+  await runFfmpeg(["-i", output, "-c:v", "copy", "-af", LOUDNESS, "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", levelled]);
+  await uploadResult(levelled, job.outputKey, "video/mp4");
 }

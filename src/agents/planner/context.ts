@@ -1,5 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { approvedBible } from "@/core/plans/plans";
+import { contentRules, type ContentRules } from "@/core/content/prefs";
+import { hasTalkingFootage } from "@/core/brand/footage";
 import type { Format } from "@/core/creative/brief";
 import type { FunnelStage } from "@/core/plans/types";
 import { addDays, safeZone } from "@/lib/zoned-time";
@@ -10,7 +12,12 @@ export interface PlannerContext {
   businessName: string;
   language: string;
   timezone: string;
-  goal: string | null;
+  /** The client's goals, ranked (first = main) */
+  goals: string[];
+  /** The client's content choices from onboarding */
+  rules: ContentRules;
+  /** A usable moment of someone talking to camera in the client's own videos */
+  talkingFootage: boolean;
   description: string;
   postsPerWeek: Record<string, number>;
   bibleId: string;
@@ -47,7 +54,9 @@ export async function loadPlannerContext(db: SupabaseClient, weekStart: string):
     businessName: p.name,
     language: p.language || "en",
     timezone: safeZone(p.timezone),
-    goal: p.primary_goal,
+    goals: contentRules(p).goals,
+    rules: contentRules(p),
+    talkingFootage: await hasTalkingFootage(db, contentRules(p).people),
     description: p.description ?? "",
     postsPerWeek: (p.posting_prefs?.platforms ?? {}) as Record<string, number>,
     bibleId: bible.id,
@@ -78,6 +87,13 @@ export function formatScores(ctx: PlannerContext): Partial<Record<Format, number
     if (l.dimension !== "format" || l.platform || l.sample < 5) continue;
     if (["static", "carousel", "video", "text"].includes(l.value)) out[l.value as Format] = l.score;
   }
+  return out;
+}
+
+/** Style scores the style rotation trusts: at least 5 posts behind them. */
+export function styleScores(ctx: PlannerContext): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const l of ctx.learnings) if (l.dimension === "style" && !l.platform && l.sample >= 5) out[l.value] = l.score;
   return out;
 }
 

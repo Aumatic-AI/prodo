@@ -63,6 +63,8 @@ export interface PlanItem {
   slot_at: string;
   platforms: string[];
   format: Format;
+  /** The client's content style for this slot (image or video style id); null for text posts and older plans */
+  style: string | null;
   pillar_id: string | null;
   persona_id: string | null;
   offering_id: string | null;

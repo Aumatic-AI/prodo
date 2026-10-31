@@ -154,7 +154,7 @@ export const RESOURCES = {
     archive: false,
     verify: false,
     order: [{ column: "created_at", ascending: false }],
-    scope: { column: "kind", values: ["product_photo", "team", "location", "work", "reference_video"] },
+    scope: { column: "kind", values: ["product_photo", "person", "team", "location", "work", "general", "reference_image", "reference_video"] },
     fields: [
       {
         key: "kind",
@@ -162,7 +162,16 @@ export const RESOURCES = {
         type: "select",
         required: true,
         inList: true,
-        options: opts([["product_photo", "Product"], ["team", "Team"], ["location", "Place"], ["work", "Our work"], ["reference_video", "Video we like"]]),
+        options: opts([
+          ["product_photo", "Product"],
+          ["person", "Person in our posts"],
+          ["team", "Team"],
+          ["location", "Place"],
+          ["work", "Our work"],
+          ["general", "Ours, other"],
+          ["reference_image", "Image we like (another brand's)"],
+          ["reference_video", "Video we like (another brand's)"],
+        ]),
       },
       { key: "offering_id", label: "Offering", type: "offering", placeholder: "None" },
       { key: "tags", label: "Tags", type: "lines" },

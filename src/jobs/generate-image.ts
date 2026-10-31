@@ -10,7 +10,8 @@ import { buildImagePrompt } from "@/prompts/image";
 import { composeCreativeImage } from "@/providers/creative-render/composeCreativeImage";
 import { ai, type KieAspectRatio } from "@/providers/ai/registry";
 import { request } from "@/providers/http";
-import { storageKeyFor, upload, urlFor } from "@/providers/storage/supabase-storage";
+import { mediaKey, publicUrl, ratioName } from "@/providers/storage/paths";
+import { upload } from "@/providers/storage/r2";
 import { NonRetriableError } from "inngest";
 
 const MAX_POLLS = 24; // ~3 min
@@ -39,9 +40,8 @@ export const generateImage = inngest.createFunction(
     const profile = await step.run("load-profile", () => getProfile(db));
     const productName = await step.run("load-product", () => productNameFor(db, media as Media));
 
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-    const referenceUrl = media.reference_image_key ? urlFor(supabaseUrl, media.reference_image_key) : undefined;
-    const logoUrl = media.use_logo && profile?.logo_key ? urlFor(supabaseUrl, profile.logo_key) : undefined;
+    const referenceUrl = media.reference_image_key ? publicUrl(media.reference_image_key) : undefined;
+    const logoUrl = media.use_logo && profile?.logo_key ? publicUrl(profile.logo_key) : undefined;
     const aspectRatio = (media.aspect_ratio as "1:1" | "4:5" | "9:16" | "16:9") || "4:5";
     // nano-banana-2 has no 4:5, so ask for the closest portrait ratio
     const kieAspectRatio: KieAspectRatio = aspectRatio === "4:5" ? "2:3" : aspectRatio;
@@ -73,8 +73,8 @@ export const generateImage = inngest.createFunction(
         const buffer =
           (logoUrl && (await composeCreativeImage({ photoUrl: finalUrl, logoUrl, aspectRatio }))) ||
           (await download(finalUrl));
-        const key = storageKeyFor(businessId, "image", media.id);
-        await upload(db, key, buffer, "image/png");
+        const key = mediaKey(businessId, media.id, `${ratioName(aspectRatio)}.png`);
+        await upload(key, buffer, "image/png");
         return key;
       } catch (err) {
         return toInngestError(err);

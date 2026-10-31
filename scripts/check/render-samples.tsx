@@ -48,6 +48,7 @@ const theme: CreativeTheme = {
   fonts: { heading: "Playfair Display", body: "Inter" },
   fontFiles: [],
   logo: { onLight: null, onDark: null },
+  showLogo: true,
 };
 
 await mkdir(out, { recursive: true });

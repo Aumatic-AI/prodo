@@ -4,7 +4,9 @@ import type { PlanItem } from "@/core/plans/types";
 import { LIMITS } from "@/config/limits";
 import { AppError } from "@/core/errors";
 import { request } from "@/providers/http";
-import { businessKey, upload, urlFor } from "@/providers/storage/supabase-storage";
+import { publicUrl, workKey } from "@/providers/storage/paths";
+import { upload } from "@/providers/storage/r2";
+import { loadContentRules } from "@/core/content/prefs";
 
 // Media rows the Producer makes for a slot. One media row per attempt; slides, renditions, voice
 // and music files hang off it as media_files.
@@ -12,6 +14,7 @@ import { businessKey, upload, urlFor } from "@/providers/storage/supabase-storag
 const TYPE = { static: "image", carousel: "carousel", video: "video", text: "text" } as const;
 
 export async function startMedia(db: SupabaseClient, item: PlanItem, brief: Brief, aspectRatio: string): Promise<string> {
+  const rules = await loadContentRules(db);
   const { data, error } = await db
     .from("media")
     .insert({
@@ -21,7 +24,8 @@ export async function startMedia(db: SupabaseClient, item: PlanItem, brief: Brie
       idea: brief.message,
       content: brief.kind === "text" ? (Object.values(brief.captions)[0] ?? brief.message) : null,
       aspect_ratio: aspectRatio,
-      use_logo: true,
+      // "Never" in onboarding: no logo on this business's posts
+      use_logo: rules.showLogo,
       plan_item_id: item.id,
       offering_id: item.offering_id,
       creative_spec: brief,
@@ -33,12 +37,6 @@ export async function startMedia(db: SupabaseClient, item: PlanItem, brief: Brie
   return data.id;
 }
 
-/** Key for one of a media item's files, in the business's storage folder */
-export function dated(businessId: string, prefix: string, mediaId: string, name: string): string {
-  const now = new Date();
-  return businessKey(businessId, `${prefix}/${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, "0")}/${mediaId}/${name}`);
-}
-
 export async function saveFile(
   db: SupabaseClient,
   mediaId: string,
@@ -48,7 +46,7 @@ export async function saveFile(
   contentType: string,
   extra: { position?: number; aspect_ratio?: string } = {}
 ): Promise<void> {
-  await upload(db, key, body, contentType);
+  await upload(key, body, contentType);
   await db.from("media_files").delete().eq("media_id", mediaId).eq("storage_key", key);
   const { error } = await db.from("media_files").insert({ media_id: mediaId, role, storage_key: key, position: extra.position ?? 0, aspect_ratio: extra.aspect_ratio ?? null });
   if (error) throw error;
@@ -76,7 +74,14 @@ export async function keepPhoto(db: SupabaseClient, businessId: string, mediaId:
   const res = await request("Image download", url, {}, LIMITS.downloadTimeoutMs);
   if (!res.ok) throw new AppError("Couldn't download the AI photo. Try again.", "PROVIDER_DOWN", true);
   const type = res.headers.get("content-type")?.split(";")[0] || "image/png";
-  const key = dated(businessId, "images", mediaId, `${name}.${type === "image/jpeg" ? "jpg" : type === "image/webp" ? "webp" : "png"}`);
+  const key = workKey(businessId, mediaId, `${name}.${type === "image/jpeg" ? "jpg" : type === "image/webp" ? "webp" : "png"}`);
   await saveFile(db, mediaId, "thumbnail", key, Buffer.from(await res.arrayBuffer()), type);
-  return urlFor(process.env.NEXT_PUBLIC_SUPABASE_URL!, key);
+  return publicUrl(key);
+}
+
+/** Copies a made file (an AI image or clip link, which expires) into our storage. */
+export async function copyToStorage(url: string, key: string): Promise<void> {
+  const res = await request("Saving the file", url, {}, LIMITS.downloadTimeoutMs);
+  if (!res.ok) throw new AppError("Couldn't download a made scene. Try again.", "PROVIDER_DOWN", true);
+  await upload(key, Buffer.from(await res.arrayBuffer()), res.headers.get("content-type")?.split(";")[0] || "application/octet-stream");
 }

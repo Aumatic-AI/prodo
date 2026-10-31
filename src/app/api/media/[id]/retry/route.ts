@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server";
 import { apiHandler } from "@/lib/api-handler";
 import { currentBusiness } from "@/core/business";
-import { getMedia, markGenerating } from "@/core/media";
-import { inngest } from "@/jobs/client";
+import { getMedia, markGenerating, startGenerating } from "@/core/media";
 import { assertVideoReady } from "@/providers/ffmpeg/client";
-import { regenerateItem } from "@/core/plans/approval";
+import { restartItem } from "@/core/plans/approval";
 
 export const POST = apiHandler(async (_req, { params }: { params: Promise<{ id: string }> }) => {
   const { id } = await params;
@@ -23,15 +22,13 @@ export const POST = apiHandler(async (_req, { params }: { params: Promise<{ id: 
   // Made by the agents for a planned post: run the whole agent chain again for that post (the same as
   // Try again on This week), so the post and its media stay in step
   if (media.plan_item_id) {
-    const item = await regenerateItem(db, media.plan_item_id, null);
-    await inngest.send({ name: "plan-item/produce", id: `produce-${item.id}-${Date.now()}`, data: { businessId, itemId: item.id, planId: item.plan_id, note: null } });
+    const item = await restartItem(db, businessId, media.plan_item_id, null);
     return NextResponse.json({ ok: true, planItemId: item.id });
   }
 
   await markGenerating(db, id);
 
-  const event = media.type === "video" ? "media/generate-video" : "media/generate-image";
-  await inngest.send({ name: event, data: { businessId, mediaId: id }, id: `${id}-retry-${Date.now()}` });
+  await startGenerating(db, businessId, media, `${id}-retry-${Date.now()}`);
 
   return NextResponse.json({ ok: true });
 });

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { SCENE_KINDS, STICKER_NAMES, TRANSITION_INTENTS } from "./video";
 
 // The creative brief: everything the Producer needs to make one ad, written by the Creative
 // Director and checked by QA Gate 1. Stored on plan_items.brief (and copied to media.creative_spec).
@@ -18,7 +19,7 @@ export type Lever = (typeof LEVERS)[number];
 /** Levers that only work with a stored fact behind them (a live offer, a review, a credential). */
 export const FACT_LEVERS: Lever[] = ["social_proof", "scarcity", "urgency", "authority"];
 
-export const CTA_LINKS = ["website", "shop", "booking", "whatsapp", "lead_magnet"] as const;
+export const CTA_LINKS = ["website", "shop", "booking", "whatsapp", "phone", "lead_magnet"] as const;
 export type CtaLink = (typeof CTA_LINKS)[number];
 
 export const LABELS = {
@@ -86,7 +87,12 @@ const base = {
   captions: z.record(z.string(), z.string().trim().min(1).max(5000)),
   /** Real photo to use as the reference image (brand_assets id) */
   referenceAssetId: z.string().uuid().nullable().default(null),
+  /** The client's content style the Planner gave this slot (image or video style id) */
+  style: z.string().nullable().default(null),
 };
+
+/** How a video sounds: music only, voice only, or a voice over music. */
+export const VIDEO_SOUNDS = ["music", "voice", "voice_music", "speech"] as const;
 
 export const TEMPLATE_IDS = ["spotlight", "split", "frame", "bold"] as const;
 export type TemplateId = (typeof TEMPLATE_IDS)[number];
@@ -111,24 +117,72 @@ export const carouselBriefSchema = z.object({
   imagePrompt: z.string().trim().min(10).max(1200),
 });
 
+/** A scene's picture: one of the client's photos, a moment of the client's own video, or made by AI */
+export const sceneSourceSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("ai") }),
+  z.object({ kind: z.literal("photo"), assetId: z.string().uuid() }),
+  z.object({
+    kind: z.literal("clip"),
+    assetId: z.string().uuid(),
+    /** The moment, in seconds of the source video */
+    start: z.number().min(0),
+    end: z.number().min(0),
+    /** Keep the person's own sound (talking moments) instead of a voice-over */
+    keepAudio: z.boolean().default(false),
+  }),
+]);
+export type SceneSource = z.infer<typeof sceneSourceSchema>;
+
+export const videoSceneSchema = z.object({
+  /** From the scene library (core/creative/video.ts) */
+  kind: z.enum(SCENE_KINDS).default("benefit"),
+  /** Spoken words; empty in music-only scenes and in talking moments (the person speaks) */
+  voiceover: z.string().trim().max(240).default(""),
+  /** Length in seconds when nothing is spoken; voiced scenes follow the speech */
+  seconds: z.number().min(1.5).max(15).nullable().default(null),
+  /** Big text on screen, at most 7 words */
+  overlay: z.string().trim().max(60).default(""),
+  /** Up to 3 words from the voice-over or the on-screen line to stand out */
+  keywords: z.array(z.string().trim().min(1).max(40)).max(3).default([]),
+  /** What the camera sees (made by AI when the source is "ai"; a description otherwise). No text in the picture. */
+  visual: z.string().trim().min(10).max(800),
+  /** Camera motion only, e.g. "slow push in" */
+  motion: z.string().trim().max(200).default("slow push in"),
+  source: sceneSourceSchema.default({ kind: "ai" }),
+  /** "reveal" scenes: the after picture wiped in over the before (an AI one is made from revealVisual) */
+  revealSource: sceneSourceSchema.nullable().default(null),
+  revealVisual: z.string().trim().max(800).default(""),
+  /** An emoji sticker by name (STICKERS), at the first keyword */
+  sticker: z.enum(STICKER_NAMES).nullable().default(null),
+  /** "stat" scenes: a number from a stored fact that counts up */
+  stat: z
+    .object({
+      value: z.number(),
+      decimals: z.number().int().min(0).max(2).default(0),
+      prefix: z.string().max(4).default(""),
+      suffix: z.string().max(12).default(""),
+      label: z.string().trim().min(1).max(60),
+      source: z.string(),
+    })
+    .nullable()
+    .default(null),
+  /** "review" scenes: the stored review (proof_items id) */
+  proofId: z.string().uuid().nullable().default(null),
+  /** Show the current price (only when it is a stored fact) */
+  showPrice: z.boolean().default(false),
+  /** How the cut into the next scene feels */
+  transition: z.enum(TRANSITION_INTENTS).default("smooth"),
+});
+export type VideoScene = z.infer<typeof videoSceneSchema>;
+
 export const videoBriefSchema = z.object({
   kind: z.literal("video"),
   ...base,
-  scenes: z
-    .array(
-      z.object({
-        voiceover: z.string().trim().min(2).max(240),
-        /** Big text on screen, at most 7 words */
-        overlay: z.string().trim().max(60).default(""),
-        /** What the camera sees. No text in the picture. */
-        visual: z.string().trim().min(10).max(800),
-        /** Camera motion only, e.g. "slow push in" */
-        motion: z.string().trim().max(200).default("slow push in"),
-      })
-    )
-    .min(2)
-    .max(8),
+  scenes: z.array(videoSceneSchema).min(2).max(9),
   musicMood: z.string().trim().max(60).default("upbeat"),
+  sound: z.enum(VIDEO_SOUNDS).default("voice_music"),
+  /** The look (presets in worker/remotion/shared/presets.ts), picked by code from the brand */
+  preset: z.string().default("minimal"),
 });
 
 export const textBriefSchema = z.object({
@@ -152,7 +206,7 @@ export function briefTexts(brief: Brief): string[] {
   const texts = [brief.hook.text, brief.message, brief.cta.label, ...Object.values(brief.captions)];
   if (brief.kind === "static") texts.push(brief.headline, brief.subhead ?? "", brief.badge?.text ?? "");
   if (brief.kind === "carousel") brief.slides.forEach((s) => texts.push(s.title, s.body));
-  if (brief.kind === "video") brief.scenes.forEach((s) => texts.push(s.voiceover, s.overlay));
+  if (brief.kind === "video") brief.scenes.forEach((s) => texts.push(s.voiceover, s.overlay, s.stat?.label ?? ""));
   return texts.filter(Boolean);
 }
 

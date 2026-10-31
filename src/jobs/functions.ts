@@ -16,6 +16,7 @@ import { metricsCron, metricsSync } from "@/agents/performance-analyst/sync";
 import { learningsCron, weeklyLearnings } from "@/agents/performance-analyst/learn";
 import { monthlyRefresh, monthlyRefreshCron } from "./monthly-refresh";
 import { applyPause } from "./apply-pause";
+import { watchFootage } from "./watch-footage";
 
 export const functions = [
   // Manual create and publish
@@ -29,6 +30,7 @@ export const functions = [
   regenerateBible,
   websiteAnalyst,
   visualIdentityAnalyst,
+  watchFootage,
   socialMarketAnalyst,
   brandStrategist,
   // Weekly loop (agents 5–9)

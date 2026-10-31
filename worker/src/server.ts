@@ -1,4 +1,4 @@
-// Prodo video worker. Makes videos for Prodo and saves them to Supabase storage.
+// Prodo video worker. Makes videos for Prodo and saves them to Prodo's storage (Cloudflare R2).
 //   GET  /health        -> { ok, ffmpeg: { running, queued }, render: { running, queued } }
 //   POST /jobs          -> { jobId }   an ffmpeg job (needs x-worker-secret)
 //   POST /render        -> { jobId }   a Remotion template render (needs x-worker-secret)

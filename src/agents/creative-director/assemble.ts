@@ -1,7 +1,9 @@
 import { briefSchema, FACT_LEVERS, type Brief, type CtaLink, type Format } from "@/core/creative/brief";
 import { stripLabelsDeep } from "@/lib/labels";
 import type { RawBrief } from "@/prompts/agents/creative-brief";
+import { CTA_LINK_KEY } from "@/core/content/prefs";
 import type { FactBook } from "./book";
+import { assembleVideoScenes } from "./assemble-video";
 import type { CreativeContext } from "./context";
 
 // Raw model reply → a Brief: labels become stored refs, claims without a real source are dropped,
@@ -14,10 +16,15 @@ export interface Assembled {
   dropped: number;
 }
 
+/** The link the model picked when it exists, else the client's next step, else any link we have. */
 function ctaLink(wanted: CtaLink, ctx: CreativeContext): CtaLink {
+  const primary = ctx.rules.cta ? CTA_LINK_KEY[ctx.rules.cta] : null;
+  // The client's next step wins over a generic website link
+  if (primary && ctx.ctaLinks[primary] && (wanted === "website" || !ctx.ctaLinks[wanted])) return primary;
   if (ctx.ctaLinks[wanted]) return wanted;
   return (Object.keys(ctx.ctaLinks)[0] as CtaLink) ?? "website";
 }
+
 
 export function assembleBrief(rawReply: RawBrief, format: Format, ctx: CreativeContext, book: FactBook): Assembled {
   // Source labels stay in the source fields ("R1", no brackets); bracketed ones in text are removed
@@ -63,6 +70,8 @@ export function assembleBrief(rawReply: RawBrief, format: Format, ctx: CreativeC
     claims,
     captions,
     referenceAssetId: book.asset(raw.photo),
+    // Videos: the style actually made (talking videos without talking footage are made as voice-overs)
+    style: format === "text" ? null : format === "video" ? (book.video?.style ?? ctx.item.style) : ctx.item.style,
   };
 
   let candidate: unknown;
@@ -82,7 +91,10 @@ export function assembleBrief(rawReply: RawBrief, format: Format, ctx: CreativeC
   } else if (format === "carousel") {
     candidate = { kind: "carousel", ...base, slides: raw.slides, imagePrompt: raw.imagePrompt ?? "" };
   } else if (format === "video") {
-    candidate = { kind: "video", ...base, scenes: raw.scenes, musicMood: raw.musicMood ?? "upbeat" };
+    const plan = book.video!;
+    const video = assembleVideoScenes(raw, ctx, book, problems);
+    dropped += video.dropped;
+    candidate = { kind: "video", ...base, scenes: video.scenes, sound: plan.sound, preset: plan.preset, musicMood: ctx.rules.musicMood ?? raw.musicMood ?? "upbeat" };
   } else {
     candidate = { kind: "text", ...base };
   }

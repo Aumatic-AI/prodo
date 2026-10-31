@@ -14,6 +14,8 @@ import { button } from "@/components/kit/styles";
 import { platformMeta } from "@/config/platforms";
 import { POSTING_PLATFORMS } from "@/core/onboarding/options";
 import type { Format } from "@/core/creative/brief";
+import { IMAGE_STYLE_FORMATS, STYLE_NAMES } from "@/core/content/styles";
+import { IMAGE_STYLES, VIDEO_STYLES } from "@/core/onboarding/options";
 import { apiFetch } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { useResource } from "@/modules/brand/hooks/useResource";
@@ -22,9 +24,18 @@ import { useCreateAd } from "../hooks/usePlan";
 const FORMATS: { value: Format; label: string; description: string; icon: React.ReactNode }[] = [
   { value: "static", label: "Image ad", description: "One designed image", icon: <ImageIcon size={18} /> },
   { value: "carousel", label: "Carousel", description: "5–8 swipeable slides", icon: <GalleryHorizontal size={18} /> },
-  { value: "video", label: "Video", description: "15–35 s with voice", icon: <Clapperboard size={18} /> },
+  { value: "video", label: "Video", description: "15–35 s, edited with music", icon: <Clapperboard size={18} /> },
   { value: "text", label: "Text post", description: "Words only", icon: <FileText size={18} /> },
 ];
+
+const AUTO = "auto";
+
+/** Styles that fit a format, for the style picker. */
+function styleOptions(format: Format): { value: string; label: string }[] {
+  if (format === "text") return [];
+  const ids: string[] = format === "video" ? [...VIDEO_STYLES] : IMAGE_STYLES.filter((s) => IMAGE_STYLE_FORMATS[s].includes(format));
+  return [{ value: AUTO, label: "Your top style" }, ...ids.map((id) => ({ value: id, label: STYLE_NAMES[id as keyof typeof STYLE_NAMES] }))];
+}
 
 /** Formats each platform can take (TikTok and YouTube: video only; no text-only posts on Instagram or TikTok). */
 function fits(format: Format, platform: string): boolean {
@@ -50,6 +61,8 @@ export function CreateAdModal({ open, onOpenChange, onCreated }: { open: boolean
   const [idea, setIdea] = useState("");
   const [offeringId, setOfferingId] = useState(NONE);
   const [personaId, setPersonaId] = useState(NONE);
+  const [style, setStyle] = useState(AUTO);
+  const styles = useMemo(() => styleOptions(format), [format]);
   const [when, setWhen] = useState(tomorrow);
 
   const usable = useMemo(() => platforms.filter((p) => fits(format, p)), [platforms, format]);
@@ -64,6 +77,8 @@ export function CreateAdModal({ open, onOpenChange, onCreated }: { open: boolean
       offeringId: offeringId === NONE ? null : offeringId,
       personaId: personaId === NONE ? null : personaId,
       slotAt,
+      // A style that doesn't fit the format (after switching formats) falls back to the top pick
+      style: style !== AUTO && styles.some((s) => s.value === style) ? style : null,
     });
     onCreated(item.id, item.slot_at);
     onOpenChange(false);
@@ -136,6 +151,12 @@ export function CreateAdModal({ open, onOpenChange, onCreated }: { open: boolean
             />
           </Field>
         </div>
+
+        {styles.length > 0 && (
+          <Field label="Style" optional hint="How it looks: your top style from Settings → Content, or pick one for this ad.">
+            <Select value={styles.some((s) => s.value === style) ? style : AUTO} onValueChange={setStyle} options={styles} />
+          </Field>
+        )}
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Goes out on">

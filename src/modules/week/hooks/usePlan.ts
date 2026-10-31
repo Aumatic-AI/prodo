@@ -106,6 +106,8 @@ export interface CreateAdInput {
   offeringId?: string | null;
   personaId?: string | null;
   slotAt?: string | null;
+  /** A content style id; null = the client's top pick for the format */
+  style?: string | null;
 }
 
 export function useCreateAd() {

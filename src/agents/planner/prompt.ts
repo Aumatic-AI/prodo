@@ -1,5 +1,7 @@
 import { LABELS } from "@/core/creative/brief";
 import { platformMeta } from "@/config/platforms";
+import { ctaWords } from "@/core/content/prefs";
+import { styleBrief } from "@/core/content/styles";
 import type { PlannerContext } from "./context";
 import type { SlotPlan } from "./slots";
 
@@ -18,7 +20,9 @@ export function buildPlannerPrompt(ctx: PlannerContext, slots: SlotPlan[]): { pr
   const labels: Labels = { offering: new Map(), offer: new Map(), persona: new Map(), slot: new Map() };
   const lines: string[] = [];
 
-  lines.push(`BUSINESS: ${ctx.businessName} (write in language: ${ctx.language})`, `About: ${ctx.description}`, `Main goal: ${ctx.goal ?? "not set"}`);
+  lines.push(`BUSINESS: ${ctx.businessName} (write in language: ${ctx.language})`, `About: ${ctx.description}`);
+  lines.push(ctx.goals.length ? `Goals, in order: ${ctx.goals.map((g, i) => `${i + 1}. ${g}`).join(" ")} (each slot says which one it serves)` : "Goal: not set");
+  if (ctx.rules.cta) lines.push(`Customers' next step: ${ctaWords(ctx.rules.cta)}`);
   if (ctx.positioning) lines.push(`Positioning: ${ctx.positioning}`);
   if (ctx.valueProp) lines.push(`Value proposition: ${ctx.valueProp}`);
 
@@ -69,7 +73,7 @@ export function buildPlannerPrompt(ctx: PlannerContext, slots: SlotPlan[]): { pr
     const platforms = s.platforms.map((p) => platformMeta(p).label).join(", ");
     const weekday = WEEKDAY[new Date(`${s.day}T12:00:00Z`).getUTCDay()];
     lines.push(
-      `[${label}] ${weekday} ${s.day} ${s.time} · ${platforms} · ${LABELS.format[s.format]} · pillar: ${s.pillarName ?? "any"} · stage: ${s.funnelStage}${s.isExperiment ? " · EXPERIMENT" : ""}`
+      `[${label}] ${weekday} ${s.day} ${s.time} · ${platforms} · ${LABELS.format[s.format]}${s.style && s.format !== "text" ? ` · style: ${styleBrief(s.style, s.format)}` : ""} · pillar: ${s.pillarName ?? "any"} · stage: ${s.funnelStage}${s.goal ? ` · goal: ${s.goal}` : ""}${s.isExperiment ? " · EXPERIMENT" : ""}`
     );
   });
 

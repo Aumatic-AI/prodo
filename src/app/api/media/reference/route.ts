@@ -1,8 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { apiHandler } from "@/lib/api-handler";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { currentBusiness } from "@/core/business";
-import { upload, storageKeyFor, urlFor } from "@/providers/storage/supabase-storage";
+import { brandKey, publicUrl } from "@/providers/storage/paths";
+import { extensionFor } from "@/config/uploads";
+import { upload } from "@/providers/storage/r2";
 import { LIMITS } from "@/config/limits";
 
 export const POST = apiHandler(async (req: NextRequest) => {
@@ -24,10 +25,10 @@ export const POST = apiHandler(async (req: NextRequest) => {
   }
 
   const { businessId } = await currentBusiness();
-  const key = storageKeyFor(businessId, "reference", "ref");
+  const key = brandKey(businessId, "references", crypto.randomUUID(), extensionFor(file.type || "image/png"));
   const buf = Buffer.from(await file.arrayBuffer());
   // Server upload into the business's own folder
-  await upload(createAdminClient(), key, buf, file.type || "image/png");
+  await upload(key, buf, file.type || "image/png");
 
-  return NextResponse.json({ key, url: urlFor(process.env.NEXT_PUBLIC_SUPABASE_URL!, key) });
+  return NextResponse.json({ key, url: publicUrl(key) });
 });

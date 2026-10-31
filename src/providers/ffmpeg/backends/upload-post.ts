@@ -1,9 +1,9 @@
 import { env } from "@/config/env";
 import { AppError, notConfigured } from "@/core/errors";
 import { LIMITS } from "@/config/limits";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { request, statusError } from "@/providers/http";
-import { upload, urlFor } from "@/providers/storage/supabase-storage";
+import { publicUrl, tmpKey } from "@/providers/storage/paths";
+import { deleteFiles, download, upload } from "@/providers/storage/r2";
 import type { RenderBackend, RenderJob, RenderStatus } from "../types";
 
 // Upload-Post's hosted FFmpeg API (https://api.upload-post.com/api/uploadposts/ffmpeg), used until our
@@ -13,12 +13,11 @@ import type { RenderBackend, RenderJob, RenderStatus } from "../types";
 //   (-filter_complex_script); placeholders aren't filled in inside that file
 // - so captions are burned in by a second, simple job (-vf subtitles={input1})
 // The finished file is downloaded and saved in our storage at the job's outputKey.
-// Small working files live under render-jobs/<id>/ and are removed when the job is done.
+// Small working files live under tmp/render-jobs/<id>/ and are removed when the job is done.
 
 const SERVICE = "Upload-Post video rendering";
 const API = "https://api.upload-post.com/api/uploadposts/ffmpeg";
 const FORBIDDEN = /[;|&$`]/;
-const BUCKET = "media";
 
 function headers(): Record<string, string> {
   const key = env.UPLOAD_POST_API_KEY;
@@ -26,9 +25,9 @@ function headers(): Record<string, string> {
   return { Authorization: key.startsWith("Apikey ") ? key : `Apikey ${key}` };
 }
 
-/** Storage keys become public URLs (the media bucket is public read); URLs stay as they are. */
+/** Storage keys become public URLs (storage is public read); URLs stay as they are. */
 function publicFile(input: string): string {
-  return /^https?:\/\//.test(input) ? input : urlFor(env.NEXT_PUBLIC_SUPABASE_URL, input);
+  return /^https?:\/\//.test(input) ? input : publicUrl(input);
 }
 
 /** One argument for a command line: quoted when it has anything a shell would split. */
@@ -94,7 +93,7 @@ async function fetchInto(id: string, key: string): Promise<void> {
   } else fileRes = res;
   if (!fileRes.ok) throw new AppError("Couldn't download the finished video from Upload-Post. Try again.", "PROVIDER_DOWN", true);
   const ext = key.split(".").pop() ?? "mp4";
-  await upload(createAdminClient(), key, Buffer.from(await fileRes.arrayBuffer()), CONTENT_TYPES[ext] ?? "application/octet-stream");
+  await upload(key, Buffer.from(await fileRes.arrayBuffer()), CONTENT_TYPES[ext] ?? "application/octet-stream");
 }
 
 // ---------- the job's own state (which pass it's on), kept next to its working files ----------
@@ -106,27 +105,26 @@ interface JobState {
   pass2: string | null;
 }
 
-const stateKey = (id: string) => `render-jobs/${id}.txt`;
+const stateKey = (id: string) => tmpKey(`render-jobs/${id}.txt`);
 
 async function readState(id: string): Promise<JobState | null> {
-  const { data } = await createAdminClient().storage.from(BUCKET).download(stateKey(id));
+  const data = await download(stateKey(id));
   if (!data) return null;
   try {
-    return JSON.parse(await data.text()) as JobState;
+    return JSON.parse(Buffer.from(data).toString("utf8")) as JobState;
   } catch {
     return null;
   }
 }
 
 async function writeState(id: string, state: JobState): Promise<void> {
-  await upload(createAdminClient(), stateKey(id), Buffer.from(JSON.stringify(state), "utf8"), "text/plain");
+  await upload(stateKey(id), Buffer.from(JSON.stringify(state), "utf8"), "text/plain");
 }
 
 async function cleanup(id: string, state: JobState | null): Promise<void> {
-  const db = createAdminClient();
   const keys = [stateKey(id)];
   if (state) keys.push(`${state.folder}/graph.txt`, `${state.folder}/pass1.mp4`);
-  await db.storage.from(BUCKET).remove(keys);
+  await deleteFiles(keys);
 }
 
 export const uploadPostBackend: RenderBackend = {
@@ -138,7 +136,7 @@ export const uploadPostBackend: RenderBackend = {
   },
 
   async submit(job: RenderJob) {
-    const folder = `render-jobs/${crypto.randomUUID()}`;
+    const folder = tmpKey(`render-jobs/${crypto.randomUUID()}`);
     const inputs = [...job.inputs];
     const args = [...job.args];
 
@@ -146,7 +144,7 @@ export const uploadPostBackend: RenderBackend = {
     const at = args.indexOf("-filter_complex");
     if (at >= 0) {
       const graphKey = `${folder}/graph.txt`;
-      await upload(createAdminClient(), graphKey, Buffer.from(args[at + 1], "utf8"), "text/plain");
+      await upload(graphKey, Buffer.from(args[at + 1], "utf8"), "text/plain");
       inputs.push(graphKey);
       args.splice(at, 2, "-filter_complex_script", `{input${inputs.length - 1}}`);
     }

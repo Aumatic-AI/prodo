@@ -17,6 +17,8 @@ import { buildComposeJob } from "@/providers/ffmpeg/compose-video";
 import { canvasesFor } from "@/agents/producer/canvases";
 import type { PlanItem } from "@/core/plans/types";
 import { stripLabels, stripLabelsDeep } from "@/lib/labels";
+import { contentRules } from "@/core/content/prefs";
+import { stylesFor } from "@/core/content/styles";
 
 let passed = 0;
 const check = (name: string, fn: () => void | Promise<void>) =>
@@ -86,7 +88,7 @@ const pillars = [
 ];
 
 await check("planSlots: slot count, platforms spread, formats fit, times in the client's zone", () => {
-  const slots = planSlots({ weekStart: "2026-11-02", timezone: "Europe/Malta", postsPerWeek: { instagram: 5, linkedin: 2, tiktok: 2 }, pillars, goal: "sales" });
+  const slots = planSlots({ weekStart: "2026-11-02", timezone: "Europe/Malta", postsPerWeek: { instagram: 5, linkedin: 2, tiktok: 2 }, pillars, goals: ["sales"] });
   assert.equal(slots.length, 5);
   assert.equal(slots.filter((s) => s.platforms.includes("linkedin")).length, 2);
   assert.equal(slots.filter((s) => s.platforms.includes("tiktok")).length, 2);
@@ -101,30 +103,30 @@ await check("planSlots: slot count, platforms spread, formats fit, times in the 
 });
 
 await check("planSlots: no format twice in a row on the same platform when there's a choice", () => {
-  const slots = planSlots({ weekStart: "2026-11-02", timezone: "UTC", postsPerWeek: { instagram: 7 }, pillars, goal: "awareness" });
+  const slots = planSlots({ weekStart: "2026-11-02", timezone: "UTC", postsPerWeek: { instagram: 7 }, pillars, goals: ["awareness"] });
   for (let i = 1; i < slots.length; i++) assert.notEqual(slots[i].format, slots[i - 1].format, `slots ${i} and ${i + 1}`);
 });
 
 await check("planSlots: proven formats get more slots", () => {
-  const base = planSlots({ weekStart: "2026-11-02", timezone: "UTC", postsPerWeek: { facebook: 14 }, pillars, goal: null });
-  const boosted = planSlots({ weekStart: "2026-11-02", timezone: "UTC", postsPerWeek: { facebook: 14 }, pillars, goal: null, formatScores: { video: 1.8 } });
+  const base = planSlots({ weekStart: "2026-11-02", timezone: "UTC", postsPerWeek: { facebook: 14 }, pillars });
+  const boosted = planSlots({ weekStart: "2026-11-02", timezone: "UTC", postsPerWeek: { facebook: 14 }, pillars, formatScores: { video: 1.8 } });
   const videos = (list: typeof base) => list.filter((s) => s.format === "video").length;
   assert.ok(videos(boosted) > videos(base), `${videos(boosted)} > ${videos(base)}`);
 });
 
 await check("planSlots: nothing to plan without posts per week", () => {
-  assert.equal(planSlots({ weekStart: "2026-11-02", timezone: "UTC", postsPerWeek: {}, pillars, goal: null }).length, 0);
+  assert.equal(planSlots({ weekStart: "2026-11-02", timezone: "UTC", postsPerWeek: {}, pillars }).length, 0);
 });
 
 await check("planSlots: a part week starts at firstDay and gets its share of posts", () => {
-  const slots = planSlots({ weekStart: "2026-10-19", firstDay: "2026-10-23", timezone: "UTC", postsPerWeek: { instagram: 7, linkedin: 2 }, pillars, goal: null });
+  const slots = planSlots({ weekStart: "2026-10-19", firstDay: "2026-10-23", timezone: "UTC", postsPerWeek: { instagram: 7, linkedin: 2 }, pillars });
   assert.ok(slots.length > 0 && slots.every((s) => s.day >= "2026-10-23" && s.day <= "2026-10-25"), slots.map((s) => s.day).join(","));
   assert.equal(slots.length, 3); // 7 a week × 3 days left ÷ 7
-  assert.equal(planSlots({ weekStart: "2026-10-19", firstDay: "2026-10-26", timezone: "UTC", postsPerWeek: { instagram: 7 }, pillars, goal: null }).length, 0);
+  assert.equal(planSlots({ weekStart: "2026-10-19", firstDay: "2026-10-26", timezone: "UTC", postsPerWeek: { instagram: 7 }, pillars }).length, 0);
 });
 
 await check("planSlots: no video and no video-only platforms while video isn't set up", () => {
-  const slots = planSlots({ weekStart: "2026-11-02", timezone: "UTC", postsPerWeek: { instagram: 5, tiktok: 3, youtube: 2 }, pillars, goal: null, videoAllowed: false });
+  const slots = planSlots({ weekStart: "2026-11-02", timezone: "UTC", postsPerWeek: { instagram: 5, tiktok: 3, youtube: 2 }, pillars, videoAllowed: false });
   assert.equal(slots.length, 5);
   assert.ok(slots.every((s) => s.format !== "video" && !s.platforms.includes("tiktok") && !s.platforms.includes("youtube")));
   assert.deepEqual(allowedFormats(["tiktok"], false), []);
@@ -145,9 +147,10 @@ await check("avoidRepeats: swaps a back-to-back repeat on a shared platform", ()
 
 // ---------- Creative Director ----------
 
-const item = { id: "i1", platforms: ["instagram", "linkedin"], format: "static" } as unknown as PlanItem;
+const item = { id: "i1", platforms: ["instagram", "linkedin"], format: "static", style: null } as unknown as PlanItem;
 const ctx = {
   item,
+  rules: contentRules(null),
   ctaLinks: { website: "https://acme.com", booking: "https://acme.com/book" },
   avoidWords: ["cheap"],
   bible: { neverSay: ["guaranteed"] },
@@ -158,6 +161,8 @@ const book: FactBook = {
   ref: (l) => ({ O1: "offering:o1", R1: "proof:r1", C1: "chunk:c1" })[String(l ?? "").replace(/^\[|\]$/g, "").toUpperCase()] ?? null,
   asset: (l) => (l === "G1" ? "00000000-0000-4000-8000-000000000001" : null),
   priceLabels: new Set(["O1"]),
+  moment: () => null,
+  video: null,
 };
 const raw = (over: Record<string, unknown> = {}) =>
   rawBriefSchema.parse({
@@ -214,6 +219,83 @@ await check("checkBrief: word limits, never-say words, urgency without an offer"
   assert.ok(problems.some((p) => p.startsWith("The headline has")));
   assert.ok(problems.some((p) => p.includes("cheap") && p.includes("guaranteed")));
   assert.ok(problems.some((p) => p.includes("urgency")));
+});
+
+// ---------- The client's content choices ----------
+
+await check("contentRules: reads the onboarding answers, open rules when unanswered", () => {
+  const open = contentRules(null);
+  assert.deepEqual([open.goals, open.mix, open.people, open.showLogo, open.cta], [[], null, null, true, null]);
+  const r = contentRules({
+    content_prefs: { goals: ["sales", "followers", "bogus"], mix: "images", image_styles: ["tips", "x"], video_styles: ["showcase"], people: "none", logo: "never" },
+    primary_cta: "book",
+    music_mood: "calm",
+    industry: "health",
+  });
+  assert.deepEqual(r.goals, ["sales", "followers"]);
+  assert.deepEqual(r.imageStyles, ["tips"]);
+  assert.deepEqual(r.videoStyles, []); // images only: no video styles
+  assert.equal(r.showLogo, false);
+  assert.equal(r.cta, "book");
+  assert.ok(r.industryNeverSay.length > 0);
+  // Older businesses: the single goal column
+  assert.deepEqual(contentRules({ primary_goal: "leads" }).goals, ["leads"]);
+});
+
+await check("planSlots: images only means no videos and no video-only platforms", () => {
+  const slots = planSlots({ weekStart: "2026-11-02", timezone: "UTC", postsPerWeek: { instagram: 7, tiktok: 3 }, pillars, mix: "images" });
+  assert.equal(slots.length, 7);
+  assert.ok(slots.every((s) => s.format !== "video" && !s.platforms.includes("tiktok")));
+});
+
+await check("planSlots: the content mix sets the share of videos", () => {
+  const videos = (mix: "mostly-images" | "balanced" | "mostly-videos") =>
+    planSlots({ weekStart: "2026-11-02", timezone: "UTC", postsPerWeek: { instagram: 20 }, pillars, mix }).filter((s) => s.format === "video").length;
+  const [few, half, most] = [videos("mostly-images"), videos("balanced"), videos("mostly-videos")];
+  assert.ok(few < half && half < most, `${few} < ${half} < ${most}`);
+  assert.ok(most >= 12, `mostly videos: ${most} of 20`);
+});
+
+await check("planSlots: styles follow the client's picks, in priority order, never twice in a row", () => {
+  // Only single-image styles picked: no carousels
+  const promo = planSlots({ weekStart: "2026-11-02", timezone: "UTC", postsPerWeek: { instagram: 7 }, pillars, mix: "images", styles: { image: ["promo", "product"], video: [] } });
+  assert.ok(promo.every((s) => s.format === "static" || s.format === "carousel"));
+  assert.ok(promo.filter((s) => s.format === "carousel").every((s) => s.style === "product"), "promo can't be a carousel");
+  assert.ok(promo.filter((s) => s.format === "static").every((s) => s.style === "promo" || s.style === "product"));
+  // Tips only fits carousels, so statics have no style to use and aren't planned
+  const tips = planSlots({ weekStart: "2026-11-02", timezone: "UTC", postsPerWeek: { instagram: 5 }, pillars, mix: "images", styles: { image: ["tips"], video: [] } });
+  assert.ok(tips.every((s) => s.format === "carousel" && s.style === "tips"), tips.map((s) => s.format).join(","));
+  // First pick is used most
+  const ranked = planSlots({ weekStart: "2026-11-02", timezone: "UTC", postsPerWeek: { facebook: 14 }, pillars, mix: "images", styles: { image: ["product", "life", "review"], video: [] } });
+  const count = (style: string) => ranked.filter((s) => s.style === style).length;
+  assert.ok(count("product") > count("review"), `${count("product")} > ${count("review")}`);
+});
+
+await check("stylesFor: no people means no people styles; talking to camera is made as a voice-over for now", () => {
+  assert.ok(!stylesFor("static", { image: ["people", "product"], video: [] }, "none").includes("people"));
+  assert.deepEqual(stylesFor("video", { image: [], video: ["talking", "showcase"] }, "real"), ["faceless", "showcase"]);
+  assert.deepEqual(stylesFor("video", { image: [], video: ["talking", "ugc"] }, "none"), []);
+});
+
+await check("planSlots: two goals split about two thirds to one third", () => {
+  const slots = planSlots({ weekStart: "2026-11-02", timezone: "UTC", postsPerWeek: { instagram: 9 }, pillars: [], goals: ["sales", "followers"] });
+  assert.equal(slots.filter((s) => s.goal === "sales").length, 6);
+  assert.equal(slots.filter((s) => s.goal === "followers").length, 3);
+  // Without pillars the funnel stage follows the slot's goal
+  assert.ok(slots.every((s) => s.funnelStage === (s.goal === "sales" ? "bofu" : "tofu")));
+});
+
+await check("assembleBrief: the client's next step wins over a generic website link", () => {
+  const withCta = { ...ctx, rules: { ...ctx.rules, cta: "book" } } as CreativeContext;
+  assert.equal(assembleBrief(raw({ cta: { label: "Book a clean", link: "website" } }), "static", withCta, book).brief!.cta.link, "booking");
+});
+
+await check("checkBrief: no people means no person in the pictures (\"no people\" sentences are fine)", () => {
+  const none = { ...ctx, rules: { ...ctx.rules, people: "none" } } as CreativeContext;
+  const withWoman = assembleBrief(raw({ imagePrompt: "A smiling woman wiping a spotless kitchen counter in morning light" }), "static", none, book).brief!;
+  assert.ok(checkBrief(withWoman, none).some((p) => p.includes("no people")));
+  const empty = assembleBrief(raw({ imagePrompt: "A spotless kitchen in morning light. No people in the frame." }), "static", none, book).brief!;
+  assert.ok(!checkBrief(empty, none).some((p) => p.includes("no people")));
 });
 
 await check("findBanned: whole words only, any case", () => {
@@ -291,22 +373,22 @@ await check("buildComposeJob: inputs in order, end card looped, captions with fo
     height: 1920,
     clipUrls: ["https://x.kie.ai/a.mp4", "https://x.kie.ai/b.mp4"],
     sceneDurations: [3, 4],
-    voiceKeys: ["audio/m/voice-0.mp3", "audio/m/voice-1.mp3"],
-    musicKey: "audio/m/music.mp3",
-    subtitlesKey: "videos/m/captions.ass",
-    fontKeys: ["fonts/inter-800.ttf"],
-    endCardKey: "videos/m/end.png",
-    outputKey: "videos/m/out.mp4",
+    voiceKeys: ["work/b/m/voice-0.mp3", "work/b/m/voice-1.mp3"],
+    musicKey: "work/b/m/music.mp3",
+    subtitlesKey: "work/b/m/captions.ass",
+    fontKeys: ["shared/fonts/inter-800.ttf"],
+    endCardKey: "work/b/m/end.png",
+    outputKey: "b/media/m/9x16.mp4",
   });
   assert.deepEqual(job.inputs, [
     "https://x.kie.ai/a.mp4",
     "https://x.kie.ai/b.mp4",
-    "audio/m/voice-0.mp3",
-    "audio/m/voice-1.mp3",
-    "audio/m/music.mp3",
-    "videos/m/end.png",
-    "videos/m/captions.ass",
-    "fonts/inter-800.ttf",
+    "work/b/m/voice-0.mp3",
+    "work/b/m/voice-1.mp3",
+    "work/b/m/music.mp3",
+    "work/b/m/end.png",
+    "work/b/m/captions.ass",
+    "shared/fonts/inter-800.ttf",
   ]);
   const graph = job.args[job.args.indexOf("-filter_complex") + 1];
   assert.ok(job.args.join(" ").includes("-loop 1 -t 2.50 -i {input5}"));
@@ -318,7 +400,7 @@ await check("buildComposeJob: inputs in order, end card looped, captions with fo
 });
 
 await check("buildComposeJob: silent video without voice or music", () => {
-  const job = buildComposeJob({ width: 1080, height: 1350, clipUrls: ["https://x.kie.ai/a.mp4"], sceneDurations: [5], outputKey: "videos/m/out.mp4" });
+  const job = buildComposeJob({ width: 1080, height: 1350, clipUrls: ["https://x.kie.ai/a.mp4"], sceneDurations: [5], outputKey: "b/media/m/9x16.mp4" });
   assert.ok(job.args.includes("-an"));
   assert.equal(job.inputs.length, 1);
 });

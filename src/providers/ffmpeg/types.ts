@@ -25,6 +25,8 @@ export interface RenderBackend {
   captionsInGraph: boolean;
   ready(): Promise<Readiness>;
   submit(job: RenderJob): Promise<string>;
+  /** Remotion compositions (our worker only) */
+  render?(template: string, props: Record<string, unknown>, outputKey: string): Promise<string>;
   /** `outputKey` is passed back because some backends need it to store the finished file */
   status(id: string, outputKey: string): Promise<RenderStatus>;
 }

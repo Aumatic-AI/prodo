@@ -5,7 +5,6 @@ import { Library, X } from "lucide-react";
 import type { Voice } from "@/providers/ai/registry";
 import { Alert } from "../../components/blocks";
 import { button, label } from "@/components/kit/styles";
-import { useOnboarding, useSlice } from "../../store/OnboardingStoreProvider";
 import { useVoiceSearch, type VoiceFilterState } from "../../hooks/useVoiceSearch";
 import { useAudioPreview } from "../../hooks/useAudioPreview";
 import { voiceLanguageFor } from "../../config";
@@ -14,10 +13,13 @@ import { VoiceCard } from "./voices/VoiceCard";
 
 const SUGGESTED = 6;
 
-/** A few suggested voices to play and pick, plus the full library in a modal. */
-export function VoicePicker() {
-  const { value, update } = useSlice("content");
-  const language = useOnboarding((s) => s.draft.basics.language);
+export interface VoiceChoice {
+  voiceId: string | null;
+  voiceName: string | null;
+}
+
+/** A few suggested voices to play and pick, plus the full library in a modal. Used by onboarding and Settings → Content. */
+export function VoicePicker({ language, value, onChange }: { language: string; value: VoiceChoice; onChange: (voice: VoiceChoice) => void }) {
   const [open, setOpen] = useState(false);
   const preview = useAudioPreview();
 
@@ -30,7 +32,7 @@ export function VoicePicker() {
   const firstPage = data?.pages[0];
   const suggested = firstPage?.voices.slice(0, SUGGESTED) ?? [];
 
-  const pick = (voice: Voice) => update("content", { voiceId: voice.voice_id, voiceName: voice.name });
+  const pick = (voice: Voice) => onChange({ voiceId: voice.voice_id, voiceName: voice.name });
 
   function openLibrary() {
     preview.stop();
@@ -55,7 +57,7 @@ export function VoicePicker() {
           </span>
         </div>
         {value.voiceId && (
-          <button type="button" className={button({ variant: "danger", size: "sm" })} onClick={() => update("content", { voiceId: null, voiceName: null })}>
+          <button type="button" className={button({ variant: "danger", size: "sm" })} onClick={() => onChange({ voiceId: null, voiceName: null })}>
             <X size={14} />
             Remove voice
           </button>

@@ -1,6 +1,5 @@
-import { env } from "@/config/env";
 import { publisherFor } from "@/providers/publishing/registry";
-import { urlFor } from "@/providers/storage/supabase-storage";
+import { publicUrl } from "@/providers/storage/paths";
 import { optional } from "@/agents/run";
 import { embedSources } from "@/agents/research/brain";
 import { businessBrief } from "@/agents/research/context";
@@ -266,7 +265,7 @@ export const socialMarketAnalyst = defineResearchAgent("social_market_analyst", 
   const firstVideo = (posts: Footprint["posts"]) => posts.find((p) => p.videoUrl)?.videoUrl;
   const otherVideos: VideoToAnalyze[] = [
     ...ctx.referenceVideoKeys.map((key) => ({
-      url: urlFor(env.NEXT_PUBLIC_SUPABASE_URL, key),
+      url: publicUrl(key),
       platform: "upload",
       source: "reference" as const,
       label: "a video you uploaded",
