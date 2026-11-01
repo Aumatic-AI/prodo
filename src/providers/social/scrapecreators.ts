@@ -1,7 +1,8 @@
 import { env } from "@/config/env";
 import { PRICING } from "@/config/pricing";
-import { notConfigured } from "@/core/errors";
-import { request, statusError } from "@/providers/http";
+import { AppError, notConfigured } from "@/core/errors";
+import { cleanReason } from "@/core/error-text";
+import { replyError, request, type KnownErrors } from "@/providers/http";
 import type { Result, Usage } from "@/providers/usage";
 import type { AdCreative, AdvertiserMatch, ReadablePlatform, SocialPost, SocialProfile, WebResult } from "./types";
 
@@ -18,20 +19,54 @@ function usage(credits: number): Usage {
   };
 }
 
+/** "instagram profile, royalgypsy3": the endpoint in words and what it was asked for, for error messages */
+function describe(path: string, params: Record<string, string | undefined>): string {
+  const words = path
+    .split("/")
+    .filter((p) => p && !/^v\d+$/.test(p))
+    .join(" ")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .toLowerCase();
+  const subject = params.handle ?? params.query ?? params.url ?? params.pageId ?? params.domain;
+  return subject ? `${words}, ${cleanReason(subject, 80)}` : words;
+}
+
 /** GET with the key. Returns null for "not found" so a missing profile isn't an error. */
 async function get(path: string, params: Record<string, string | undefined>): Promise<{ body: any | null; usage: Usage }> {
-  if (!env.SCRAPECREATORS_API_KEY) throw notConfigured(SERVICE);
+  if (!env.SCRAPECREATORS_API_KEY) throw notConfigured(SERVICE, "SCRAPECREATORS_API_KEY is empty on the server");
   const qs = new URLSearchParams(Object.entries(params).filter((e): e is [string, string] => !!e[1]));
+  const what = describe(path, params);
   const res = await request(SERVICE, `${API_BASE}${path}?${qs}`, {
     headers: { "x-api-key": env.SCRAPECREATORS_API_KEY },
   });
-  const body = await res.json().catch(() => ({}));
-  if (res.status === 404) return { body: null, usage: usage(Number(body?.credits_charged ?? 0)) };
+  const text = await res.text().catch(() => "");
+  let body: any = {};
+  try {
+    body = text ? JSON.parse(text) : {};
+  } catch {
+    if (res.ok) throw new AppError(`${SERVICE} (${what}) sent a reply that isn't JSON: "${cleanReason(text, 120)}".`, "PROVIDER_DOWN", true);
+  }
+  // Not found, including the older endpoints' 200 placeholders (error "not_found", errorStatus 404)
+  if (res.status === 404 || body?.error === "not_found" || body?.errorStatus === 404) {
+    return { body: null, usage: usage(Number(body?.credits_charged ?? 0)) };
+  }
   if (!res.ok || body?.success === false) {
-    throw statusError(SERVICE, res.ok ? 502 : res.status, body?.message ?? body?.error);
+    // Its error is a short code ("forbidden") with the sentence in `message`
+    const parts = { message: body?.message, code: typeof body?.error === "string" ? body.error : undefined };
+    throw replyError(SERVICE, res, parts, text, what, KNOWN, BY_MESSAGE);
   }
   return { body, usage: usage(Number(body?.credits_charged ?? 1)) };
 }
+
+// What its docs say its failures mean (docs.scrapecreators.com/introduction); only some carry a code
+const KNOWN: KnownErrors = {
+  forbidden: { say: "the profile or post is age-restricted, so it can't be read", type: "INVALID_INPUT", retry: false },
+  platform_blocking: { say: "the platform is blocking ScrapeCreators right now", type: "PROVIDER_DOWN", retry: true },
+};
+const BY_MESSAGE: [RegExp, string][] = [
+  [/age restricted/i, "forbidden"],
+  [/blocking us/i, "platform_blocking"],
+];
 
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
 const isoFromSeconds = (s: unknown) => (typeof s === "number" ? new Date(s * 1000).toISOString() : undefined);

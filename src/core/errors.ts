@@ -1,3 +1,5 @@
+import { describeError } from "./error-text";
+
 export type ErrorType =
   | "PROVIDER_DOWN"
   | "RATE_LIMITED"
@@ -30,12 +32,13 @@ export class AppError extends Error {
 /** A login that isn't linked to a business (one login = one business) */
 export const NO_BUSINESS_MESSAGE = "This login isn't linked to a business yet. Ask your admin to check the account.";
 
-export function notConfigured(service: string): AppError {
-  return new AppError(`${service} isn't set up correctly. Please contact your admin.`, "NOT_CONFIGURED", false);
+/** `reason` says what exactly is wrong; by default the service's key or settings are missing on the server. */
+export function notConfigured(service: string, reason = "its API key or settings are missing on the server"): AppError {
+  return new AppError(`${service} isn't set up: ${reason}.`, "NOT_CONFIGURED", false);
 }
 
+/** The exact message for any error: ours as written, anyone else's described by describeError. */
 export function userMessage(err: unknown): string {
   if (err instanceof AppError) return err.message;
-  if (err instanceof Error) return err.message;
-  return "Something went wrong";
+  return describeError(err);
 }

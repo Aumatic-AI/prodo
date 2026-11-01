@@ -3,6 +3,7 @@ import { Vibrant } from "node-vibrant/node";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { LIMITS } from "@/config/limits";
 import { AppError } from "@/core/errors";
+import { statusText } from "@/core/error-text";
 import { request } from "@/providers/http";
 import { logoVariantKey } from "@/providers/storage/paths";
 import { upload } from "@/providers/storage/r2";
@@ -21,7 +22,7 @@ export interface LogoAnalysis {
 
 export async function downloadImage(url: string): Promise<Buffer> {
   const res = await request("Storage", url, {}, LIMITS.fetchTimeoutMs);
-  if (!res.ok) throw new AppError("Couldn't open the logo file. Upload it again in Basics.", "INVALID_INPUT", false);
+  if (!res.ok) throw new AppError(`Couldn't open the logo file (storage answered ${statusText(res.status)}). Upload it again in Basics.`, "INVALID_INPUT", false);
   return Buffer.from(await res.arrayBuffer());
 }
 

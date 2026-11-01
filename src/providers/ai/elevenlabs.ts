@@ -3,7 +3,8 @@ import { LIMITS } from "@/config/limits";
 import { MODELS } from "@/config/models";
 import { PRICING } from "@/config/pricing";
 import { AppError, notConfigured } from "@/core/errors";
-import { request, statusError } from "@/providers/http";
+import { quoted } from "@/core/error-text";
+import { replyError, request, type KnownErrors } from "@/providers/http";
 import type { Result } from "@/providers/usage";
 
 const SERVICE = "ElevenLabs";
@@ -28,20 +29,54 @@ export function languageCode(language?: string | null): string | undefined {
 }
 
 function headers() {
-  if (!env.ELEVENLABS_API_KEY) throw notConfigured(SERVICE);
+  if (!env.ELEVENLABS_API_KEY) throw notConfigured(SERVICE, "ELEVENLABS_API_KEY is empty on the server");
   return { "xi-api-key": env.ELEVENLABS_API_KEY, "Content-Type": "application/json" };
 }
 
-// ElevenLabs puts the real reason in detail.status
+// Its documented codes (elevenlabs.io/docs/eleven-api/resources/errors). Newer replies put the code
+// in detail.code, older ones (and music) in detail.status; vendorParts reads both.
+const KNOWN: KnownErrors = {
+  invalid_api_key: { say: "it rejected our API key", type: "NOT_CONFIGURED", retry: false },
+  missing_api_key: { say: "the API key was missing from the request", type: "NOT_CONFIGURED", retry: false },
+  detected_unusual_activity: { say: "it blocked the free plan for unusual activity (a paid plan avoids this)", type: "NOT_CONFIGURED", retry: false },
+  insufficient_credits: { say: "it's out of credit", type: "OUT_OF_CREDIT", retry: false },
+  quota_exceeded: { say: "it's out of credit", type: "OUT_OF_CREDIT", retry: false },
+  feature_not_available: { say: "the plan doesn't include this", type: "NOT_CONFIGURED", retry: false },
+  subscription_required: { say: "this needs a paid plan", type: "NOT_CONFIGURED", retry: false },
+  model_access_denied: { say: "the plan doesn't include this voice model", type: "NOT_CONFIGURED", retry: false },
+  voice_access_denied: { say: "this account can't use that voice", type: "INVALID_INPUT", retry: false },
+  insufficient_permissions: { say: "the API key isn't allowed to do this", type: "NOT_CONFIGURED", retry: false },
+  voice_not_found: { say: "the voice isn't available any more; pick another voice", type: "INVALID_INPUT", retry: false },
+  model_not_found: { say: "it doesn't have this voice model", type: "NOT_CONFIGURED", retry: false },
+  text_too_long: { say: "the script is longer than the voice model takes in one go", type: "INVALID_INPUT", retry: false },
+  max_character_limit_exceeded: { say: "the script is longer than the voice model takes in one go", type: "INVALID_INPUT", retry: false },
+  empty_text: { say: "the script was empty", type: "INVALID_INPUT", retry: false },
+  invalid_text: { say: "it couldn't read the script", type: "INVALID_INPUT", retry: false },
+  invalid_voice_settings: { say: "it didn't accept the voice settings", type: "INVALID_INPUT", retry: false },
+  invalid_output_format: { say: "the plan doesn't include this audio format", type: "NOT_CONFIGURED", retry: false },
+  bad_prompt: { say: "it rejected the music description (it names an artist, a band or lyrics it can't use)", type: "CONTENT_BLOCKED", retry: false },
+  bad_composition_plan: { say: "it rejected the music plan (it names an artist, a band or lyrics it can't use)", type: "CONTENT_BLOCKED", retry: false },
+  rate_limit_exceeded: { say: "too many requests; it asked us to wait", type: "RATE_LIMITED", retry: true },
+  concurrent_limit_exceeded: { say: "too many voice or music jobs at once for the plan", type: "RATE_LIMITED", retry: true },
+  too_many_concurrent_requests: { say: "too many voice or music jobs at once for the plan", type: "RATE_LIMITED", retry: true },
+  system_busy: { say: "it's overloaded right now", type: "RATE_LIMITED", retry: true },
+  internal_error: { say: "it had an internal error", type: "PROVIDER_DOWN", retry: true },
+  service_unavailable: { say: "it's unavailable right now", type: "PROVIDER_DOWN", retry: true },
+  maintenance: { say: "it's down for maintenance", type: "PROVIDER_DOWN", retry: true },
+};
+
 async function errorFrom(res: Response): Promise<AppError> {
-  const body = await res.json().catch(() => ({}));
-  const status: string | undefined = body?.detail?.status;
-  if (status === "quota_exceeded") return new AppError("ElevenLabs is out of credit. Please contact your admin.", "OUT_OF_CREDIT", false);
-  if (status === "voice_not_found") return new AppError("This voice isn't available any more. Pick another voice and try again.", "INVALID_INPUT", false);
-  if (status === "too_many_concurrent_requests" || status === "system_busy") {
-    return new AppError("The voice service is busy. Try again in a few minutes.", "RATE_LIMITED", true, 30_000);
+  const text = await res.text().catch(() => "");
+  let body: any;
+  try {
+    body = text ? JSON.parse(text) : undefined;
+  } catch {
+    body = undefined;
   }
-  return statusError(SERVICE, res.status, body?.detail?.message);
+  const err = replyError(SERVICE, res, body, text, undefined, KNOWN);
+  // A rejected music description comes with a suggestion that would pass
+  const suggestion = body?.detail?.data?.prompt_suggestion;
+  return suggestion ? new AppError(`${err.message.replace(/\.$/, "")} It suggests${quoted(suggestion)}.`, err.type, err.retryable, err.retryAfterMs) : err;
 }
 
 export interface Speech {

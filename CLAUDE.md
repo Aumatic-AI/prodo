@@ -57,6 +57,7 @@ npm run smoke scripts/check/weekly-logic.ts      # Planner slots, content rules,
 npm run smoke scripts/check/video-logic.ts       # Storylines, video brief checks, looks, the video timeline
 npm run smoke scripts/check/research-logic.ts    # Agents 1–4: ranking, chunking, colours, baselines
 npm run smoke scripts/check/learning-logic.ts    # Engagement rate, baselines, scores, learnings
+npm run smoke scripts/check/error-messages.ts    # Every error says who failed, what they were doing and why (vendor replies faked)
 npm run smoke scripts/check/render-samples.tsx <dir>                 # Every ad layout, slide and end card as PNGs
 npm run smoke scripts/check/video-timeline.ts <out.json> [preset]    # A real brand's sample video Timeline
 cd worker && node scripts/render-local.ts <timeline.json> <out.mp4>  # Render it on this computer (free)
@@ -166,7 +167,13 @@ One login owns one business (`businesses.owner_id`). Creating a login in Supabas
 
 ### Error handling chain
 
-Vendor error → adapter translates to `AppError` (type + plain message + retry rule) → job converts via `toInngestError` → Inngest retries or stops → `onFailure` saves the message on the DB row → screen shows it. Raw vendor errors never reach the browser. Starting a job can fail too: `restartItem()` and `startGenerating()` mark the row failed with a plain message instead of leaving it "planned" or "generating".
+Vendor error → adapter translates to `AppError` (type + exact message + retry rule) → job converts via `toInngestError` → Inngest retries or stops → `onFailure` saves the message on the DB row → screen shows it.
+
+- **Messages are exact**: who failed, what they were doing, the HTTP status and the vendor's own reason, e.g. `Firecrawl (reading royal-gypsy.com/about) is out of credit (402 Payment Required): "Insufficient credits"`. Never a bare "failed" or "busy".
+- Build them with the helpers: `statusError` / `jsonOrThrow` / `replyError` / `request` (`providers/http.ts`, with a `what` label; each adapter lists its vendor's documented codes in a `KNOWN` table), `vendorDetail`, `cleanReason`, `networkReason` (`core/error-text.ts`). `userMessage(err)` describes anything else (database errors with their code in words, network codes, code bugs). Vendor text always goes through `cleanReason`, which removes keys, tokens and account ids.
+- A failed agent step stores its message on `agent_runs.error`, with `output.retrying` when Inngest tries again; the activity feed shows both.
+
+Starting a job can fail too: `restartItem()` and `startGenerating()` mark the row failed with a plain message instead of leaving it "planned" or "generating".
 
 ### Inngest jobs
 

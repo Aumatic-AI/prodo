@@ -58,7 +58,15 @@ export function assembleBible(core: BibleCore, audience: Audience, book: SourceB
   const toneSummary = toClaim(core.tone.summary);
   if (!positioning || !valueProp || !toneSummary) {
     // Retryable: the next attempt usually cites properly
-    throw new AppError("The Brand Bible draft had unsupported core statements. Trying again.", "UNKNOWN", true);
+    const core3: [string, RawClaim, Claim | null][] = [
+      ["positioning", core.positioning, positioning],
+      ["value proposition", core.valueProp, valueProp],
+      ["tone summary", core.tone.summary, toneSummary],
+    ];
+    const problems = core3
+      .filter(([, , kept]) => !kept)
+      .map(([name, raw]) => `the ${name} ${book.toRefs(raw.sources).length ? "uses a word from the never-say list" : "cites no fact we have"}`);
+    throw new AppError(`The Brand Bible draft was dropped: ${problems.join("; ")}.`, "UNKNOWN", true);
   }
 
   const offerStack: OfferStackItem[] = [];
@@ -82,7 +90,11 @@ export function assembleBible(core: BibleCore, audience: Audience, book: SourceB
 
   const pillarsRaw = audience.pillars.slice(0, PILLARS.max);
   if (personas.length < PERSONAS.min || pillarsRaw.length < PILLARS.min) {
-    throw new AppError("The draft had too few personas or content pillars. Trying again.", "UNKNOWN", true);
+    throw new AppError(
+      `The Brand Bible draft was dropped: it had ${personas.length} usable persona${personas.length === 1 ? "" : "s"} (needs ${PERSONAS.min}; ${audience.personas.length - personas.length} cited no fact or used a never-say word) and ${pillarsRaw.length} content pillar${pillarsRaw.length === 1 ? "" : "s"} (needs ${PILLARS.min}).`,
+      "UNKNOWN",
+      true
+    );
   }
   const shares = normaliseShares(pillarsRaw.map((p) => p.share));
   const pillars: BiblePillar[] = pillarsRaw.map((p, i) => ({

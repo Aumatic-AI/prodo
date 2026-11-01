@@ -1,5 +1,5 @@
 import { businessDb } from "@/lib/supabase/business";
-import { userMessage } from "@/core/errors";
+import { AppError, userMessage } from "@/core/errors";
 import { toInngestError } from "@/jobs/to-inngest-error";
 import { sumUsage, type Usage } from "@/providers/usage";
 import { assertBudget } from "./budget";
@@ -30,6 +30,9 @@ export interface AgentStepOptions<T> {
   input?: unknown;
   /** The step's id (set by agentStep), for the trace log */
   stepId?: string;
+  /** Inngest's attempt at this step (0-based) and how many it gets, so a failure can say whether another try follows */
+  attempt?: number;
+  maxAttempts?: number;
   /** One plain line for the activity feed, e.g. "Read 23 pages" */
   summary?: (result: T) => string;
   output?: (result: T) => unknown;
@@ -122,20 +125,28 @@ async function runStep<T>(opts: AgentStepOptions<T>, fn: (track: Track) => Promi
     );
     return result;
   } catch (err) {
-    // Money spent before the failure still counts
-    await finish({ status: "failed", error: userMessage(err) });
+    // Money spent before the failure still counts. `retrying` tells the activity feed another try follows.
+    await finish({ status: "failed", error: userMessage(err), output: willRetry(err, opts) ? { retrying: true } : null });
     throw err;
   }
 }
 
+/** Inngest will try the step again: attempts are left, and the error isn't one a retry can't fix. */
+function willRetry(err: unknown, opts: Pick<AgentStepOptions<unknown>, "attempt" | "maxAttempts">): boolean {
+  if (opts.attempt === undefined || !opts.maxAttempts) return false;
+  if (err instanceof AppError && !err.retryable) return false;
+  return opts.attempt + 1 < opts.maxAttempts;
+}
+
 /**
  * For work the agent can do without (one page, one competitor): returns null instead of failing
- * the whole run once Inngest has used up its retries.
+ * the whole run once Inngest has used up its retries. `failed` gets the exact reason, for a later message.
  */
-export async function optional<T>(work: Promise<T>): Promise<T | null> {
+export async function optional<T>(work: Promise<T>, failed?: (message: string) => void): Promise<T | null> {
   try {
     return await work;
-  } catch {
+  } catch (err) {
+    failed?.(userMessage(err));
     return null;
   }
 }

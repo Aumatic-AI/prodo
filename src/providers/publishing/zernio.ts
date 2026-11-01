@@ -2,14 +2,15 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { env } from "@/config/env";
 import { AppError, notConfigured } from "@/core/errors";
 import { businessDb } from "@/lib/supabase/business";
-import { request, statusError } from "@/providers/http";
+import { quoted } from "@/core/error-text";
+import { replyError, request, type KnownErrors } from "@/providers/http";
 import type { ConnectedAccount, PublishResult, PublishStatus, PublishTarget, Publisher } from "./types";
 
 const SERVICE = "Zernio";
 export const ZERNIO_API = "https://zernio.com/api/v1";
 
 export function zernioHeaders(): Record<string, string> {
-  if (!env.ZERNIO_API_KEY) throw notConfigured(SERVICE);
+  if (!env.ZERNIO_API_KEY) throw notConfigured(SERVICE, "ZERNIO_API_KEY is empty on the server");
   return { Authorization: `Bearer ${env.ZERNIO_API_KEY}`, "Content-Type": "application/json" };
 }
 
@@ -28,13 +29,53 @@ function platformError(platform: string, reason: string): string {
   return `${name} rejected the post: "${reason}"`;
 }
 
+// Its documented error codes (docs.zernio.com/guides/error-handling). Errors are
+// { error, code, param, details, platformError }; `code` is stable, `error` is its sentence.
+const KNOWN: KnownErrors = {
+  missing_credentials: { say: "the API key was missing from the request", type: "NOT_CONFIGURED", retry: false },
+  invalid_credentials: { say: "it rejected our API key", type: "NOT_CONFIGURED", retry: false },
+  PAYMENT_REQUIRED: { say: "the Zernio plan needs an upgrade or a card", type: "OUT_OF_CREDIT", retry: false },
+  analytics_addon_required: { say: "post analytics need Zernio's analytics add-on", type: "NOT_CONFIGURED", retry: false },
+  PROFILE_OVER_LIMIT: { say: "this business's Zernio profile is beyond the plan's profile limit", type: "NOT_CONFIGURED", retry: false },
+  ACCOUNT_DISCONNECTED: { say: "the social account is disconnected; reconnect it in Settings → Connected accounts", type: "ACCOUNT_DISCONNECTED", retry: false },
+  ACCOUNT_NOT_ENABLED_FOR_POSTING: { say: "the account is connected for ads only; reconnect it for posting", type: "ACCOUNT_DISCONNECTED", retry: false },
+  insufficient_permissions: { say: "the API key isn't allowed to do this", type: "NOT_CONFIGURED", retry: false },
+  feature_not_available: { say: "the Zernio plan doesn't include this", type: "NOT_CONFIGURED", retry: false },
+  post_not_found: { say: "the post doesn't exist on Zernio any more", type: "INVALID_INPUT", retry: false },
+  account_not_found: { say: "the social account doesn't exist on Zernio any more; reconnect it", type: "ACCOUNT_DISCONNECTED", retry: false },
+  missing_required_field: { say: "a field it needs was missing", type: "INVALID_INPUT", retry: false },
+  invalid_field_value: { say: "it didn't accept a value we sent", type: "INVALID_INPUT", retry: false },
+  invalid_json_body: { say: "it couldn't read the request", type: "INVALID_INPUT", retry: false },
+  mutually_exclusive_fields: { say: "two settings we sent can't be used together", type: "INVALID_INPUT", retry: false },
+  idempotency_conflict: { say: "the same request is still being processed", type: "RATE_LIMITED", retry: true },
+  profile_name_conflict: { say: "a profile with this name already exists", type: "INVALID_INPUT", retry: false },
+  profile_external_id_conflict: { say: "this business already has a profile", type: "INVALID_INPUT", retry: false },
+  rate_limited: { say: "too many requests; it asked us to wait", type: "RATE_LIMITED", retry: true },
+  platform_error: { say: "the social platform rejected it", type: "INVALID_INPUT", retry: false },
+  platform_api_error: { say: "the social platform failed to answer", type: "PROVIDER_DOWN", retry: true },
+  internal_error: { say: "it had an internal error", type: "PROVIDER_DOWN", retry: true },
+  temporarily_unavailable: { say: "it timed out waiting for the platform (the post may have gone through; check before sending again)", type: "PROVIDER_DOWN", retry: true },
+};
+
 export async function zernioCall(path: string, init: RequestInit = {}): Promise<{ status: number; body: any }> {
   const res = await request(SERVICE, `${ZERNIO_API}${path}`, { ...init, headers: { ...zernioHeaders(), ...init.headers } });
-  const body = await res.json().catch(() => ({}));
+  const text = await res.text().catch(() => "");
+  let body: any = {};
+  try {
+    body = text ? JSON.parse(text) : {};
+  } catch {
+    body = {};
+  }
   if (!res.ok) {
     if (res.status === 409 && body?.platform) throw new AppError(platformError(body.platform, "duplicate"), "INVALID_INPUT", false);
-    const retryAfter = Number(res.headers.get("retry-after")) || undefined;
-    throw statusError(SERVICE, res.status, body?.error ?? body?.message, retryAfter);
+    // The same content went to the same account in the last 24 hours (this 409 has no code)
+    if (res.status === 409 && body?.details?.existingPostId) {
+      throw new AppError(`${SERVICE}: the same post went to this account in the last 24 hours (post ${body.details.existingPostId})${quoted(body.error)}.`, "INVALID_INPUT", false);
+    }
+    // The platform's own words, when Zernio passes them on (Meta's error_user_msg)
+    const platformSaid = body?.platformError?.error_user_msg ?? body?.platformError?.message;
+    const message = [body?.error ?? body?.message, platformSaid].filter((m) => typeof m === "string" && m).join(" · ") || undefined;
+    throw replyError(SERVICE, res, { message, code: body?.code }, text, path.split("?")[0], KNOWN);
   }
   return { status: res.status, body };
 }
@@ -66,7 +107,12 @@ async function createProfile(name: string, businessId: string): Promise<string> 
     const found = (list.profiles ?? []).find((p: { externalId?: string }) => p.externalId === tag);
     if (found?._id) return found._id;
   }
-  throw statusError(SERVICE, res.ok ? 502 : res.status, body?.error ?? body?.message);
+  if (res.ok) throw new AppError(`${SERVICE} (creating this business's profile) answered without a profile id.`, "PROVIDER_DOWN", true);
+  // "Profile limit exceeded" comes as a 403 with no code: the plan's profile cap is reached
+  if (res.status === 403 && /profile limit/i.test(body?.error ?? "")) {
+    throw new AppError(`${SERVICE}: the plan's profile limit is reached, so this business can't get its own profile${quoted(body.error)}.`, "NOT_CONFIGURED", false);
+  }
+  throw replyError(SERVICE, res, { message: body?.error ?? body?.message, code: body?.code }, "", "creating this business's profile", KNOWN);
 }
 
 /**

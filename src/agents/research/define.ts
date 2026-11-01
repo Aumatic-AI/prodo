@@ -4,6 +4,7 @@ import { inngest } from "@/jobs/client";
 import { businessDb } from "@/lib/supabase/business";
 import { setAgentState, type ResearchAgent } from "@/core/onboarding/research";
 import { agentStep } from "@/agents/run";
+import { failureMessage } from "@/jobs/to-inngest-error";
 import { trace } from "@/lib/trace";
 import type { Usage } from "@/providers/usage";
 import { loadResearchContext, type ResearchContext } from "./context";
@@ -40,16 +41,17 @@ export function defineResearchAgent(agent: ResearchAgent, run: (kit: AgentKit) =
       id: `agent-${slug}`,
       retries: 2,
       onFailure: async ({ error, event }) => {
-        trace.scope({ runId: event.data.event.data.runId, agent }, () => trace.emit("agent-end", { status: "failed", error: error.message }));
+        const message = failureMessage(error);
+        trace.scope({ runId: event.data.event.data.runId, agent }, () => trace.emit("agent-end", { status: "failed", error: message }));
         await setAgentState(businessDb(event.data.event.data.businessId), agent, {
           state: "failed",
-          error: error.message,
+          error: message,
           finishedAt: new Date().toISOString(),
         });
       },
     },
     { event: `research/${slug}` as ResearchEvent },
-    async ({ event, step }) => {
+    async ({ event, step, attempt, maxAttempts }) => {
       const { runId, businessId } = event.data;
       const db = () => businessDb(businessId);
       // Inngest runs step callbacks outside the handler's async context, so each one sets the trace context
@@ -71,7 +73,8 @@ export function defineResearchAgent(agent: ResearchAgent, run: (kit: AgentKit) =
         traced(() => loadResearchContext(db()))
       )) as ResearchContext;
 
-      const task: AgentKit["task"] = (id, fn, summary) => agentStep(step, id, { agent, businessId, runId, summary }, fn);
+      // attempt is the try of whichever step this request runs, so each failure knows whether another try follows
+      const task: AgentKit["task"] = (id, fn, summary) => agentStep(step, id, { agent, businessId, runId, summary, attempt, maxAttempts }, fn);
 
       const note: string | null = event.data.note ?? null;
       const summary = await run({ businessId, db, runId, note, step, ctx, task });

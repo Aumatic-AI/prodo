@@ -7,7 +7,10 @@ export interface ResearchActivity {
   agent: ResearchAgent | string;
   status: "running" | "done" | "failed";
   summary: string | null;
+  /** Exactly what went wrong, when it failed */
   error: string | null;
+  /** Failed, but Inngest tries the step again */
+  retrying: boolean;
   createdAt: string;
 }
 
@@ -34,7 +37,7 @@ export async function loadProgress(db: SupabaseClient): Promise<ResearchProgress
 
   const { data, error } = await db
     .from("agent_runs")
-    .select("id, agent, status, summary, error, cost_usd, created_at")
+    .select("id, agent, status, summary, error, output, cost_usd, created_at")
     .eq("run_id", research.id)
     .order("created_at", { ascending: false })
     .limit(500);
@@ -51,7 +54,15 @@ export async function loadProgress(db: SupabaseClient): Promise<ResearchProgress
     activity: rows
       .filter((r) => r.summary || r.error || r.status === "running")
       .slice(0, ACTIVITY_LIMIT)
-      .map((r) => ({ id: r.id, agent: r.agent, status: r.status, summary: r.summary, error: r.error, createdAt: r.created_at })),
+      .map((r) => ({
+        id: r.id,
+        agent: r.agent,
+        status: r.status,
+        summary: r.summary,
+        error: r.error,
+        retrying: r.status === "failed" && (r.output as { retrying?: boolean } | null)?.retrying === true,
+        createdAt: r.created_at,
+      })),
     stepsDone,
     costUsd: Number(rows.reduce((sum, r) => sum + Number(r.cost_usd ?? 0), 0).toFixed(4)),
     lastActivityAt,

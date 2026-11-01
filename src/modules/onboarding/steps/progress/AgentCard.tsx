@@ -48,7 +48,7 @@ export function AgentCard({ agent, state, latest, stepsDone }: AgentCardProps) {
         <h2 className="m-0 text-base font-bold">{RESEARCH_AGENT_META[agent].name}</h2>
         <p className="m-0 text-[13px] text-ob-muted">{RESEARCH_AGENT_META[agent].task}</p>
       </div>
-      <p className={cn("m-0 min-h-10 text-sm", current === "failed" ? "text-ob-danger" : "text-ob-ink-soft")} aria-live="polite">
+      <p className={cn("m-0 min-h-10 break-words text-sm", current === "failed" ? "text-ob-danger" : "text-ob-ink-soft")} aria-live="polite">
         {line || (current === "queued" ? "Starting soon…" : "Getting started…")}
       </p>
       {stepsDone > 0 && <span className="text-xs text-ob-faint">{stepsDone} steps done</span>}

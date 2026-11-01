@@ -86,6 +86,8 @@ export async function readWebsite({ db, website, brief, task }: { db: () => Supa
     );
   }
 
+  // Why pages couldn't be read, so "couldn't read any page" can say why
+  const failures: string[] = [];
   const read = await inGroups(map.urls, PARALLEL, (url, i) =>
     optional(
       task(
@@ -107,13 +109,17 @@ export async function readWebsite({ db, website, brief, task }: { db: () => Supa
           };
         },
         (r) => (r.sourceId ? `Read ${shortUrl(url)}${r.changed ? "" : " (unchanged)"}` : `Skipped ${shortUrl(url)}: almost no text`)
-      )
+      ),
+      (message) => failures.push(message)
     )
   );
 
   const pages = read.flatMap((r) => (r?.sourceId ? [{ sourceId: r.sourceId, changed: r.changed }] : []));
   if (!pages.length) {
-    throw new AppError(`We couldn't read any page of ${shortUrl(website)}. Check the website address in Basics, then retry.`, "INVALID_INPUT", false);
+    const why = failures.length
+      ? `${failures.length} of ${map.urls.length} pages failed; the first: ${failures[0]}`
+      : `all ${map.urls.length} pages had almost no text (under ${MIN_PAGE_CHARS} characters)`;
+    throw new AppError(`We couldn't read any page of ${shortUrl(website)}: ${why} Check the website address in Basics, then retry.`, "INVALID_INPUT", false);
   }
   const changed = pages.filter((p) => p.changed).map((p) => p.sourceId);
 

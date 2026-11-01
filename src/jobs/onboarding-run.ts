@@ -1,6 +1,5 @@
 import { inngest } from "./client";
 import { businessDb } from "@/lib/supabase/business";
-import { userMessage } from "@/core/errors";
 import { PARALLEL_AGENTS, RESEARCH_AGENTS, STRATEGIST, readResearch, setAgentState, setResearchState, type ResearchAgent } from "@/core/onboarding/research";
 import { websiteAnalyst } from "@/agents/website-analyst";
 import { visualIdentityAnalyst } from "@/agents/visual-identity";
@@ -8,6 +7,7 @@ import { socialMarketAnalyst } from "@/agents/social-market";
 import { brandStrategist } from "@/agents/brand-strategist";
 import { snapshot, trace } from "@/lib/trace";
 import { ownRow } from "@/lib/supabase/own-row";
+import { failureMessage } from "./to-inngest-error";
 
 const AGENT_FUNCTIONS = {
   website_analyst: websiteAnalyst,
@@ -30,10 +30,11 @@ export const onboardingRun = inngest.createFunction(
     retries: 1,
     onFailure: async ({ error, event }) => {
       const { businessId } = event.data.event.data;
-      trace.scope({ runId: event.data.event.data.runId }, () => trace.emit("run-end", { status: "failed", error: error.message }));
+      const message = failureMessage(error);
+      trace.scope({ runId: event.data.event.data.runId }, () => trace.emit("run-end", { status: "failed", error: message }));
       const db = businessDb(businessId);
       await setResearchState(db, ["state"], "failed");
-      await setResearchState(db, ["error"], error.message || "Research stopped unexpectedly. Try again.");
+      await setResearchState(db, ["error"], `The research stopped: ${message}`);
     },
   },
   { event: "onboarding/started" },
@@ -62,7 +63,7 @@ export const onboardingRun = inngest.createFunction(
       step
         .invoke(`run-${agent}`, { function: AGENT_FUNCTIONS[agent], data: { businessId, runId }, timeout: "45m" })
         .then(() => ({ agent, ok: true as const }))
-        .catch((err: unknown) => ({ agent, ok: false as const, error: userMessage(err) }));
+        .catch((err: unknown) => ({ agent, ok: false as const, error: failureMessage(err as Error) }));
 
     // A failed research agent doesn't stop the others
     const outcomes: Outcome[] = await Promise.all(PARALLEL_AGENTS.filter((a) => requested.includes(a)).map(run));

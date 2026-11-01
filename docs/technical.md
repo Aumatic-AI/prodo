@@ -367,14 +367,60 @@ Before the body runs, `assertBudget` (`src/agents/budget.ts`) stops it with `PAU
 ## Error Handling Chain
 
 ```
-Vendor error → adapter translates to AppError(type, message, retryable)
+Vendor error → adapter translates to AppError(type, exact message, retryable)
 → job: toInngestError converts to NonRetriableError or RetryAfterError
+  (anything else is retried with userMessage(err) as its message)
 → Inngest retries the step or stops the run
-→ onFailure writes status + message to the DB row
+→ onFailure writes status + failureMessage(error) to the DB row
 → screen reads the row and shows the message
 ```
 
+**Every message is exact and readable**: who failed, what they were doing, the status and the vendor's own reason. Examples:
+
+- `OpenAI is out of credit (429 Too Many Requests, credit_balance_exhausted): "You have no credits remaining. Add credits to continue using the API…"`
+- `ScrapeCreators (instagram profile, royalgypsy3) couldn't get it: "…"`
+- `royal-gypsy.com/old answered 404 Not Found when Firecrawl read it.`
+- `Couldn't reach The website (nope.example): the address doesn't exist (DNS lookup found nothing) (ENOTFOUND).`
+- `Database error: a column is missing (a migration hasn't been applied) (42703): "column "style" does not exist".`
+
+Where they're made:
+
+| Helper | File | Job |
+|---|---|---|
+| `request(service, url, init, timeout)` | `providers/http.ts` | Timeouts ("didn't answer within 30 seconds") and network failures with the system code; a wrong address or broken certificate isn't retried |
+| `statusError(service, status, detail, retryAfter, what)` / `jsonOrThrow(…, what)` | `providers/http.ts` | HTTP status → type and retry rule, with the status text and the vendor's reason; a 2xx that isn't JSON is an error |
+| `vendorDetail(body, text)` | `core/error-text.ts` | The vendor's reason from any reply shape (`error.message`, `message`, `detail`, `errors[]`, S3 XML, an HTML page's title) |
+| `cleanReason(text)` | `core/error-text.ts` | Vendor text made safe to show: no keys, tokens, account or project ids; one line, at most 300 characters |
+| `userMessage(err)` | `core/errors.ts` | Anything that isn't an `AppError`: database errors (code in words), network codes, zod shapes, code bugs ("Internal error (TypeError): …") |
+| `failureMessage(error)` | `jobs/to-inngest-error.ts` | What `onFailure` saves: the step's own message, or Inngest's and the host's failures (time limit, result too big) in words |
+| `KNOWN` table + `replyError` / `knownError` | each adapter, `providers/http.ts` | A vendor's documented error codes in plain words, each with its type and whether retrying helps. The message is our sentence, then the status, the code and the vendor's own words |
+
+Each adapter keeps a `KNOWN` table of its vendor's documented error codes, taken from the vendor's own error docs (linked above each table). When a vendor documents a new code, add it there and a case to `scripts/check/error-messages.ts`.
+
+| Service | How it reports errors | Notable cases |
+|---|---|---|
+| OpenAI | SDK `APIError` with `status`, `code`, `type`; `APIConnectionError` with the network cause | Out of credit (`credit_balance_exhausted`, type `insufficient_quota`), spend limits, daily vs per-minute rate limits, `slow_down`, overloaded (503), unsupported region, model access, organization verification, safety flags, unreadable images. A 200 can still be refused, cut off at the length limit or empty |
+| Twelve Labs | `{code, message}`; its message carries the exact limit | Video too short or long, resolution, aspect ratio, size, broken file, link not reachable, plan allowance used up. A 200 with `finish_reason: "length"` is a cut-off answer |
+| ElevenLabs | `detail.code` (new) or `detail.status` (old), or a `detail[]` list on 422 | Out of credit, voice not found, plan limits, script too long, too many jobs at once; a rejected music description comes with a suggestion, which the message includes |
+| Firecrawl | `{success: false, error, code?}`, sometimes inside a 200; the page's own status in `metadata.statusCode` | Out of credit, site not supported, page too slow, no browser free, all engines failed, DNS or certificate errors; a page that answers 4xx/5xx is an error, not content |
+| ScrapeCreators | `{success, error, errorStatus, message}`; older endpoints say "not found" inside a 200 | Not found returns no data (not an error); age-restricted (403 `forbidden`); "IG is blocking us" (500, retried) |
+| Kie | Always HTTP 200 with a body `code` and `msg`; failed tasks have `failCode` and `failMsg` | Codes 401, 402, 404, 408, 422, 429, 433, 455, 500, 501, 505; content-policy blocks; failCode 400 isn't retried, 500 is. Failed tasks cost no credits |
+| Zernio | `{error, code, details, platformError}` | Disconnected accounts, plan limits, bad fields, rate limits, the platform's own rejection (Meta's `error_user_msg`); a duplicate post is a 409 with no code |
+| R2 storage | S3 XML `<Code>` and `<Message>` | Wrong keys or signature, expired link, missing bucket or file, too many writes; a delete that answers 200 still lists the files it couldn't delete |
+| Supabase | `{code, message, details, hint}`; a network failure has an empty code | Postgres and PostgREST codes in words (missing migration, duplicate row, row still in use, deadlock, timeouts) |
+| Inngest / Vercel | `onFailure` gets `{name, message}` | Vercel's time limit ("HTTP 504 before the SDK responded"), payload too big, step result over 4 MB, Inngest can't reach the server, invoke timeout |
+
+On the research screen, the agent card shows the agent's final message; the activity feed shows each failed step's message, marked "Trying again after" while Inngest has tries left and "Failed" once it gives up.
+
 Error types: `PROVIDER_DOWN` (retryable), `RATE_LIMITED` (retryable with delay), `OUT_OF_CREDIT` (permanent), `CONTENT_BLOCKED` (permanent), `ACCOUNT_DISCONNECTED` (permanent), `INVALID_INPUT` (permanent), `NOT_CONFIGURED` (permanent: missing or wrong key), `BUDGET_REACHED` (permanent), `PAUSED` (permanent), `TIMEOUT` (retryable), `UNKNOWN` (retryable).
+
+OpenAI's "too many requests" (429) has four meanings, told apart by its error code and message (`providers/ai/openai.ts`):
+
+- **Out of credit** (type `insufficient_quota`; code `insufficient_quota`, `credit_balance_exhausted` or `billing_hard_limit_reached`): `OUT_OF_CREDIT`, stops.
+- **A per-minute limit**: retried after the wait OpenAI asks for (its `retry-after` headers or "try again in 1m30s"), plus up to 20 s at random so steps that failed together don't retry together and collide again.
+- **A daily limit, or a wait over 10 minutes**: stops with "OpenAI's daily limit for this account is used up". Retrying within minutes can't help.
+- **A request bigger than the minute's limit** ("Request too large"): stops; the account's limits have to be raised with OpenAI.
+
 
 Inside jobs, wrap step bodies so errors pass through `toInngestError`, e.g. `step.run("x", () => fn().catch(toInngestError))`.
 
@@ -403,6 +449,7 @@ There is no unit test suite; these are the tests. Run the ones that cover a chan
 | `npm run smoke scripts/check/weekly-logic.ts` | Time zones, Planner slots, content rules (mix, styles, goals, people), brief checks, captions |
 | `npm run smoke scripts/check/video-logic.ts` | Video styles and sound, looks, labels → footage and facts, storyline checks, the Timeline (timing, captions, placement, sound) |
 | `npm run smoke scripts/check/learning-logic.ts` | Engagement rate, baselines, scores, learnings |
+| `npm run smoke scripts/check/error-messages.ts` | Every error message: vendor replies (faked, nothing is sent), network failures, database errors, Inngest and hosting failures |
 | `npm run smoke scripts/check/render-samples.tsx <dir>` | Every ad layout, carousel slide and end card as PNGs, to look at |
 | `npm run smoke scripts/check/video-timeline.ts <out.json> [preset] [ratio]` | A sample video Timeline with a real business's brand and photos (database read only); render it with `cd worker && node scripts/render-local.ts <out.json> <out.mp4>` or `scripts/stills-local.ts` for frames |
 

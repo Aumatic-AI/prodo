@@ -255,7 +255,7 @@ await check("assembleBible: too few personas is a retryable error", () => {
   const book = buildSourceBook(input, passages);
   const core = bibleCoreSchema.parse({ positioning: claim("p", ["A1"]), valueProp: claim("v", ["A1"]), tone: { summary: claim("t", ["A1"]) } });
   const audience = audienceSchema.parse({ personas: [persona("One", ["A1"])], pillars: [] });
-  assert.throws(() => assembleBible(core, audience, book, [], null), /too few personas/);
+  assert.throws(() => assembleBible(core, audience, book, [], null), /it had 1 usable persona \(needs 3; 0 cited no fact or used a never-say word\) and 0 content pillars \(needs 4\)/);
 });
 
 // ---------- Brand Hub (1.10) ----------
