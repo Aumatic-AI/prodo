@@ -1,18 +1,18 @@
 import { NonRetriableError, RetryAfterError } from "inngest";
-import { AppError, userMessage } from "@/core/errors";
+import { classify, tagType, untag, userMessage } from "@/core/errors";
 import { cleanReason } from "@/core/error-text";
 
 /**
- * Our errors to Inngest's: stop, retry after a wait, or retry. Anything that isn't one of ours is
- * retried with its exact description as the message (a database error's code and details survive).
+ * Any error to Inngest's: stop now when trying again can't fix it (no credit, a wrong key, a broken
+ * database rule, a bug), retry after the wait a vendor asked for, or retry. The message keeps the
+ * error's type ("[[OUT_OF_CREDIT]] …") because Inngest passes on only the message.
  */
 export function toInngestError(err: unknown): never {
-  if (err instanceof AppError) {
-    if (!err.retryable) throw new NonRetriableError(err.message);
-    if (err.retryAfterMs) throw new RetryAfterError(err.message, err.retryAfterMs);
-    throw err;
-  }
-  throw new Error(userMessage(err), { cause: err });
+  const { type, retryable, retryAfterMs } = classify(err);
+  const message = tagType(type, userMessage(err));
+  if (!retryable) throw new NonRetriableError(message, { cause: err });
+  if (retryAfterMs) throw new RetryAfterError(message, retryAfterMs, { cause: err });
+  throw new Error(message, { cause: err });
 }
 
 /**
@@ -20,7 +20,7 @@ export function toInngestError(err: unknown): never {
  * Inngest or the host (a time limit, a result too big to keep) in plain words, keeping their text.
  */
 export function failureMessage(error: { name?: string; message?: string } | null | undefined): string {
-  const said = cleanReason(error?.message ?? "", 400);
+  const said = cleanReason(untag(error?.message ?? ""), 400);
   if (!said) return `It stopped without a message${error?.name ? ` (${error.name})` : ""}.`;
   const match = FAILURES.find(([pattern]) => pattern.test(`${error?.name ?? ""} ${said}`));
   return match ? `${match[1]} ("${said}").` : said;

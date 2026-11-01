@@ -32,7 +32,7 @@ import { fillSocialsFromWebsite } from "./website-socials";
 
 const PARALLEL = 3;
 
-export const socialMarketAnalyst = defineResearchAgent("social_market_analyst", async ({ db, ctx, task }) => {
+export const socialMarketAnalyst = defineResearchAgent("social_market_analyst", async ({ db, ctx, task, skipped }) => {
   const brief = businessBrief(ctx);
   const country = ctx.countries[0];
 
@@ -49,13 +49,15 @@ export const socialMarketAnalyst = defineResearchAgent("social_market_analyst", 
           const names = Object.keys(r);
           return names.length ? `Found ${names.join(", ")} on the website and added ${names.length === 1 ? "it" : "them"} to the profile` : "No new social profiles on the website";
         }
-      )
+      ),
+      { failed: skipped.note("finding your social profiles on the website") }
     )) ?? {};
   const socials = { ...ctx.socials, ...fromWebsite };
 
   const accounts = await task(
     "list-connected-accounts",
-    async () => (await optional(publisherFor().listAccounts(db()))) ?? [],
+    // Connected accounts are a bonus (public profiles work without them): no Zernio access mustn't stop the research
+    async () => (await optional(publisherFor().listAccounts(db()), { anyError: true })) ?? [],
     (r) => (r.length ? `${r.length} connected account${r.length === 1 ? "" : "s"}` : "No connected accounts; reading public profiles instead")
   );
 
@@ -73,7 +75,8 @@ export const socialMarketAnalyst = defineResearchAgent("social_market_analyst", 
             r
               ? `Read ${r.posts} ${r.platform} posts from ${r.label}${r.baseline.sampleSize < 10 ? " (too few for a reliable average)" : ""}`
               : `No public posts found for ${source.platform}`
-        )
+        ),
+        { failed: skipped.note(`reading your ${source.platform} posts`) }
       )
     )
   ).filter((r): r is PlatformResult => !!r);
@@ -121,7 +124,8 @@ export const socialMarketAnalyst = defineResearchAgent("social_market_analyst", 
           return res.results;
         },
         (r) => `Searched Google and got ${r.length} results`
-      )
+      ),
+      { failed: skipped.note("searching Google for competitors") }
     );
     const added = found?.length
       ? await optional(
@@ -133,7 +137,8 @@ export const socialMarketAnalyst = defineResearchAgent("social_market_analyst", 
               return res.added;
             },
             (r) => (r.length ? `Found competitors: ${r.map((c) => c.name).join(", ")}` : "No clear competitors in the search results")
-          )
+          ),
+          { failed: skipped.note("picking competitors from the search results") }
         )
       : null;
     competitors = [...competitors, ...(added ?? [])];
@@ -154,7 +159,8 @@ export const socialMarketAnalyst = defineResearchAgent("social_market_analyst", 
                 return { followers: res.followers, posts: res.posts };
               },
               (r) => `${c.name}: read ${r.posts.length} top Instagram posts for their look and hooks`
-            )
+            ),
+            { failed: skipped.note(`reading ${c.name}'s Instagram`) }
           )
         : null;
       if (!insta?.posts.length) return null;
@@ -170,7 +176,8 @@ export const socialMarketAnalyst = defineResearchAgent("social_market_analyst", 
           return { instagram: res.instagram, ads: res.ads };
         },
         (r) => `${c.name}: ${r.ads.length} active Meta ads`
-      )
+      ),
+      { failed: skipped.note(`reading ${c.name}'s Meta ads`) }
     );
     const google = await optional(
       task(
@@ -181,7 +188,8 @@ export const socialMarketAnalyst = defineResearchAgent("social_market_analyst", 
           return res.ads;
         },
         (r) => `${c.name}: ${r.length} Google ads`
-      )
+      ),
+      { failed: skipped.note(`reading ${c.name}'s Google ads`) }
     );
     const handle = givenInstagram(c) ?? meta?.instagram ?? null;
     const insta = handle
@@ -194,7 +202,8 @@ export const socialMarketAnalyst = defineResearchAgent("social_market_analyst", 
               return { followers: res.followers, posts: res.posts };
             },
             (r) => `${c.name}: read ${r.posts.length} top Instagram posts`
-          )
+          ),
+          { failed: skipped.note(`reading ${c.name}'s Instagram`) }
         )
       : null;
     const homepage = await optional(
@@ -206,7 +215,8 @@ export const socialMarketAnalyst = defineResearchAgent("social_market_analyst", 
           return res.text;
         },
         (r) => (r ? `${c.name}: read their homepage` : `${c.name}: no website to read`)
-      )
+      ),
+      { failed: skipped.note(`reading ${c.name}'s homepage`) }
     );
 
     const footprint: Footprint = {
@@ -228,7 +238,8 @@ export const socialMarketAnalyst = defineResearchAgent("social_market_analyst", 
           return res.analysis;
         },
         (r) => `${c.name}: ${r.angles.length} selling angles, ${r.gaps.length} gaps you could own`
-      )
+      ),
+      { failed: skipped.note(`summing up ${c.name}`) }
     );
     return summary ? { competitor: c, footprint } : null;
   });
@@ -258,7 +269,7 @@ export const socialMarketAnalyst = defineResearchAgent("social_market_analyst", 
       })),
   ]);
   // ---- The client's reference links ----
-  const references = await readReferences({ db, ctx, task });
+  const references = await readReferences({ db, ctx, task, skipped });
 
   // Videos that aren't the client's: their references, each rival's longest-running video ad
   // (or a top Instagram video when they run no video ads), then brands they admire
@@ -303,11 +314,16 @@ export const socialMarketAnalyst = defineResearchAgent("social_market_analyst", 
           },
           (r) =>
             `Watched ${r.source === "competitor" ? `a video from ${r.label}` : r.source === "reference" ? r.label : `a ${r.source === "own_top" ? "top" : "weak"} ${r.platform} video of yours`}: ${r.analysis.hookType || "hook"}, ${r.analysis.pacing} pacing`
-        )
+        ),
+        // Watching videos is a bonus: no Twelve Labs credit mustn't stop the research
+        { failed: skipped.note(`watching ${video.label}`), anyError: true }
       )
     )
   ).filter((v): v is AnalyzedVideo => !!v);
-  await optional(task("save-reference-lessons", () => saveReferenceLessons(db(), analyzed), (n) => `Kept what ${n} of your reference videos do well`));
+  await optional(
+    task("save-reference-lessons", () => saveReferenceLessons(db(), analyzed), (n) => `Kept what ${n} of your reference videos do well`),
+    { failed: skipped.note("keeping what your reference videos do well") }
+  );
 
   // ---- Hooks ----
   const hookPosts: HookPost[] = [
@@ -345,7 +361,8 @@ export const socialMarketAnalyst = defineResearchAgent("social_market_analyst", 
               return res.saved;
             },
             (r) => `Added ${r} hooks to the hook library`
-          )
+          ),
+          { failed: skipped.note("saving hooks to the hook library") }
         )
       : 0;
 

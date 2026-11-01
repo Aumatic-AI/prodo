@@ -14,7 +14,7 @@ import { produceVideo, type VideoState } from "@/agents/producer/video";
 import { taskFor } from "./task";
 import { optional } from "@/agents/run";
 import { assertVideoReady } from "@/providers/ffmpeg/client";
-import { toInngestError } from "@/jobs/to-inngest-error";
+import { failureMessage, toInngestError } from "@/jobs/to-inngest-error";
 
 // One slot, start to finish:
 // Creative Director → QA Gate 1 (below 7 goes back, at most two redos) → Producer → QA Gate 2
@@ -32,8 +32,9 @@ export const produceItem = inngest.createFunction(
     onFailure: async ({ event, error }) => {
       const { businessId, itemId, planId, oneOff } = event.data.event.data;
       const db = businessDb(businessId);
-      await db.from("plan_items").update({ status: "failed", error: error.message }).eq("id", itemId);
-      await db.from("media").update({ status: "failed", error: error.message }).eq("plan_item_id", itemId).eq("status", "generating");
+      const message = failureMessage(error);
+      await db.from("plan_items").update({ status: "failed", error: message }).eq("id", itemId);
+      await db.from("media").update({ status: "failed", error: message }).eq("plan_item_id", itemId).eq("status", "generating");
       await inngest.send({ name: "plan-item/settled", data: { businessId, itemId, planId, oneOff } });
     },
   },
@@ -112,7 +113,7 @@ export const produceItem = inngest.createFunction(
       }
       // A check that keeps failing for technical reasons (after its retries) never fails the post
       review =
-        (await optional(gate2(qa2, db, itemId, round, brief, produced))) ??
+        (await optional(gate2(qa2, db, itemId, round, brief, produced), { anyError: true })) ??
         ({ passed: false, score: 0, checks: [], notes: "", fix: null, redoScenes: [], unavailable: "the checking service didn't answer" } satisfies Gate2Result);
       // The asset is finished but couldn't be checked: don't remake it, let the client look
       if (review.passed || review.unavailable) break;

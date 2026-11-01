@@ -150,7 +150,7 @@ async function main() {
     reply = () => limit("Rate limit reached for text-embedding-3-small in organization org-AbCdEf123456789012 on requests per day (RPD): Limit 2000, Used 2000.");
     const daily = await failure(() => openai.embed(["hi"]));
     assert.match(daily.message, /^OpenAI's daily limit for this account is used up \(429 Too Many Requests, rate_limit_exceeded\): "Rate limit reached .* \[account\] on requests per day/);
-    assert.equal(daily.retryable, false);
+    assert.deepEqual([daily.type, daily.retryable], ["LIMIT_REACHED", false]);
     reply = () => limit("Request too large for gpt-x on tokens per min (TPM): Limit 30000, Requested 45000.");
     assert.equal((await failure(() => openai.embed(["hi"]))).retryable, false);
     reply = () => limit("Rate limit reached on tokens per min (TPM). Please try again in 1m30s.");
@@ -290,6 +290,66 @@ async function main() {
     assert.match((await failure(() => twelvelabs.analyze("https://cdn.a.com/v.mp4", "x"))).message, /the answer was cut off at the length limit/);
     reply = () => json({ id: "a", data: "not json at all", finish_reason: "stop" });
     assert.match((await failure(() => twelvelabs.analyze("https://cdn.a.com/v.mp4", "x"))).message, /answered, but not in valid JSON: "not json at all"/);
+  });
+
+  await check("retries: only what can change is retried; database rules, missing migrations, code bugs and wrong shapes stop at once", async () => {
+    const { classify } = await import("@/core/errors");
+    const db = (code: string) => ({ message: "x", code, details: null, hint: null });
+    assert.deepEqual(classify(db("42703")), { type: "NOT_CONFIGURED", retryable: false });
+    assert.deepEqual(classify(db("23505")), { type: "INVALID_INPUT", retryable: false });
+    assert.deepEqual(classify(db("PGRST116")), { type: "INVALID_INPUT", retryable: false });
+    assert.deepEqual(classify(db("40P01")), { type: "PROVIDER_DOWN", retryable: true });
+    assert.deepEqual(classify(db("08006")), { type: "PROVIDER_DOWN", retryable: true });
+    assert.deepEqual(classify({ message: "TypeError: fetch failed", code: "", details: "ECONNRESET", hint: "" }), { type: "PROVIDER_DOWN", retryable: true });
+    assert.equal(classify(new TypeError("Cannot read properties of undefined (reading 'x')")).retryable, false);
+    const zodError = z.string().safeParse(1);
+    assert.equal(classify(!zodError.success ? zodError.error : null).retryable, false);
+    assert.equal(classify(new SyntaxError("Unexpected token < in JSON at position 0")).retryable, true);
+    assert.equal(classify(new Error("something odd")).retryable, true);
+  });
+
+  await check("toInngestError: stop, wait or retry, with the type kept in the message for later steps", async () => {
+    const { toInngestError } = await import("@/jobs/to-inngest-error");
+    // By name: this script and the app can load different copies of Inngest's classes
+    const stops = (e: Error) => e.name === "NonRetriableError";
+    const waits = (e: Error) => e.name === "RetryAfterError";
+    const thrown = (err: unknown) => {
+      try {
+        toInngestError(err);
+      } catch (e) {
+        return e as Error;
+      }
+      throw new Error("expected a throw");
+    };
+    const credit = thrown(new AppError("OpenAI is out of credit.", "OUT_OF_CREDIT", false));
+    assert.ok(stops(credit));
+    assert.equal(credit.message, "[[OUT_OF_CREDIT]] OpenAI is out of credit.");
+    const migration = thrown({ message: 'column "style" does not exist', code: "42703", details: null, hint: null });
+    assert.ok(stops(migration) && migration.message.startsWith("[[NOT_CONFIGURED]] Database error: a column is missing"), migration.message);
+    assert.ok(waits(thrown(new AppError("Busy.", "RATE_LIMITED", true, 5_000))));
+    const blip = thrown({ message: "deadlock detected", code: "40P01", details: null, hint: null });
+    assert.ok(!stops(blip) && !waits(blip));
+  });
+
+  await check("account-wide errors stop the agent, even after Inngest passed them back as plain errors; others are skipped and named", async () => {
+    const { optional, Skipped } = await import("@/agents/run");
+    const { isAccountWide, userMessage: message } = await import("@/core/errors");
+    // What a step that failed for good gives back on replay: a plain Error with only the message
+    const replayed = new Error("[[OUT_OF_CREDIT]] OpenAI is out of credit (429 Too Many Requests, credit_balance_exhausted).");
+    assert.equal(isAccountWide(replayed), true);
+    assert.equal(message(replayed), "OpenAI is out of credit (429 Too Many Requests, credit_balance_exhausted).");
+    assert.equal(failureMessage(replayed), "OpenAI is out of credit (429 Too Many Requests, credit_balance_exhausted).");
+    const stop = await failure(() => optional(Promise.reject(replayed)));
+    assert.ok((stop as unknown as Error).name === "NonRetriableError" && stop.message === replayed.message, "optional() rethrows it as a stop, type kept");
+    // A service the agent can do without: carry on, and say what was skipped
+    const skipped = new Skipped();
+    assert.equal(await optional(Promise.reject(new Error("[[OUT_OF_CREDIT]] Twelve Labs: the plan's allowance is used up.")), { anyError: true, failed: skipped.note("watching a video") }), null);
+    assert.equal(await optional(Promise.reject(new Error("[[INVALID_INPUT]] a.com/old answered 404 Not Found when Firecrawl read it.")), { failed: skipped.note("reading a.com/old") }), null);
+    assert.equal(
+      skipped.after("Read 14 pages."),
+      "Read 14 pages. Skipped 2: watching a video (Twelve Labs: the plan's allowance is used up); reading a.com/old (a.com/old answered 404 Not Found when Firecrawl read it)."
+    );
+    assert.equal(new Skipped().after("Read 15 pages."), "Read 15 pages.");
   });
 
   await check("ElevenLabs: new (detail.code) and old (detail.status) replies, 422 lists, and a music suggestion", async () => {

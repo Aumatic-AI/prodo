@@ -47,7 +47,8 @@ export function statusError(service: string, status: number, detail?: string, re
   const who = `${service}${doing(what)}`;
   const tail = ` (${statusText(status)})${quoted(detail)}.`;
   if (status === 401) return new AppError(`${who} rejected our API key${tail}`, "NOT_CONFIGURED", false);
-  if (status === 403) return new AppError(`${who} refused the request${tail}`, "NOT_CONFIGURED", false);
+  // Not retried, but about this request only: the services that use 403 for the whole account say so with a code (KNOWN tables)
+  if (status === 403) return new AppError(`${who} refused the request${tail}`, "INVALID_INPUT", false);
   if (status === 402) return new AppError(`${who} is out of credit${tail}`, "OUT_OF_CREDIT", false);
   if (status === 429) return new AppError(`${who} says too many requests${tail}`, "RATE_LIMITED", true, (retryAfterSec ?? 30) * 1000);
   if (status === 408 || status === 504 || status === 522 || status === 524) return new AppError(`${who} timed out${tail}`, "TIMEOUT", true);

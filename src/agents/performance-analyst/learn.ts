@@ -188,7 +188,9 @@ export const weeklyLearnings = inngest.createFunction(
           return notes;
         },
         (r) => `Looked at why ${r.length} videos did well or badly`
-      )
+      ),
+      // A bonus: no Twelve Labs credit mustn't stop the learnings
+      { anyError: true }
     );
 
     await task(

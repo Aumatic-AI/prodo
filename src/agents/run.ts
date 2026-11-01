@@ -1,5 +1,6 @@
 import { businessDb } from "@/lib/supabase/business";
-import { AppError, userMessage } from "@/core/errors";
+import { NonRetriableError } from "inngest";
+import { classify, isAccountWide, userMessage } from "@/core/errors";
 import { toInngestError } from "@/jobs/to-inngest-error";
 import { sumUsage, type Usage } from "@/providers/usage";
 import { assertBudget } from "./budget";
@@ -134,19 +135,56 @@ async function runStep<T>(opts: AgentStepOptions<T>, fn: (track: Track) => Promi
 /** Inngest will try the step again: attempts are left, and the error isn't one a retry can't fix. */
 function willRetry(err: unknown, opts: Pick<AgentStepOptions<unknown>, "attempt" | "maxAttempts">): boolean {
   if (opts.attempt === undefined || !opts.maxAttempts) return false;
-  if (err instanceof AppError && !err.retryable) return false;
+  if (!classify(err).retryable) return false;
   return opts.attempt + 1 < opts.maxAttempts;
+}
+
+export interface OptionalOptions {
+  /** Gets the exact reason when the work fails, e.g. skipped.note("reading a competitor's ads") */
+  failed?: (message: string) => void;
+  /**
+   * The agent can do without this service altogether (Zernio's account list, Twelve Labs watching
+   * videos): carry on even after an error about the whole account, like no credit or a wrong key.
+   */
+  anyError?: boolean;
 }
 
 /**
  * For work the agent can do without (one page, one competitor): returns null instead of failing
- * the whole run once Inngest has used up its retries. `failed` gets the exact reason, for a later message.
+ * the whole run once Inngest has used up its retries. An error about the whole account (no credit, a
+ * wrong key, a daily cap, the budget) stops the agent instead: every later step would fail the same way.
  */
-export async function optional<T>(work: Promise<T>, failed?: (message: string) => void): Promise<T | null> {
+export async function optional<T>(work: Promise<T>, opts: OptionalOptions = {}): Promise<T | null> {
   try {
     return await work;
   } catch (err) {
-    failed?.(userMessage(err));
+    if (isAccountWide(err) && !opts.anyError) throw new NonRetriableError(err instanceof Error ? err.message : userMessage(err), { cause: err });
+    opts.failed?.(userMessage(err));
     return null;
+  }
+}
+
+/**
+ * What an agent skipped and why, for its summary: "Skipped 2: describing the visual style (…); …".
+ * Made fresh on every Inngest request, so replays rebuild the same list.
+ */
+export class Skipped {
+  private items: { what: string; why: string }[] = [];
+
+  /** For optional(): `failed: skipped.note("describing the visual style")` */
+  note = (what: string) => (why: string) => {
+    this.items.push({ what, why: why.replace(/\.$/, "") });
+  };
+
+  get count() {
+    return this.items.length;
+  }
+
+  /** The agent's summary with what it skipped after it, the first few with their reasons */
+  after(summary: string, max = 3): string {
+    if (!this.items.length) return summary;
+    const shown = this.items.slice(0, max).map((s) => `${s.what} (${s.why})`);
+    const more = this.items.length > max ? `; and ${this.items.length - max} more` : "";
+    return `${summary.replace(/\.$/, "")}. Skipped ${this.items.length}: ${shown.join("; ")}${more}.`;
   }
 }

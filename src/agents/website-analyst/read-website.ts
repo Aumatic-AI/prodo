@@ -3,8 +3,8 @@ import { AppError } from "@/core/errors";
 import { request } from "@/providers/http";
 import { ai } from "@/providers/ai/registry";
 import type { Usage } from "@/providers/usage";
-import { optional } from "@/agents/run";
-import { embedSources, saveSource } from "@/agents/research/brain";
+import { optional, type Skipped } from "@/agents/run";
+import { embedSources, saveSource, sourcesWithoutChunks } from "@/agents/research/brain";
 import { inGroups } from "@/agents/research/define";
 import { cleanMarkdown, rankPages } from "./rank-pages";
 import { extractPageFacts } from "./extract";
@@ -12,7 +12,9 @@ import { mergeFacts, type FoundOffering, type MergeCounts } from "./merge";
 
 // Reads the client's website into the Brand Brain and turns it into facts waiting for confirmation.
 // Used by the Website Analyst (research) and by the onboarding website scan.
-// map site → pick pages (code) → read each page → embed changed pages → pull facts per page → merge
+// map site → pick pages (code) → read each page → embed the pages without passages → pull facts from
+// the pages without them → merge. A page whose text didn't change keeps its passages and facts, so a
+// retry redoes only the work that never finished.
 
 const MAX_PAGES = 15;
 const PARALLEL = 5;
@@ -43,7 +45,20 @@ const pageKey = (url: string) =>
 
 export const shortUrl = (url: string) => url.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "") || url;
 
-export async function readWebsite({ db, website, brief, task }: { db: () => SupabaseClient; website: string; brief: string; task: Task }): Promise<WebsiteRead> {
+export async function readWebsite({
+  db,
+  website,
+  brief,
+  task,
+  skipped,
+}: {
+  db: () => SupabaseClient;
+  website: string;
+  brief: string;
+  task: Task;
+  /** What the agent skipped, for its summary */
+  skipped?: Skipped;
+}): Promise<WebsiteRead> {
   const map = await task(
     "map-site",
     async (track) => {
@@ -96,7 +111,7 @@ export async function readWebsite({ db, website, brief, task }: { db: () => Supa
           const res = await ai.crawl.scrape(url);
           track(res.usage);
           const content = cleanMarkdown(res.data.markdown);
-          if (content.length < MIN_PAGE_CHARS) return { sourceId: null, changed: false };
+          if (content.length < MIN_PAGE_CHARS) return { sourceId: null, changed: false, hasFacts: false };
           const saved = await saveSource(db(), {
             kind: "web_page",
             url,
@@ -106,39 +121,45 @@ export async function readWebsite({ db, website, brief, task }: { db: () => Supa
           return {
             sourceId: saved.id as string | null,
             changed: saved.changed,
+            hasFacts: saved.hasFacts,
           };
         },
         (r) => (r.sourceId ? `Read ${shortUrl(url)}${r.changed ? "" : " (unchanged)"}` : `Skipped ${shortUrl(url)}: almost no text`)
       ),
-      (message) => failures.push(message)
+      {
+        failed: (message) => {
+          failures.push(message);
+          skipped?.note(`reading ${shortUrl(url)}`)(message);
+        },
+      }
     )
   );
 
-  const pages = read.flatMap((r) => (r?.sourceId ? [{ sourceId: r.sourceId, changed: r.changed }] : []));
+  const pages = read.flatMap((r) => (r?.sourceId ? [{ sourceId: r.sourceId, changed: r.changed, hasFacts: r.hasFacts }] : []));
   if (!pages.length) {
     const why = failures.length
       ? `${failures.length} of ${map.urls.length} pages failed; the first: ${failures[0]}`
       : `all ${map.urls.length} pages had almost no text (under ${MIN_PAGE_CHARS} characters)`;
     throw new AppError(`We couldn't read any page of ${shortUrl(website)}: ${why} Check the website address in Basics, then retry.`, "INVALID_INPUT", false);
   }
-  const changed = pages.filter((p) => p.changed).map((p) => p.sourceId);
+  // Changed pages, and unchanged pages whose passages were never saved (an earlier embedding failed)
+  await task(
+    "embed-pages",
+    async (track) => {
+      const unchanged = pages.filter((p) => !p.changed).map((p) => p.sourceId);
+      const missing = await sourcesWithoutChunks(db(), unchanged);
+      const ids = pages.filter((p) => p.changed || missing.has(p.sourceId)).map((p) => p.sourceId);
+      if (!ids.length) return { chunks: 0, pages: 0 };
+      const res = await embedSources(db(), ids, () => ({ origin: "website" }));
+      track(res.usage);
+      return { chunks: res.chunks, pages: ids.length };
+    },
+    (r) => (r.pages ? `Saved ${r.chunks} passages from ${r.pages} page${r.pages === 1 ? "" : "s"} to the Brand Brain` : "Every page's passages were already in the Brand Brain")
+  );
 
-  if (changed.length) {
-    await task(
-      "embed-pages",
-      async (track) => {
-        const res = await embedSources(db(), changed, () => ({
-          origin: "website",
-        }));
-        track(res.usage);
-        return { chunks: res.chunks };
-      },
-      (r) => `Saved ${r.chunks} passages to the Brand Brain`
-    );
-  }
-
-  // Unchanged pages keep the facts found last time
-  await inGroups(changed, PARALLEL, (sourceId, i) =>
+  // Changed pages, and pages whose facts were never read (an earlier read failed); the rest keep theirs
+  const toRead = pages.filter((p) => p.changed || !p.hasFacts).map((p) => p.sourceId);
+  await inGroups(toRead, PARALLEL, (sourceId, i) =>
     optional(
       task(
         `extract-facts-${i}`,
@@ -148,7 +169,8 @@ export async function readWebsite({ db, website, brief, task }: { db: () => Supa
           return res.facts;
         },
         (r) => `Found ${r.offerings} offerings, ${r.offers} offers and ${r.proof} reviews or proof points on one page`
-      )
+      ),
+      { failed: skipped?.note("reading the facts on one page") }
     )
   );
 

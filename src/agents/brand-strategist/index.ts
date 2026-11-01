@@ -15,7 +15,7 @@ import { buildSourceBook } from "./sources";
 // load answers and facts → search the Brand Brain per section → write core sections (AI)
 // → personas and pillars (AI) → checks (code) → save draft → seed hooks (AI)
 
-export const brandStrategist = defineResearchAgent("brand_strategist", async ({ db, task, note }) => {
+export const brandStrategist = defineResearchAgent("brand_strategist", async ({ db, task, note, skipped }) => {
 
   const input = await task("load-facts", async () => loadStrategistInput(db()), (r: StrategistInput) => `Loaded ${r.offerings.length} offerings and ${r.proof.length} proof points`);
 
@@ -80,7 +80,8 @@ export const brandStrategist = defineResearchAgent("brand_strategist", async ({ 
         return stored.saved;
       },
       (r) => `Added ${r} starter hooks`
-    )
+    ),
+    { failed: skipped.note("writing starter hooks") }
   );
 
   return `Brand Bible draft v${saved.version} is ready for your review${hooks ? `, with ${hooks} starter hooks` : ""}`;

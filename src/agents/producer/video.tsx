@@ -261,7 +261,9 @@ export async function produceVideo(a: ProduceArgs, brief: VideoBrief, previous: 
           return key;
         },
         () => "Made the background music"
-      )
+      ),
+      // A video without music beats no video, whatever ElevenLabs says
+      { anyError: true }
     );
   }
 

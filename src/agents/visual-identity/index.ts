@@ -20,7 +20,7 @@ import { inGroups } from "@/agents/research/define";
 const MAX_PHOTOS = 4;
 const MAX_REFERENCES = 3;
 
-export const visualIdentityAnalyst = defineResearchAgent("visual_identity_analyst", async ({ businessId, db, ctx, task, step }) => {
+export const visualIdentityAnalyst = defineResearchAgent("visual_identity_analyst", async ({ businessId, db, ctx, task, step, skipped }) => {
 
   // The scan made the kit from this website and logo: reading them again would only cost money.
   // Decided in a step, so a retry of a later step doesn't decide again on a kit that changed since.
@@ -29,7 +29,7 @@ export const visualIdentityAnalyst = defineResearchAgent("visual_identity_analys
     if (error) throw error;
     return ctx.scanned && !!current?.colors?.pairs?.length && (!ctx.logoKey || current?.logo_variants?.full === ctx.logoKey);
   });
-  const kit = fromScan ? null : await buildKit({ businessId, db, website: ctx.website, logoKey: ctx.logoKey, task });
+  const kit = fromScan ? null : await buildKit({ businessId, db, website: ctx.website, logoKey: ctx.logoKey, task, skipped });
 
   const screenshot = kit?.screenshotUrl ?? null;
   const photos = ctx.photoKeys.slice(0, MAX_PHOTOS).map(publicUrl);
@@ -51,11 +51,12 @@ export const visualIdentityAnalyst = defineResearchAgent("visual_identity_analys
           return res.data;
         },
         () => `Described the photo and layout style${references.length ? `, with ${references.length} of your references` : ""}`
-      )
+      ),
+      { failed: skipped.note("describing the photo and layout style") }
     ));
   }
 
-  const described = await optional(describePhotos({ db, ctx, task, step }));
+  const described = await optional(describePhotos({ db, ctx, task, step, skipped }), { failed: skipped.note("describing your photos") });
 
   // The client's own videos: picked in a step so a retry watches the same ones
   const videos = (await step.run("videos-to-watch", () => unwatchedVideos(db()))) as UnwatchedVideo[];
@@ -70,7 +71,9 @@ export const visualIdentityAnalyst = defineResearchAgent("visual_identity_analys
             return res.analysis;
           },
           (a) => (a ? `Watched one of your videos: ${a.moments.length} usable moments${a.moments.some((m) => m.talking) ? ", with someone talking to camera" : ""}` : "Couldn't read one of your videos")
-        )
+        ),
+        // Watching videos is a bonus: no Twelve Labs credit mustn't stop the brand kit
+        { failed: skipped.note("watching one of your videos"), anyError: true }
       )
     )
   ).filter(Boolean).length;

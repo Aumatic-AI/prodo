@@ -1,6 +1,6 @@
 import { inngest } from "./client";
 import { adoptFinishedMedia } from "@/core/plans/plans";
-import { toInngestError } from "./to-inngest-error";
+import { failureMessage, toInngestError } from "./to-inngest-error";
 import { businessDb } from "@/lib/supabase/business";
 import { getMedia, markReady, markFailed, productNameFor, type Media } from "@/core/media";
 import { getProfile } from "@/core/profile";
@@ -25,7 +25,7 @@ export const generateImage = inngest.createFunction(
     onFailure: async ({ event }) => {
       const { businessId } = event.data.event.data;
       const db = businessDb(businessId);
-      const msg = event.data.error?.message || "Image generation failed";
+      const msg = failureMessage(event.data.error);
       await markFailed(db, event.data.event.data.mediaId, msg);
     },
   },

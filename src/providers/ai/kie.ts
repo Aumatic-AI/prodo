@@ -32,7 +32,7 @@ const KNOWN: KnownErrors = {
   408: { say: "it returned no result for over 10 minutes", type: "TIMEOUT", retry: true },
   422: { say: "it didn't accept the request", type: "INVALID_INPUT", retry: false },
   429: { say: "too many requests (it allows 20 new jobs every 10 seconds)", type: "RATE_LIMITED", retry: true },
-  433: { say: "the API key's own usage cap is reached", type: "RATE_LIMITED", retry: false },
+  433: { say: "the API key's own usage cap is reached", type: "LIMIT_REACHED", retry: false },
   455: { say: "it's down for maintenance", type: "PROVIDER_DOWN", retry: true },
   500: { say: "it had a server error", type: "PROVIDER_DOWN", retry: true },
   501: { say: "the generation failed", type: "PROVIDER_DOWN", retry: true },

@@ -30,7 +30,7 @@ const KNOWN: Record<string, { say: string; type: ErrorType; retry: boolean }> = 
   billing_hard_limit_reached: { say: "OpenAI's spending limit for this account is reached", type: "OUT_OF_CREDIT", retry: false },
   organization_spend_limit_exceeded: { say: "The OpenAI organization's spend limit is reached", type: "OUT_OF_CREDIT", retry: false },
   project_spend_limit_exceeded: { say: "The OpenAI project's spend limit is reached", type: "OUT_OF_CREDIT", retry: false },
-  organization_usage_limit_exceeded: { say: "OpenAI's usage limit for this organization is reached", type: "RATE_LIMITED", retry: false },
+  organization_usage_limit_exceeded: { say: "OpenAI's usage limit for this organization is reached", type: "LIMIT_REACHED", retry: false },
   invalid_api_key: { say: "OpenAI rejected our API key", type: "NOT_CONFIGURED", retry: false },
   unsupported_country_region_territory: { say: "OpenAI doesn't serve the region our server runs in", type: "NOT_CONFIGURED", retry: false },
   model_not_found: { say: "OpenAI doesn't have this model, or this account isn't allowed to use it", type: "NOT_CONFIGURED", retry: false },
@@ -83,11 +83,11 @@ const MAX_RATE_WAIT_MS = 10 * 60_000;
 /** OpenAI's 429s: a per-minute limit clears by itself; a daily limit or a request bigger than the minute's limit doesn't. */
 function rateLimited(err: InstanceType<typeof OpenAI.APIError>, tail: string): AppError {
   if (/request too large/i.test(err.message)) {
-    return new AppError(`This request is bigger than the OpenAI account's per-minute limit${tail}`, "RATE_LIMITED", false);
+    return new AppError(`This request is bigger than the OpenAI account's per-minute limit${tail}`, "INVALID_INPUT", false);
   }
   const wait = retryWait(err);
   if (/per day/i.test(err.message) || wait > MAX_RATE_WAIT_MS) {
-    return new AppError(`OpenAI's daily limit for this account is used up${tail}`, "RATE_LIMITED", false);
+    return new AppError(`OpenAI's daily limit for this account is used up${tail}`, "LIMIT_REACHED", false);
   }
   return new AppError(`OpenAI's per-minute limit was reached${tail}`, "RATE_LIMITED", true, spread(wait));
 }

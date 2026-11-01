@@ -111,7 +111,9 @@ export const metricsSync = inngest.createFunction(
           return saved;
         },
         (n) => `Saved follower counts for ${n} accounts`
-      )
+      ),
+      // A bonus: Zernio's analytics add-on missing mustn't stop the post results
+      { anyError: true }
     );
     return { day, posts: targets.length };
   }

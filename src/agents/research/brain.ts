@@ -23,14 +23,25 @@ export function hashText(text: string): string {
 
 /**
  * Saves a source, matched by kind and URL. `changed` is false when the content is the same as
- * last time, so callers can skip chunking and extraction.
+ * last time; then what was learned from it (`metadata.facts`) is kept, and `hasFacts` says whether
+ * facts were ever read from it, so a retry redoes only the work that never finished.
  */
-export async function saveSource(db: SupabaseClient, input: SourceInput): Promise<{ id: string; changed: boolean }> {
+export async function saveSource(db: SupabaseClient, input: SourceInput): Promise<{ id: string; changed: boolean; hasFacts: boolean }> {
   const hash = hashText(input.content);
-  let query = db.from("brand_sources").select("id, content_hash").eq("kind", input.kind).eq("url", input.url);
+  let query = db.from("brand_sources").select("id, content_hash, metadata").eq("kind", input.kind).eq("url", input.url);
   query = input.competitorId ? query.eq("competitor_id", input.competitorId) : query.is("competitor_id", null);
   const { data: existing, error: readError } = await query.limit(1).maybeSingle();
   if (readError) throw readError;
+
+  if (existing && existing.content_hash === hash) {
+    // Same text: keep what was learned from it, only note when it was read
+    const { error } = await db
+      .from("brand_sources")
+      .update({ title: input.title ?? null, fetched_at: new Date().toISOString(), metadata: { ...(existing.metadata ?? {}), ...(input.metadata ?? {}) } })
+      .eq("id", existing.id);
+    if (error) throw error;
+    return { id: existing.id, changed: false, hasFacts: !!(existing.metadata as { facts?: unknown } | null)?.facts };
+  }
 
   const row = {
     kind: input.kind,
@@ -43,14 +54,24 @@ export async function saveSource(db: SupabaseClient, input: SourceInput): Promis
     fetched_at: new Date().toISOString(),
   };
 
+  // New text: what was learned from the old text no longer holds
   if (existing) {
     const { error } = await db.from("brand_sources").update(row).eq("id", existing.id);
     if (error) throw error;
-    return { id: existing.id, changed: existing.content_hash !== hash };
+    return { id: existing.id, changed: true, hasFacts: false };
   }
   const { data, error } = await db.from("brand_sources").insert(row).select("id").single();
   if (error) throw error;
-  return { id: data.id, changed: true };
+  return { id: data.id, changed: true, hasFacts: false };
+}
+
+/** The sources among `ids` that have no Brand Brain passages yet (their embedding never finished). */
+export async function sourcesWithoutChunks(db: SupabaseClient, ids: string[]): Promise<Set<string>> {
+  if (!ids.length) return new Set();
+  const { data, error } = await db.from("brand_chunks").select("source_id").in("source_id", ids);
+  if (error) throw error;
+  const chunked = new Set((data ?? []).map((c) => c.source_id as string));
+  return new Set(ids.filter((id) => !chunked.has(id)));
 }
 
 /** Splits text into chunks of about `size` words, overlapping by `overlap` words, keeping paragraphs whole when possible. */

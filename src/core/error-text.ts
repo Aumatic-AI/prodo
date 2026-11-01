@@ -1,3 +1,5 @@
+import type { ErrorType } from "./errors";
+
 // Turns any error into one exact, readable line: what failed and why, in the words of whoever
 // refused (a vendor, the network, the database), with keys and account ids taken out.
 
@@ -221,9 +223,38 @@ export function databaseMessage(err: DbErrorLike): string {
   return `Database error${plain ? `: ${plain}` : ""} (${err.code || "no code"})${words ? `: "${words}"` : ""}.`;
 }
 
+/**
+ * Whether trying again can fix a database error: yes for a busy, slow or dropped connection; no for
+ * a broken rule (duplicate, missing link, bad value) or a missing table or column (a migration).
+ */
+function dbErrorKind(code: string): { type: ErrorType; retryable: boolean } {
+  const busy = ["", "40001", "40P01", "53300", "57014", "PGRST000", "PGRST001", "PGRST002", "PGRST003"];
+  if (busy.includes(code) || code.startsWith("08")) return { type: "PROVIDER_DOWN", retryable: true };
+  // Our setup is wrong (a migration not applied, a bad server key): every call fails until it's fixed
+  if (["42P01", "42703", "42883"].includes(code) || /^PGRST(2\d\d|30\d)$/.test(code)) return { type: "NOT_CONFIGURED", retryable: false };
+  if (/^(2[23]|42|P0)/.test(code) || /^PGRST1\d\d$/.test(code)) return { type: "INVALID_INPUT", retryable: false };
+  return { type: "PROVIDER_DOWN", retryable: true };
+}
+
 // ---------- Anything else ----------
 
 const CODE_BUGS = new Set(["TypeError", "RangeError", "ReferenceError", "SyntaxError"]);
+
+/**
+ * The type of an error that isn't one of ours, and whether trying again can fix it. A bug in our code
+ * or data in the wrong shape fails the same way every time; a dropped connection may not.
+ */
+export function errorKind(err: unknown): { type: ErrorType; retryable: boolean } {
+  if (isDbError(err)) return dbErrorKind(err.code ?? "");
+  if (isNetworkError(err)) return isPermanentNetworkError(err) ? { type: "INVALID_INPUT", retryable: false } : { type: "PROVIDER_DOWN", retryable: true };
+  if (err instanceof Error) {
+    if (err.name === "ZodError") return { type: "UNKNOWN", retryable: false };
+    // Someone else's reply that wasn't JSON may be fine next time
+    if (err instanceof SyntaxError && /JSON/i.test(err.message)) return { type: "UNKNOWN", retryable: true };
+    if (CODE_BUGS.has(err.name)) return { type: "UNKNOWN", retryable: false };
+  }
+  return { type: "UNKNOWN", retryable: true };
+}
 
 /** One exact line for any error that isn't already one of ours. */
 export function describeError(err: unknown): string {

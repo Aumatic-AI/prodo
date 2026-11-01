@@ -1,4 +1,5 @@
 import { inngest } from "./client";
+import { failureMessage } from "./to-inngest-error";
 import { businessDb } from "@/lib/supabase/business";
 import { getPost, updatePost } from "@/core/posts";
 import { publisherFor } from "@/providers/publishing/registry";
@@ -37,7 +38,7 @@ export const publishPost = inngest.createFunction(
       const { businessId } = event.data.event.data;
       const db = businessDb(businessId);
       const postId = event.data.event.data.postId;
-      const msg = event.data.error?.message || "Publishing failed";
+      const msg = failureMessage(event.data.error);
       await db.from("posts").update({ status: "failed" }).eq("id", postId);
       await db
         .from("post_targets")

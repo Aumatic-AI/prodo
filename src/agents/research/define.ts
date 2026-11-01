@@ -3,7 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { inngest } from "@/jobs/client";
 import { businessDb } from "@/lib/supabase/business";
 import { setAgentState, type ResearchAgent } from "@/core/onboarding/research";
-import { agentStep } from "@/agents/run";
+import { agentStep, Skipped } from "@/agents/run";
 import { failureMessage } from "@/jobs/to-inngest-error";
 import { trace } from "@/lib/trace";
 import type { Usage } from "@/providers/usage";
@@ -24,6 +24,8 @@ export interface AgentKit {
   ctx: ResearchContext;
   /** agentStep with this agent's name and run id filled in */
   task: <T>(id: string, fn: (track: Track) => Promise<T>, summary?: (result: T) => string) => Promise<T>;
+  /** What the agent skipped and why; added to its summary. Pass `failed: skipped.note("…")` to optional(). */
+  skipped: Skipped;
 }
 
 /**
@@ -77,7 +79,9 @@ export function defineResearchAgent(agent: ResearchAgent, run: (kit: AgentKit) =
       const task: AgentKit["task"] = (id, fn, summary) => agentStep(step, id, { agent, businessId, runId, summary, attempt, maxAttempts }, fn);
 
       const note: string | null = event.data.note ?? null;
-      const summary = await run({ businessId, db, runId, note, step, ctx, task });
+      const skipped = new Skipped();
+      // A finished agent never hides what it couldn't do
+      const summary = skipped.after(await run({ businessId, db, runId, note, step, ctx, task, skipped }));
       await step.run(
         "finish",
         traced(async () => {

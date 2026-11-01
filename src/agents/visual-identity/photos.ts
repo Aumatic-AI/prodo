@@ -28,7 +28,19 @@ const isVideo = (key: string) => /\.(mp4|mov)$/i.test(key);
 
 type Photo = { id: string; kind: string; storage_key: string; tags: string[] | null; product: string | null };
 
-export async function describePhotos({ db, ctx, task, step }: { db: () => SupabaseClient; ctx: ResearchContext; task: AgentKit["task"]; step: AgentKit["step"] }): Promise<number> {
+export async function describePhotos({
+  db,
+  ctx,
+  task,
+  step,
+  skipped,
+}: {
+  db: () => SupabaseClient;
+  ctx: ResearchContext;
+  task: AgentKit["task"];
+  step: AgentKit["step"];
+  skipped: AgentKit["skipped"];
+}): Promise<number> {
   // Picked in a step: on a retry the list must stay the same, not shrink as descriptions get saved
   const photos = (await step.run("photos-to-describe", async () => {
     const { data, error } = await db()
@@ -71,7 +83,8 @@ export async function describePhotos({ db, ctx, task, step }: { db: () => Supaba
           return saved;
         },
         (n) => `Described ${n} of your photos`
-      )
+      ),
+      { failed: skipped.note(`describing ${group.length} of your photos`) }
     )
   );
   return done.reduce<number>((sum, n) => sum + (n ?? 0), 0);

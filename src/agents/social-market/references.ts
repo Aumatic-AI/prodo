@@ -14,7 +14,7 @@ const PARALLEL = 3;
 
 const shortUrl = (url: string) => url.replace(/^https?:\/\/(www\.)?/, "").slice(0, 60);
 
-export async function readReferences({ db, ctx, task }: { db: () => SupabaseClient; ctx: ResearchContext; task: AgentKit["task"] }) {
+export async function readReferences({ db, ctx, task, skipped }: { db: () => SupabaseClient; ctx: ResearchContext; task: AgentKit["task"]; skipped: AgentKit["skipped"] }) {
   const read = await inGroups(ctx.referenceLinks.slice(0, MAX_LINKS), PARALLEL, (link, i) =>
     optional(
       task(
@@ -37,7 +37,8 @@ export async function readReferences({ db, ctx, task }: { db: () => SupabaseClie
           return { id: link.id, post };
         },
         (r) => (r ? `Read your reference ${r.post.mediaType} on ${r.post.platform}` : `Couldn't open ${shortUrl(link.url)} (private, removed or not a post)`)
-      )
+      ),
+      { failed: skipped.note(`reading your reference ${shortUrl(link.url)}`) }
     )
   );
   return read.filter((r): r is { id: string; post: SocialPost } => !!r);

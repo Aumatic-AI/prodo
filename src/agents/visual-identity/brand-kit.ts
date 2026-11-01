@@ -2,7 +2,7 @@ import { closestFont } from "@/config/google-fonts";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ai } from "@/providers/ai/registry";
 import { publicUrl } from "@/providers/storage/paths";
-import { optional } from "@/agents/run";
+import { optional, type Skipped } from "@/agents/run";
 import type { Task } from "@/agents/website-analyst/read-website";
 import { ownRow } from "@/lib/supabase/own-row";
 import { collectCss, readDesign, type SiteDesign } from "./css";
@@ -32,15 +32,18 @@ export async function buildKit({
   website,
   logoKey,
   task,
+  skipped,
 }: {
   businessId: string;
   db: () => SupabaseClient;
   website: string | null;
   logoKey: string | null;
   task: Task;
+  /** What the agent skipped, for its summary */
+  skipped?: Skipped;
 }): Promise<KitResult> {
 
-  // A site that blocks reading isn't fatal: the logo alone still gives colours
+  // A site that blocks reading isn't fatal, nor is Firecrawl being out of credit: the logo alone still gives colours
   const site = website
     ? await optional(
         task(
@@ -56,7 +59,8 @@ export async function buildKit({
           },
           (r) =>
             `Read the homepage design: ${r.design.colors.length} colours, fonts ${[r.design.fonts.heading, r.design.fonts.body].filter(Boolean).join(" and ") || "not found"}`
-        )
+        ),
+        { failed: skipped?.note("reading the homepage's colours and fonts"), anyError: true }
       )
     : null;
 
@@ -73,7 +77,8 @@ export async function buildKit({
           },
           (r: { analysis: LogoAnalysis; variants: LogoVariants }) =>
             `Took ${r.analysis.palette.length} colours from the logo${r.variants.dark ? " and made versions for light and dark backgrounds" : ""}`
-        )
+        ),
+        { failed: skipped?.note("reading the logo's colours") }
       )
     : null;
 

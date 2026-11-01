@@ -1,5 +1,6 @@
 import { NonRetriableError } from "inngest";
 import { inngest } from "@/jobs/client";
+import { failureMessage } from "@/jobs/to-inngest-error";
 import { MODELS } from "@/config/models";
 import { AppError, userMessage } from "@/core/errors";
 import { notify } from "@/core/notifications/notify";
@@ -30,11 +31,12 @@ export const planner = inngest.createFunction(
     onFailure: async ({ event, error }) => {
       const { businessId, weekStart } = event.data.event.data;
       const db = businessDb(businessId);
-      await db.from("content_plans").update({ status: "failed", error: error.message }).eq("week_start", weekStart).eq("status", "planning");
+      const message = failureMessage(error);
+      await db.from("content_plans").update({ status: "failed", error: message }).eq("week_start", weekStart).eq("status", "planning");
       await notify(db, {
         kind: "agent_stopped",
         title: "Prodo couldn't plan the week",
-        body: `The plan for the week of ${weekStart} stopped: ${error.message}`,
+        body: `The plan for the week of ${weekStart} stopped: ${message}`,
         link: "/week",
         email: true,
       });
