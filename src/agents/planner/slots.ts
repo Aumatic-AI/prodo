@@ -1,5 +1,5 @@
 import { platformMeta } from "@/config/platforms";
-import type { Format } from "@/core/creative/brief";
+import { AD_OBJECTIVES, type AdObjective, type Format } from "@/core/creative/brief";
 import { MIX_VIDEO_SHARE, stylesFor, type StyleFormat } from "@/core/content/styles";
 import type { ContentMix, ImageStyle, PeopleChoice, VideoStyle } from "@/core/onboarding/options";
 import type { FunnelStage } from "@/core/plans/types";
@@ -30,8 +30,27 @@ export interface SlotPlan {
   goal: string | null;
   pillarId: string | null;
   pillarName: string | null;
+  /** What the post is for: reach new people, turn interest into action, or bring back people who know the brand */
+  adObjective: AdObjective;
   funnelStage: FunnelStage;
   isExperiment: boolean;
+}
+
+export type BatchCounts = Record<"static" | "carousel" | "video", number>;
+
+/** Round-robin over the kinds, so one kind doesn't bunch up: {static 2, video 1} → static, video, static */
+export function batchFormats(counts: BatchCounts): Format[] {
+  const left = { ...counts };
+  const out: Format[] = [];
+  while (out.length < MAX_SLOTS && (left.static > 0 || left.carousel > 0 || left.video > 0)) {
+    for (const f of ["static", "carousel", "video"] as const) {
+      if (left[f] > 0 && out.length < MAX_SLOTS) {
+        out.push(f);
+        left[f]--;
+      }
+    }
+  }
+  return out;
 }
 
 export interface SlotInput {
@@ -59,6 +78,12 @@ export interface SlotInput {
   firstDay?: string;
   /** False while the video renderer isn't set up: no video slots, video-only platforms are left out */
   videoAllowed?: boolean;
+  /**
+   * "Auto-create": a chosen number of posts of each kind over the given days instead of a week's worth.
+   * The kinds are interleaved; every post goes to the platforms that take its format, the busiest
+   * platform getting all of them and the others their share.
+   */
+  batch?: { counts: BatchCounts; days: string[] };
 }
 
 /** Local posting times that work on average, used until there are 10+ own posts to learn from. */
@@ -80,7 +105,39 @@ const FIRST_GOAL_SHARE = 2 / 3;
 export const EXPERIMENT_SHARE = 0.3;
 export const MAX_SLOTS = 21;
 
-const GOAL_STAGE: Record<string, FunnelStage> = { awareness: "tofu", followers: "tofu", leads: "mofu", sales: "bofu", bookings: "bofu" };
+/**
+ * Starting share of awareness, converting and retargeting posts by the client's first goal (knowledge
+ * base §7.2), so the account is never all hard sells.
+ */
+export const OBJECTIVE_MIX: Record<string, Record<AdObjective, number>> = {
+  awareness: { awareness: 0.6, converting: 0.3, retargeting: 0.1 },
+  followers: { awareness: 0.6, converting: 0.3, retargeting: 0.1 },
+  leads: { awareness: 0.4, converting: 0.45, retargeting: 0.15 },
+  bookings: { awareness: 0.4, converting: 0.45, retargeting: 0.15 },
+  sales: { awareness: 0.35, converting: 0.45, retargeting: 0.2 },
+};
+const DEFAULT_MIX = OBJECTIVE_MIX.leads;
+
+const OBJECTIVE_STAGE: Record<AdObjective, FunnelStage> = { awareness: "tofu", converting: "mofu", retargeting: "bofu" };
+const STAGE_OBJECTIVE: Record<FunnelStage, AdObjective> = { tofu: "awareness", mofu: "converting", bofu: "retargeting" };
+
+/**
+ * Each slot's objective: the goal's mix split over the slots, a pillar made for one funnel stage
+ * getting that objective while it has some left, the rest spread so one objective doesn't bunch up.
+ */
+export function objectiveSequence(pillars: (PillarShare | null)[], goal: string | null): AdObjective[] {
+  const mix = OBJECTIVE_MIX[goal ?? ""] ?? DEFAULT_MIX;
+  const left = allocate(pillars.length, AD_OBJECTIVES.map((id) => ({ id, share: mix[id] })));
+  const total = new Map(left);
+  return pillars.map((pillar, i) => {
+    const wanted = pillar?.funnelStage ? STAGE_OBJECTIVE[pillar.funnelStage] : null;
+    // Otherwise the objective furthest behind its share at this point of the week
+    const behind = (o: AdObjective) => (total.get(o)! * (i + 1)) / pillars.length - (total.get(o)! - left.get(o)!);
+    const pick = wanted && left.get(wanted)! > 0 ? wanted : [...AD_OBJECTIVES].filter((o) => left.get(o)! > 0).sort((a, b) => behind(b) - behind(a))[0] ?? "awareness";
+    left.set(pick, Math.max(0, left.get(pick)! - 1));
+    return pick;
+  });
+}
 
 /** Positions 0…total-1 picked evenly, `count` of them. */
 function spread(count: number, total: number): number[] {
@@ -188,28 +245,50 @@ function styleRotation(options: Record<StyleFormat, (ImageStyle | VideoStyle)[]>
 }
 
 export function planSlots(input: SlotInput): SlotPlan[] {
-  // Images only: no video slots and no video-only platforms
-  const videoAllowed = input.videoAllowed !== false && input.mix !== "images";
-  const days = openDays(input.weekStart, input.firstDay);
+  const batch = input.batch;
+  // Images only: no video slots and no video-only platforms (unless a batch asks for videos by name)
+  const batchFormatList = batch ? batchFormats(batch.counts) : null;
+  const videoAllowed = input.videoAllowed !== false && (input.mix !== "images" || !!batchFormatList?.includes("video"));
+  const days = batch?.days ?? openDays(input.weekStart, input.firstDay);
   if (!days.length) return [];
   // A part week gets its share of the posts; platforms that only take video wait for the video renderer
-  const counts = Object.entries(input.postsPerWeek)
+  const weekly = Object.entries(input.postsPerWeek)
     .filter(([platform, n]) => n > 0 && (videoAllowed || platformMeta(platform).supportsImages))
-    .map(([platform, n]) => [platform, days.length < 7 ? Math.ceil((n * days.length) / 7) : n] as [string, number]);
-  const total = Math.min(MAX_SLOTS, Math.max(0, ...counts.map(([, n]) => n)));
+    .filter(([platform]) => !batchFormatList || batchFormatList.some((f) => allowedFormats([platform], videoAllowed).includes(f)));
+  // A batch only keeps the posts some platform can take
+  const formatsOfBatch = batchFormatList?.filter((f) => weekly.some(([platform]) => allowedFormats([platform], videoAllowed).includes(f))) ?? null;
+  const busiest = Math.max(1, ...weekly.map(([, n]) => n));
+  const batchTotal = formatsOfBatch?.length ?? 0;
+  const counts = weekly.map(([platform, n]) =>
+    batch ? ([platform, Math.max(1, Math.round((n * batchTotal) / busiest))] as [string, number]) : ([platform, days.length < 7 ? Math.ceil((n * days.length) / 7) : n] as [string, number])
+  );
+  const total = Math.min(MAX_SLOTS, batch ? (counts.length ? batchTotal : 0) : Math.max(0, ...counts.map(([, n]) => n)));
   if (!total) return [];
 
-  // Which platforms each slot goes to: every platform spreads its posts across the slots
+  // Which platforms each slot goes to: every platform spreads its posts across the slots it can take
   const platformsBySlot: string[][] = Array.from({ length: total }, () => []);
-  for (const [platform, n] of counts) spread(Math.min(n, total), total).forEach((i) => platformsBySlot[i].push(platform));
+  for (const [platform, n] of counts) {
+    const can = formatsOfBatch ? [...Array(total).keys()].filter((i) => allowedFormats([platform], videoAllowed).includes(formatsOfBatch[i])) : [...Array(total).keys()];
+    spread(Math.min(n, can.length), can.length).forEach((k) => platformsBySlot[can[k]].push(platform));
+  }
 
   const pillars = pillarSequence(total, input.pillars);
   const weights = formatWeights(input.formatScores, input.mix);
   const styles = styleOptions(input);
+  // Asked for a kind by name, but none of the client's picked styles fit it: any style that does
+  for (const f of new Set(formatsOfBatch ?? [])) {
+    if (f !== "text" && !styles[f].length) styles[f] = stylesFor(f, { image: [], video: [] }, input.people ?? null, input.talkingFootage);
+  }
   const nextStyle = styleRotation(styles, input.styleScores);
   const goals = (input.goals ?? []).filter(Boolean);
   const secondGoal = new Set(goals.length > 1 ? spread(Math.round(total * (1 - FIRST_GOAL_SHARE)), total) : []);
   const used: Record<Format, number> = { static: 0, carousel: 0, video: 0, text: 0 };
+  // Each goal's slots follow that goal's objective mix
+  const objectives: AdObjective[] = [];
+  for (const g of new Set(platformsBySlot.map((_, i) => goals[secondGoal.has(i) ? 1 : 0] ?? null))) {
+    const mine = platformsBySlot.map((_, i) => i).filter((i) => (goals[secondGoal.has(i) ? 1 : 0] ?? null) === g);
+    objectiveSequence(mine.map((i) => pillars[i]), g).forEach((o, k) => (objectives[mine[k]] = o));
+  }
   const experiments = new Set(spread(Math.round(total * EXPERIMENT_SHARE), total).map((i) => (i + 1) % total));
   const perDay = new Map<string, number>();
   const lastFormat = new Map<string, Format>();
@@ -218,15 +297,16 @@ export function planSlots(input: SlotInput): SlotPlan[] {
     const day = days[Math.floor((index * days.length) / total)];
     const lead = [...platforms].sort((a, b) => (input.postsPerWeek[b] ?? 0) - (input.postsPerWeek[a] ?? 0))[0];
     const base = input.bestTimes?.[lead] ?? DEFAULT_TIMES[lead] ?? "12:00";
-    // A second slot on the same day goes three hours later
+    // A second slot on the same day goes three hours later (an hour and a half when all the posts share one day)
     const nth = perDay.get(day) ?? 0;
     perDay.set(day, nth + 1);
     const [h, m] = base.split(":").map(Number);
-    const time = `${String(Math.min(22, h + nth * 3)).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+    const minutes = Math.min(22 * 60 + 30, h * 60 + m + nth * (days.length === 1 ? 90 : 180));
+    const time = `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
 
     // Format: the most under-used one (by weight) the platforms take, never the same as the last
     // post on any of these platforms when there's a choice
-    const allowed = allowedFormats(platforms, videoAllowed).filter((f) => f === "text" || (weights[f] > 0 && styles[f].length));
+    const allowed = allowedFormats(platforms, videoAllowed).filter((f) => (formatsOfBatch ? f === formatsOfBatch[index] && f !== "text" && styles[f].length > 0 : f === "text" || (weights[f] > 0 && styles[f].length)));
     const ranked = [...allowed].sort((a, b) => used[a] / weights[a] - used[b] / weights[b]);
     // A format meant for more than half the posts (e.g. "mostly videos") may repeat
     const weightSum = allowed.reduce((sum, f) => sum + weights[f], 0) || 1;
@@ -248,7 +328,8 @@ export function planSlots(input: SlotInput): SlotPlan[] {
       goal,
       pillarId: pillar?.id ?? null,
       pillarName: pillar?.name ?? null,
-      funnelStage: pillar?.funnelStage ?? GOAL_STAGE[goal ?? ""] ?? "tofu",
+      adObjective: objectives[index],
+      funnelStage: OBJECTIVE_STAGE[objectives[index]],
       isExperiment: experiments.has(index),
     };
   });

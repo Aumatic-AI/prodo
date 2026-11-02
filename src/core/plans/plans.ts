@@ -34,7 +34,7 @@ export async function findPlanByWeek(db: SupabaseClient, weekStart: string): Pro
 /** A plan with its slots in time order, the names behind every id, and what the agents spent on it. */
 export async function loadPlanView(db: SupabaseClient, plan: ContentPlan): Promise<PlanView> {
   const [items, runs] = await Promise.all([
-    db.from("plan_items").select(ITEM_VIEW).eq("plan_id", plan.id).order("slot_at"),
+    db.from("plan_items").select(ITEM_VIEW).eq("plan_id", plan.id).order("slot_at").order("created_at").order("id"),
     db.from("agent_runs").select("cost_usd").eq("plan_id", plan.id),
   ]);
   if (items.error) throw items.error;
@@ -56,14 +56,14 @@ export async function getItemView(db: SupabaseClient, id: string): Promise<PlanI
 }
 
 export async function listItems(db: SupabaseClient, planId: string): Promise<PlanItem[]> {
-  const { data, error } = await db.from("plan_items").select("*").eq("plan_id", planId).order("slot_at");
+  const { data, error } = await db.from("plan_items").select("*").eq("plan_id", planId).order("slot_at").order("created_at").order("id");
   if (error) throw error;
   return (data ?? []) as PlanItem[];
 }
 
 /** Slots in a time range across plans (the calendar). */
 export async function listItemsBetween(db: SupabaseClient, from: string, to: string): Promise<PlanItemView[]> {
-  const { data, error } = await db.from("plan_items").select(ITEM_VIEW).gte("slot_at", from).lt("slot_at", to).order("slot_at");
+  const { data, error } = await db.from("plan_items").select(ITEM_VIEW).gte("slot_at", from).lt("slot_at", to).order("slot_at").order("created_at").order("id");
   if (error) throw error;
   return (data ?? []).map(toView);
 }

@@ -67,6 +67,7 @@ export function assembleVideoScenes(raw: RawBrief, ctx: CreativeContext, book: F
       keywords,
       visual: s.visual,
       motion: s.motion,
+      cameraMove: s.cameraMove,
       source,
       revealSource: s.kind === "reveal" ? sourceOf(s.reveal, i) : null,
       revealVisual: s.kind === "reveal" ? (s.revealVisual ?? "") : "",

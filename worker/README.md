@@ -99,11 +99,24 @@ Do it while no video is rendering (`"render":{"running":0,"queued":0}` on `/heal
 
 ## Run locally
 
-Needs Node 24+ and ffmpeg on the PATH (the sound-levelling step after each render uses it).
+Needs Node 24+ and ffmpeg on the PATH (the sound-levelling step after each render uses it). Without ffmpeg installed, Remotion's own copy works: it's in `node_modules/@remotion/compositor-<platform>/`.
+
+Put the settings in `worker/.env` (git-ignored; same names as on the VPS, `WORKER_DOMAIN` not needed; `WORKER_SECRET` must equal the app's `FFMPEG_WORKER_SECRET`), then:
 
 ```bash
 cd worker
 npm install
 npm run build
-WORKER_SECRET=dev R2_ENDPOINT=... R2_ACCESS_KEY_ID=... R2_SECRET_ACCESS_KEY=... R2_BUCKET=... R2_PUBLIC_URL=... npm start
+node --env-file=.env src/server.ts        # listens on :8080
 ```
+
+On Windows (PowerShell), with Remotion's ffmpeg:
+
+```powershell
+cd worker
+$env:PATH = "$PWD\node_modules\@remotion\compositor-win32-x64-msvc;$env:PATH"; node --env-file=.env src/server.ts
+```
+
+Point the app at it with `FFMPEG_WORKER_URL=http://localhost:8080` in `.env.local`, restart `npm run dev`, and check with `npm run smoke scripts/smoke/render-ad.ts`.
+
+A render that fails with "Failed to fetch" and a CORS error in the worker's log means the bucket doesn't allow reading from every page. Remotion's page runs on `http://localhost:<free port>` (3000 on the VPS, the next free one on a laptop where the app has 3000). Run `npm run smoke scripts/setup/r2-bucket.ts <app address…>` from the app folder; don't hand-edit the bucket's CORS.

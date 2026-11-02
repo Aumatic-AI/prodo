@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { AppError } from "@/core/errors";
 import { ownRow } from "@/lib/supabase/own-row";
+import { DESIRES } from "@/core/creative/brief";
 
 // The Brand Bible: one versioned document every content agent reads. Only one version is
 // approved at a time; editing or regenerating makes a new draft and the approved one stays
@@ -53,6 +54,23 @@ const offerStackSchema = z.object({
 });
 export type OfferStackItem = z.infer<typeof offerStackSchema>;
 
+/**
+ * How the market thinks (knowledge base §2, §3.6): how tired it is of claims (1 = a new category,
+ * 3 = claims exhausted, lead with the mechanism, 5 = nobody believes claims, lead with identity), the
+ * desires the brand serves, the beliefs buyers hold, who they become, how the product works, and the
+ * brand cues every ad repeats. Bibles written before this have none.
+ */
+const strategySchema = z.object({
+  sophistication: z.number().int().min(1).max(5),
+  sophisticationWhy: z.string().trim().max(400),
+  desires: z.array(z.enum(DESIRES)).max(3),
+  beliefs: z.array(z.string().trim().min(1).max(300)).max(6),
+  identity: z.string().trim().max(300),
+  mechanism: claimSchema.nullable(),
+  distinctiveAssets: z.array(z.string().trim().min(1).max(200)).max(8),
+});
+export type BibleStrategy = z.infer<typeof strategySchema>;
+
 /** The whole Bible. Also the schema for saving an edited version. */
 export const bibleContentSchema = z.object({
   positioning: claimSchema,
@@ -64,6 +82,7 @@ export const bibleContentSchema = z.object({
   never_say: z.array(z.string().trim().min(1).max(100)).max(80),
   personas: z.array(personaSchema).min(1).max(4),
   pillars: z.array(pillarSchema).min(1).max(5),
+  strategy: strategySchema.nullish(),
   /** The client's note when they asked for a regenerate */
   note: z.string().max(1000).nullish(),
 });

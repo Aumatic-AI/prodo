@@ -4,12 +4,13 @@ import type { CarouselBrief } from "@/core/creative/brief";
 import { renderPng } from "@/creative/render";
 import { ContentSlide, CoverSlide, CtaSlide } from "@/creative/templates/carousel";
 import { loadTheme, themePairs } from "@/creative/theme";
+import { linkText } from "@/creative/video/parts";
 import { finalName, mediaKey, publicUrl } from "@/providers/storage/paths";
 import { logUsage } from "@/agents/weekly/task";
 import { canvasesFor, kieRatio } from "./canvases";
 import { startJob, waitForJobs } from "./kie";
 import { keepPhoto, markMediaReady, saveFile } from "./media";
-import { photoPrompt, photoSettings, referencePhoto } from "./photos";
+import { adPhotoPrompt, photoSettings, referencePhoto } from "./photos";
 import type { ProduceArgs, Produced } from "./types";
 
 // Carousel: one AI cover photo → our code designs the hook cover, the content slides and the
@@ -22,10 +23,11 @@ export async function produceCarousel(a: ProduceArgs, brief: CarouselBrief): Pro
     `cover-start-${a.round}`,
     async (track) => {
       const reference = await referencePhoto(a.db(), brief, a.item);
-      const prompt = photoPrompt(brief.imagePrompt, await photoSettings(a.db()), !!reference, a.fix);
-      const res = await startJob({ key: "cover", kind: "image", prompt, aspect: kieRatio(canvas.ratio), refs: reference ? [reference] : [] });
+      // The cover shows the hook over its lower third
+      const prompt = adPhotoPrompt(brief.imagePrompt, await photoSettings(a.db()), reference?.use ?? null, a.fix, "Compose so the bottom third of the frame is simple, with the subject clear of it.");
+      const res = await startJob({ key: "cover", kind: "image", prompt, aspect: kieRatio(canvas.ratio), refs: reference ? [reference.url] : [] });
       track(res.usage);
-      return { job: res.job, reference };
+      return { job: res.job, reference: reference?.url ?? null };
     },
     () => "Started the cover photo"
   );
@@ -43,7 +45,11 @@ export async function produceCarousel(a: ProduceArgs, brief: CarouselBrief): Pro
   return a.task(
     `slides-${a.round}`,
     async () => {
-      const theme = await loadTheme(a.db());
+      const [theme, { data: profile, error }] = await Promise.all([loadTheme(a.db()), a.db().from("business_profile").select("website, cta_links").single()]);
+      if (error) throw error;
+      // Where the call to action leads, as people read it ("royal-gypsy.com")
+      const links: Record<string, string> = { website: profile?.website ?? "", ...(profile?.cta_links ?? {}) };
+      const link = linkText(links[brief.cta.link] || links.website) || null;
       const slides = brief.slides;
       const total = slides.length;
       await a.db().from("media_files").delete().eq("media_id", a.mediaId).eq("role", "slide");
@@ -54,7 +60,7 @@ export async function produceCarousel(a: ProduceArgs, brief: CarouselBrief): Pro
           i === 0 ? (
             <CoverSlide canvas={canvas} theme={theme} index={0} total={total} photoUrl={photoUrl} title={s.title} />
           ) : i === total - 1 ? (
-            <CtaSlide canvas={canvas} theme={theme} index={i} total={total} title={s.title} body={s.body} cta={brief.cta.label} />
+            <CtaSlide canvas={canvas} theme={theme} index={i} total={total} title={s.title} body={s.body} cta={brief.cta.label} link={link} />
           ) : (
             <ContentSlide canvas={canvas} theme={theme} index={i} total={total} title={s.title} body={s.body} />
           );

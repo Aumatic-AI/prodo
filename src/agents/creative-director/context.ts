@@ -1,8 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getItem, getPlan, approvedBible } from "@/core/plans/plans";
+import type { BibleStrategy } from "@/core/brand/bible";
 import type { PlanItem } from "@/core/plans/types";
 import { TEMPLATE_IDS, type TemplateId } from "@/core/creative/brief";
 import { contentRules, type ContentRules } from "@/core/content/prefs";
+import { layoutsFor } from "@/core/content/styles";
 import { loadMoments, referenceLessons, type Moment } from "@/core/brand/footage";
 import { ai } from "@/providers/ai/registry";
 import type { Usage } from "@/providers/usage";
@@ -20,18 +22,25 @@ export interface CreativeContext {
   ctaLinks: Record<string, string>;
   avoidWords: string[];
   disclaimers: string[];
-  bible: { positioning: string; valueProp: string; tone: string; traits: string[]; examples: string[]; dos: string[]; donts: string[]; neverSay: string[]; visualRules: string[] };
+  bible: { positioning: string; valueProp: string; tone: string; traits: string[]; examples: string[]; dos: string[]; donts: string[]; neverSay: string[]; visualRules: string[]; strategy: BibleStrategy | null };
   persona: { id: string; name: string; summary: string | null; pains: string[]; desires: string[]; objections: string[]; triggers: string[]; phrases: string[] } | null;
   pillar: { name: string; description: string | null } | null;
   offering: { id: string; name: string; kind: string; description: string | null; price: number | null; currency: string | null; priceModel: string | null; benefits: string[]; objections: string[]; audience: string | null; url: string | null } | null;
   offer: { id: string; title: string; details: string | null; code: string | null; endsAt: string | null } | null;
   proof: { id: string; kind: string; content: string; author: string | null; rating: number | null }[];
-  assets: { id: string; kind: string; description: string | null; offeringId: string | null; storageKey: string }[];
+  /** The client's own photos; `offeringName` says which product a product photo shows */
+  assets: { id: string; kind: string; description: string | null; offeringId: string | null; offeringName: string | null; storageKey: string }[];
   passages: { id: string; text: string }[];
   recentHooks: string[];
   photoStyle: string | null;
-  /** Ad layouts the brand uses (Brand kit); all when none were picked */
+  /** Ad layouts this slot may use: its style's, narrowed to the brand kit's picks when they fit */
   layouts: TemplateId[];
+  /** The business's last image ads' designs, newest first, so the next one looks different */
+  recentDesigns: { layout: TemplateId; align: string; headlineCase: string; priceStyle: string }[];
+  /** The idea and picture of the business's last image ads, newest first, so a free ad is a different idea */
+  recentConcepts: string[];
+  /** What the brand's logo looks like to the art director, or null when no logo goes on the ad */
+  logoTone: "dark" | "light" | "both" | null;
   /** Video slots: usable moments of the client's own videos (best first) */
   moments: Moment[];
   /** Video slots: what the client's reference videos do well (pacing, structure), never copied */
@@ -70,11 +79,33 @@ export async function loadCreativeContext(db: SupabaseClient, itemId: string): P
       .or(item.offering_id ? `offering_id.is.null,offering_id.eq.${item.offering_id}` : "offering_id.is.null")
       .limit(12),
     // The client's own photos only: references are other brands' posts, never used as ours
-    db.from("brand_assets").select("id, kind, ai_description, offering_id, storage_key, tags").in("kind", ["product_photo", "person", "general", "team", "location", "work"]).limit(60),
-    db.from("brand_kit").select("photo_style, template_ids").single(),
+    db
+      .from("brand_assets")
+      .select("id, kind, ai_description, offering_id, storage_key, tags, offerings(name)")
+      .in("kind", ["product_photo", "person", "general", "team", "location", "work"])
+      .limit(60),
+    db.from("brand_kit").select("photo_style, template_ids, logo_variants").single(),
     db.from("hook_library").select("text").order("created_at", { ascending: false }).limit(25),
   ]);
   for (const r of [profile, persona, pillar, offering, offer, proof, assets, kit, hooks]) if (r.error) throw r.error;
+
+  // Image ads: the last image ads' designs (any week), so this one doesn't repeat them
+  const { data: recent, error: recentError } =
+    item.format === "static"
+      ? await db.from("plan_items").select("brief").eq("format", "static").neq("id", item.id).not("brief", "is", null).order("created_at", { ascending: false }).limit(4)
+      : { data: [], error: null };
+  if (recentError) throw recentError;
+  const recentDesigns = (recent ?? []).flatMap((r) => {
+    const b = r.brief as { layout?: string; design?: { align?: string; headlineCase?: string; priceStyle?: string } } | null;
+    return b?.layout && (TEMPLATE_IDS as readonly string[]).includes(b.layout)
+      ? [{ layout: b.layout as TemplateId, align: b.design?.align ?? "left", headlineCase: b.design?.headlineCase ?? "normal", priceStyle: b.design?.priceStyle ?? "circle" }]
+      : [];
+  });
+
+  const recentConcepts = (recent ?? []).flatMap((r) => {
+    const b = r.brief as { message?: string; imagePrompt?: string } | null;
+    return b?.message ? [`${b.message}${b.imagePrompt ? ` · picture: ${b.imagePrompt.replace(/\s+/g, " ").slice(0, 160)}` : ""}`] : [];
+  });
 
   // Videos: the client's own footage and their reference videos' lessons
   const video = item.format === "video";
@@ -125,6 +156,7 @@ export async function loadCreativeContext(db: SupabaseClient, itemId: string): P
         donts: texts(c.do_dont?.dont),
         neverSay: c.never_say ?? [],
         visualRules: texts(c.visual_rules),
+        strategy: c.strategy ?? null,
       },
       persona: persona.data
         ? {
@@ -157,7 +189,14 @@ export async function loadCreativeContext(db: SupabaseClient, itemId: string): P
       // An offer the client hasn't confirmed is never used
       offer: offerRow && offerRow.verified !== false ? { id: offerRow.id, title: offerRow.title, details: offerRow.details, code: offerRow.code, endsAt: offerRow.ends_at } : null,
       proof: (proof.data ?? []).map((r) => ({ id: r.id, kind: r.kind, content: r.content, author: r.author, rating: r.rating })),
-      assets: assetRows.map((a) => ({ id: a.id, kind: a.kind, description: a.ai_description ?? (a.tags ?? []).join(", ") ?? null, offeringId: a.offering_id, storageKey: a.storage_key })),
+      assets: assetRows.map((a) => ({
+        id: a.id,
+        kind: a.kind,
+        description: a.ai_description ?? (a.tags ?? []).join(", ") ?? null,
+        offeringId: a.offering_id,
+        offeringName: (a.offerings as unknown as { name: string } | null)?.name ?? null,
+        storageKey: a.storage_key,
+      })),
       passages,
       recentHooks: (hooks.data ?? []).map((h) => h.text),
       photoStyle: kit.data?.photo_style ?? null,
@@ -165,9 +204,19 @@ export async function loadCreativeContext(db: SupabaseClient, itemId: string): P
       lessons,
       tone: (p.tone ?? {}) as Record<string, number>,
       industry: p.industry ?? null,
-      layouts: ((kit.data?.template_ids ?? []) as string[]).filter((t): t is TemplateId => (TEMPLATE_IDS as readonly string[]).includes(t)).length
-        ? (kit.data!.template_ids as TemplateId[])
-        : [...TEMPLATE_IDS],
+      layouts: layoutsFor(
+        item.style,
+        ((kit.data?.template_ids ?? []) as string[]).filter((t): t is TemplateId => (TEMPLATE_IDS as readonly string[]).includes(t))
+      ),
+      recentDesigns,
+      recentConcepts,
+      logoTone: !rules.showLogo
+        ? null
+        : (() => {
+            const v = (kit.data?.logo_variants ?? {}) as { full?: string; light?: string; dark?: string | null };
+            const forLight = v.light ?? v.full ?? p.logo_key;
+            return forLight && v.dark ? "both" : v.dark ? "light" : forLight ? "dark" : null;
+          })(),
     },
   };
 }

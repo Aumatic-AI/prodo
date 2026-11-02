@@ -30,7 +30,7 @@ Older planning pages (the Blueprint, Data Model and Sprint plans on claude.ai) a
 
 - Built: onboarding v2 (website scan first) → brand research (agents 1–4) → Brand Bible approval → weekly loop (agents 5–9) → learning loop (agent 10). Manual Media, Posts and Calendar screens. Performance, Activity and Costs screens. Settings: Business profile, Content, Automation, Connected accounts.
 - Videos: every video is drawn by Remotion on our worker from a Timeline our code builds (storylines per style, scene library, five looks, captions, cards, stickers, transitions, sound effects). The client's own videos are watched for usable moments and used in scenes. See `docs/technical.md` → Videos.
-- Files are in Cloudflare R2; the database is Supabase project `focaedtidoocuixiupxn`; migrations 0001–0022 are applied.
+- Files are in Cloudflare R2; the database is Supabase project `focaedtidoocuixiupxn`; migrations 0001–0022 are applied; 0023 (creative knowledge) is written and waits for the user to run it.
 - Not yet: a real end-to-end weekly run with paid calls, the publisher tested end to end, the worker update deployed to the VPS, email sending (`EMAIL_ENABLED` off), a custom domain for files (still `r2.dev`).
 
 ### Decisions worth knowing
@@ -113,7 +113,7 @@ No unit test suite yet; the offline checks above are the tests. Inngest dev serv
 
 ### Code vs AI vs vendor
 
-Our own code does anything rule-based (maths, layout, rendering, scheduling, validation, timing). AI only for judgement. A paid vendor only where code can't do the job. Every word on an ad or video (headline, CTA, price, captions, logo) is drawn by our code (Satori for images, Remotion for videos), never by the image or video model.
+Our own code does anything rule-based (maths, layout, rendering, scheduling, validation, timing). AI only for judgement. A paid vendor only where code can't do the job. Every word on a video (headline, CTA, price, captions, logo) is drawn by our code (Remotion), never by the video model. Image ads are the exception (`IMAGE_AD_MODE`, free by default): the image model paints the whole ad, words included, and our code adds only the logo; `IMAGE_AD_MODE=designed` brings back the Satori layouts. Carousels and the video end card are still drawn by our code.
 
 ### Provider adapter pattern (critical)
 
@@ -137,6 +137,8 @@ Layout: one folder per agent. `index.ts` reads top to bottom as the agent's step
 - **Brand research** (onboarding + "Refresh brand"): 1 Website Analyst, 2 Visual Identity Analyst (also watches the client's own videos), 3 Social & Market Analyst (parallel) → 4 Brand Strategist → Brand Bible draft → client approves (`brand/approved`)
 - **Weekly loop**: 5 Planner → 6 Creative Director → 8 QA Gate 1 → 7 Producer → 8 QA Gate 2 → 9 Publisher → 10 Performance Analyst → learnings feed the Planner. One slot end to end is `src/agents/weekly/produce-item.ts`.
 - **The client's choices** (goals, content mix, styles, people, logo, next step, music) reach every weekly agent through `contentRules()` in `src/core/content/prefs.ts`; what each style means is in `src/core/content/styles.ts`.
+- **Image ads (designed mode; the default is free, see Code vs AI vs vendor)**: the style picked for an ad is the style made, and each style has its own layouts (`IMAGE_STYLE_LAYOUTS`; eight layouts in `creative/templates/ads.tsx`, with a design that varies per ad). Words go on the photo's calm side, prices are written by code, there is no button (nothing in an image is clickable), a product photo gives the product only (never its model), and every fact printed on the image must be backed. See `docs/technical.md` → Image ads.
+- **Creative knowledge base**: `prodo-creative-knowledge.md` is compressed into `src/prompts/knowledge.ts` and every creative agent prompt (Planner, Creative Director, QA gates, Performance Analyst, Brand Strategist) follows its shape: ROLE, KNOWLEDGE, PROCEDURE, OUTPUT, SELF-CHECK. Use its exact vocabulary (`core/creative/brief.ts`: hook types, frameworks, levers, desires, awareness levels, objectives). Facts never come from it, only from the brand's data. See `docs/technical.md` → Creative knowledge base.
 
 ### Videos
 
@@ -194,7 +196,7 @@ npx supabase gen types typescript --project-id focaedtidoocuixiupxn --schema pub
 
 Never append `2>&1` to the types command — stderr noise breaks the generated file. In PowerShell, `>` writes UTF-16, which breaks lint and the build; use `npx supabase gen types typescript --project-id focaedtidoocuixiupxn --schema public | Out-File -Encoding utf8 src/types/database.ts`.
 
-**Migrations**: never edit an applied migration; always add a new one, and list it in `docs/database.md`. Migrations 0001–0022 were applied by pasting them into the Supabase SQL Editor, so the CLI's history doesn't know them. Before the first `db push`, run `npx supabase migration repair --status applied 0001 0002 0003 0004 0005 0006 0007 0008 0009 0010 0011 0012 0013 0014 0015 0016 0017 0018 0019 0020 0021 0022`.
+**Migrations**: never edit an applied migration; always add a new one, and list it in `docs/database.md`. Migrations 0001–0022 were applied by pasting them into the Supabase SQL Editor (0023 is pending), so the CLI's history doesn't know them. Before the first `db push`, run `npx supabase migration repair --status applied 0001 0002 0003 0004 0005 0006 0007 0008 0009 0010 0011 0012 0013 0014 0015 0016 0017 0018 0019 0020 0021 0022`.
 
 ### Schema rules
 

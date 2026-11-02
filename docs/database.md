@@ -19,6 +19,7 @@
 | `0020_research_inputs.sql` | `hook_library.source` allows `reference`; `match_brand_chunks()` and `match_recent_hooks()` search one business's rows exactly (the shared HNSW indexes are dropped: with many businesses they returned too few rows) |
 | `0021_content_styles.sql` | `plan_items.style` (the client's content style the Planner gave the slot); `learnings` dimension `style` |
 | `0022_video_footage.sql` | `brand_assets.analysis` (jsonb): what the client's own video shows, logged once by Twelve Labs (usable moments with times, shot, people, talking and their words, subject position, text area) |
+| `0023_creative_knowledge.sql` | `plan_items.ad_objective` (awareness, converting, retargeting), `desire` (six permanent desires) and `awareness_level` (five levels), set by the Planner; `learnings` dimensions `ad_objective`, `desire`, `awareness_level`, `style_modifier` |
 
 ### Changes to the original schema
 
@@ -226,6 +227,7 @@ The core table: one row per slot with every creative decision.
 | `style` | text | The client's image or video style for the slot (`tips`, `showcase`…; `IMAGE_STYLES` / `VIDEO_STYLES` in `core/onboarding/options.ts`), picked by the Planner's code (0021). Null for text posts and older plans |
 | `pillar_id`, `persona_id`, `offering_id`, `offer_id` | uuid FKs | |
 | `funnel_stage`, `objective` | text | |
+| `ad_objective`, `desire`, `awareness_level` | text | The Planner's strategy for the slot (0023): what it is for, the one desire it taps, the audience's awareness. Null on older plans |
 | `angle`, `framework`, `hook_type`, `hook_text` | text | Tags the learning loop scores |
 | `levers` | text[] | `social_proof`, `scarcity`, `authority`… |
 | `is_experiment` | boolean | The 30% exploration |
@@ -280,7 +282,7 @@ One row per target per day for the first 30 days: `post_target_id`, `captured_on
 `platform`, `account_id`, `captured_on` (unique together per business), `followers`, `raw`.
 
 ### `learnings` — new
-`dimension` (`baseline`\|`angle`\|`hook_type`\|`format`\|`style`\|`framework`\|`lever`\|`pillar`\|`persona`\|`time_slot`), `value` (name, or id as text — no FK on purpose), `platform` (null = all), `sample_size`, `score` (1.0 = baseline), `confidence`, `insight`. Unique on `(business_id, dimension, value, platform)` with nulls not distinct. Baselines: `dimension = baseline`, `value = engagement_rate` or `views`, `score` = the median itself.
+`dimension` (`baseline`\|`angle`\|`hook_type`\|`format`\|`style`\|`framework`\|`lever`\|`pillar`\|`persona`\|`time_slot`\|`ad_objective`\|`desire`\|`awareness_level`\|`style_modifier`), `value` (name, or id as text — no FK on purpose), `platform` (null = all), `sample_size`, `score` (1.0 = baseline), `confidence`, `insight`. Unique on `(business_id, dimension, value, platform)` with nulls not distinct. Baselines: `dimension = baseline`, `value = engagement_rate` or `views`, `score` = the median itself.
 
 ### `feedback` — new
 `plan_item_id`, `media_id`, `action` (`approve`\|`reject`\|`edit`\|`regenerate`), `note`.

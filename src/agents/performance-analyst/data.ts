@@ -36,6 +36,10 @@ type ItemTags = {
   levers: string[] | null;
   pillar_id: string | null;
   persona_id: string | null;
+  ad_objective?: string | null;
+  desire?: string | null;
+  awareness_level?: string | null;
+  brief?: { styleModifier?: string | null } | null;
 };
 
 export function tagsOf(item: ItemTags | null, mediaType: string | null, publishedAt: string, tz: string): PerfPost["tags"] {
@@ -50,6 +54,10 @@ export function tagsOf(item: ItemTags | null, mediaType: string | null, publishe
   for (const lever of item.levers ?? []) tags.push({ dimension: "lever", value: lever });
   if (item.pillar_id) tags.push({ dimension: "pillar", value: item.pillar_id });
   if (item.persona_id) tags.push({ dimension: "persona", value: item.persona_id });
+  if (item.ad_objective) tags.push({ dimension: "ad_objective", value: item.ad_objective });
+  if (item.desire) tags.push({ dimension: "desire", value: item.desire });
+  if (item.awareness_level) tags.push({ dimension: "awareness_level", value: item.awareness_level });
+  if (item.brief?.styleModifier) tags.push({ dimension: "style_modifier", value: item.brief.styleModifier });
   return tags;
 }
 
@@ -57,7 +65,7 @@ export async function loadPerformance(db: SupabaseClient, sinceIso: string, tz: 
   const { data, error } = await db
     .from("post_targets")
     .select(
-      "id, platform, caption, url, published_at, post:posts!inner(id, plan_item_id, media:media(id, type, storage_key), item:plan_items!posts_plan_item_id_fkey(id, angle, hook_type, hook_text, format, style, framework, levers, pillar_id, persona_id)), post_metrics(captured_on, impressions, reach, views, likes, comments, shares, saves, clicks, engagement_rate)"
+      "id, platform, caption, url, published_at, post:posts!inner(id, plan_item_id, media:media(id, type, storage_key), item:plan_items!posts_plan_item_id_fkey(id, angle, hook_type, hook_text, format, style, framework, levers, pillar_id, persona_id, ad_objective, desire, awareness_level, brief)), post_metrics(captured_on, impressions, reach, views, likes, comments, shares, saves, clicks, engagement_rate)"
     )
     .eq("status", "published")
     .gte("published_at", sinceIso);
@@ -96,7 +104,7 @@ export async function loadPerformance(db: SupabaseClient, sinceIso: string, tz: 
 export async function loadRejected(db: SupabaseClient, sinceIso: string, tz: string) {
   const { data, error } = await db
     .from("feedback")
-    .select("created_at, item:plan_items(id, angle, hook_type, hook_text, format, style, framework, levers, pillar_id, persona_id, platforms, slot_at)")
+    .select("created_at, item:plan_items(id, angle, hook_type, hook_text, format, style, framework, levers, pillar_id, persona_id, ad_objective, desire, awareness_level, brief, platforms, slot_at)")
     .eq("action", "reject")
     .gte("created_at", sinceIso);
   if (error) throw error;

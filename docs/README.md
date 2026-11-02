@@ -82,7 +82,7 @@ Every agent step is logged with its cost; a monthly budget and a pause switch st
 
 | Tab | What it does |
 |---|---|
-| **This week** (`/week`, home) | The week's plan on a board, approval inbox ("Needs you"), theme and pillar mix, live agent activity, "Create an ad", "Plan this week"; click a post for its preview, reasons, brief, captions, QA scores and steps |
+| **This week** (`/week`, home) | The week's plan on a board, approval inbox ("Needs you"), theme and pillar mix, live agent activity, "Auto-create" (a chosen number of images, carousels and videos, nothing to type), "Create an ad", "Plan this week"; click a post for its preview, reasons, brief, captions, QA scores and steps |
 | **Performance** | Weekly report, KPIs, reach over time, platforms, top posts, what's working (learnings), followers |
 | **Activity** | Every agent step across the app, filterable |
 | **Costs** | The month's AI spend against the budget, by agent, day, asset and weekly plan |

@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api-client";
 import type { PlanItemView } from "@/core/plans/types";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ChevronLeft, ChevronRight, MoreHorizontal, RotateCcw, Sparkles } from "lucide-react";
+import { ChevronLeft, ChevronRight, MoreHorizontal, RotateCcw, Sparkles, Wand2 } from "lucide-react";
 import { Alert } from "@/components/kit/Alert";
 import { PageHeader } from "@/components/kit/PageHeader";
 import { Skeleton } from "@/components/kit/Skeleton";
@@ -13,6 +13,7 @@ import { button } from "@/components/kit/styles";
 import { addDays } from "@/lib/zoned-time";
 import { cn } from "@/lib/utils";
 import { ActivityFeed } from "../components/ActivityFeed";
+import { AutoCreateModal } from "../components/AutoCreateModal";
 import { CreateAdModal } from "../components/CreateAdModal";
 import { EmptyWeek } from "../components/EmptyWeek";
 import { NeedsYou } from "../components/NeedsYou";
@@ -31,6 +32,7 @@ export function WeekPage() {
   const itemId = params.get("item");
   const [requested, setRequested] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [autoCreating, setAutoCreating] = useState(false);
   const [menu, setMenu] = useState(false);
 
   const { data, isLoading, error } = usePlan(week, requested);
@@ -91,6 +93,9 @@ export function WeekPage() {
                 <ChevronRight size={16} />
               </button>
             </div>
+            <button type="button" className={button({ variant: "secondary", size: "sm" })} onClick={() => setAutoCreating(true)}>
+              <Wand2 size={15} /> Auto-create
+            </button>
             <button type="button" className={button({ size: "sm" })} onClick={() => setCreating(true)}>
               <Sparkles size={15} /> Create an ad
             </button>
@@ -172,6 +177,7 @@ export function WeekPage() {
       )}
 
       <SlotDetail item={open} timezone={data?.clock.timezone ?? "UTC"} onClose={() => go({ item: null })} />
+      <AutoCreateModal open={autoCreating} onOpenChange={setAutoCreating} onStarted={(weekStart) => go({ week: weekStart, item: null })} />
       <CreateAdModal
         open={creating}
         onOpenChange={setCreating}

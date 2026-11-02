@@ -79,19 +79,19 @@ export function formatPlatformCaptions(meta: CaptionMetadata, platforms: string[
   for (const platform of platforms) {
     switch (platform) {
       case "facebook":
-        result[platform] = `${meta.post}\n\n${tagList.slice(0, 5).join(" ")}`;
+        result[platform] = `${meta.post}\n\n${tagList.slice(0, 3).join(" ")}`;
         break;
       case "instagram":
-        result[platform] = `${meta.caption}\n.\n.\n.\n${tagList.join(" ")}`;
+        result[platform] = `${meta.caption}\n.\n.\n.\n${tagList.slice(0, 5).join(" ")}`;
         break;
       case "linkedin":
-        result[platform] = `${meta.post}\n\n${tagList.slice(0, 7).join(" ")}`;
+        result[platform] = `${meta.post}\n\n${tagList.slice(0, 5).join(" ")}`;
         break;
       case "tiktok":
-        result[platform] = truncateWithTags(meta.caption, tagList, 85);
+        result[platform] = truncateWithTags(meta.caption, tagList.slice(0, 4), 85);
         break;
       case "twitter":
-        result[platform] = truncateWithTags(meta.caption, tagList, 150);
+        result[platform] = truncateWithTags(meta.caption, tagList.slice(0, 2), 150);
         break;
       default:
         result[platform] = meta.caption;
@@ -102,11 +102,11 @@ export function formatPlatformCaptions(meta: CaptionMetadata, platforms: string[
 }
 
 const PLATFORM_TONE: Record<string, string> = {
-  facebook: "warm and conversational, can run a bit longer",
-  instagram: "visual-first, casual, hashtag-friendly",
-  linkedin: "professional but still human, no corporate jargon",
-  tiktok: "short, punchy, hooks fast, under 85 characters",
-  twitter: "punchy and concise, under 150 characters",
+  facebook: "conversational, can run longer; the first line carries the hook; 0–3 hashtags",
+  instagram: "a hook line first (only the first 125 characters show), then 2–4 short lines of value or story, a call to action, 3–5 specific hashtags",
+  linkedin: "professional but still human, an insight-led first line, short paragraphs, 3–5 hashtags at the end, no corporate jargon",
+  tiktok: "one punchy line that adds context or an honest question, under 85 characters, 3–5 hashtags at most",
+  twitter: "one sharp line, under 150 characters, 0–2 hashtags",
 };
 
 export function buildImproveCaptionPrompt(

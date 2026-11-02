@@ -28,12 +28,38 @@ const schema = z.object({
   style: z.string().nullish(),
 });
 
-/** The style for a one-off ad: the one asked for when it fits the format, else the client's top pick. */
+/**
+ * The style for a one-off ad: the one asked for whenever it fits the format (the client picked it for
+ * this ad, so it isn't limited to their onboarding picks), else their top pick.
+ */
 async function styleFor(db: SupabaseClient, format: Format, asked: string | null | undefined): Promise<string | null> {
   if (format === "text") return null;
   const rules = await loadContentRules(db);
-  const options = stylesFor(format, { image: rules.imageStyles, video: rules.videoStyles }, rules.people, await hasTalkingFootage(db, rules.people));
-  return asked && (options as string[]).includes(asked) ? asked : (options[0] ?? null);
+  const talking = await hasTalkingFootage(db, rules.people);
+  const options = stylesFor(format, { image: rules.imageStyles, video: rules.videoStyles }, rules.people, talking);
+  // Videos: only the client's onboarding picks, as before
+  if (format === "video") return asked && (options as string[]).includes(asked) ? asked : (options[0] ?? null);
+  // Images: any style the format can take (none with people when the client wants none)
+  const possible = stylesFor(format, { image: [], video: [] }, rules.people, talking) as string[];
+  if (asked && possible.includes(asked)) return asked;
+  return options[0] ?? null;
+}
+
+/**
+ * A review ad needs a confirmed review and an offer ad a price to show; without them the only way
+ * to make one is to invent it, so say so before anything is paid for.
+ */
+async function assertStyleHasFacts(db: SupabaseClient, style: string | null, offeringId: string | null): Promise<void> {
+  if (style === "review") {
+    const { count, error } = await db.from("proof_items").select("id", { count: "exact", head: true }).eq("verified", true);
+    if (error) throw error;
+    if (!count) throw new AppError("A review ad needs a confirmed customer review, and there isn't one yet. Add or confirm one in Brand → Proof, or pick another style.", "INVALID_INPUT", false);
+  }
+  if (style === "promo") {
+    const { data, error } = offeringId ? await db.from("offerings").select("price").eq("id", offeringId).maybeSingle() : { data: null, error: null };
+    if (error) throw error;
+    if (data?.price == null) throw new AppError("An offer ad shows a price: pick a product that has one, or another style.", "INVALID_INPUT", false);
+  }
 }
 
 // "Create ad for…": one slot through the full chain (Creative Director → QA → Producer → QA)
@@ -48,6 +74,9 @@ export const POST = apiHandler(async (req: NextRequest) => {
   // Videos need our renderer; say so now instead of after paying for a brief
   if (input.format === "video") await assertVideoReady();
 
+  const style = await styleFor(db, input.format, input.style);
+  await assertStyleHasFacts(db, style, input.offeringId ?? null);
+
   const clock = await weekClock(db);
   const slotAt = input.slotAt ? new Date(input.slotAt) : new Date(Date.now() + 24 * 3600_000);
   if (slotAt.getTime() < Date.now()) throw new AppError("Pick a time in the future.", "INVALID_INPUT", false);
@@ -60,11 +89,13 @@ export const POST = apiHandler(async (req: NextRequest) => {
       slot_at: slotAt.toISOString(),
       platforms: input.platforms,
       format: input.format,
-      style: await styleFor(db, input.format, input.style),
+      style,
       offering_id: input.offeringId ?? null,
       persona_id: input.personaId ?? null,
       angle: input.idea,
-      objective: "Made on request",
+      // What the ad should achieve. The Creative Director reads it, so for images it must never read like a
+      // product fact ("Made on request" ended up printed on ads); videos keep theirs until they're reworked.
+      objective: input.format === "video" ? "Made on request" : input.offeringId ? "Sell this product" : "Make people want to discover the brand",
       funnel_stage: input.offeringId ? "bofu" : "tofu",
       rationale: "You asked for this ad.",
       status: "planned",

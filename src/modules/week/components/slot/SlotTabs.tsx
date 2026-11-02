@@ -168,7 +168,7 @@ function ScoreBar({ name, value }: { name: string; value: number }) {
   );
 }
 
-const SCORE_NAMES: Record<string, string> = { hook: "Hook", oneMessage: "One message", personaFit: "Persona fit", cta: "Call to action", proof: "Proof", compliance: "Compliance" };
+const SCORE_NAMES: Record<string, string> = { strategicFit: "Strategic fit", hook: "Hook", oneMessage: "One message", persuasion: "Persuasion craft", proof: "Proof", personaFit: "Persona and voice", producibility: "Producibility", brand: "Brand", cta: "Call to action", compliance: "Compliance" };
 
 export function QualityTab({ item }: { item: PlanItemView }) {
   const r = item.qa_report;

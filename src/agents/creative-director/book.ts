@@ -1,4 +1,6 @@
+import { isFreeImageAd } from "@/config/image-ads";
 import { platformMeta } from "@/config/platforms";
+import { TEMPLATE_NOTES } from "@/creative/templates/notes";
 import { CTA_LINK_KEY, ctaWords, peopleRule } from "@/core/content/prefs";
 import { isImageStyle, isVideoStyle, styleBrief } from "@/core/content/styles";
 import type { Format } from "@/core/creative/brief";
@@ -44,6 +46,16 @@ export function buildFactBook(ctx: CreativeContext): FactBook {
   if (ctx.business.goals.length) lines.push(`Goals, in order: ${ctx.business.goals.join(", then ")}`);
   if (ctx.bible.positioning) lines.push(`Positioning: ${ctx.bible.positioning}`);
   if (ctx.bible.valueProp) lines.push(`Value proposition: ${ctx.bible.valueProp}`);
+  // The market diagnosis from the Brand Bible: where every ad's diagnosis starts
+  const st = ctx.bible.strategy;
+  if (st) {
+    lines.push("", "MARKET (from the Brand Bible)", `Sophistication: ${st.sophistication}/5${st.sophisticationWhy ? ` (${st.sophisticationWhy})` : ""}`);
+    if (st.desires.length) lines.push(`Desires buyers bring: ${st.desires.join(", ")}`);
+    if (st.beliefs.length) lines.push(`Beliefs they hold: ${st.beliefs.map((b) => `"${b}"`).join("; ")}`);
+    if (st.identity) lines.push(`Who they become: ${st.identity}`);
+    if (st.mechanism) lines.push(`How it works differently: ${st.mechanism.text}`);
+    if (st.distinctiveAssets.length) lines.push(`Brand cues to show early: ${st.distinctiveAssets.join("; ")}`);
+  }
 
   lines.push("", "VOICE");
   lines.push(`Tone sliders: ${ctx.business.tone}`);
@@ -58,7 +70,12 @@ export function buildFactBook(ctx: CreativeContext): FactBook {
   lines.push("", "THIS SLOT");
   const it = ctx.item;
   lines.push(`Platforms: ${it.platforms.map((p) => `${platformMeta(p).label} (caption up to ${platformMeta(p).captionMaxLength} characters)`).join(", ")}`);
-  lines.push(`Angle: ${it.angle ?? "brand post"}`, `Objective: ${it.objective ?? ""}`, `Funnel stage: ${it.funnel_stage ?? "tofu"}`);
+  lines.push(`Angle: ${it.angle ?? "brand post"}`, `What it should do: ${it.objective ?? ""}`);
+  // The Planner's strategy for the slot (plans made before it have none)
+  if (it.ad_objective) lines.push(`OBJECTIVE: ${it.ad_objective}`);
+  else lines.push(`Funnel stage: ${it.funnel_stage ?? "tofu"}`);
+  if (it.desire) lines.push(`Planned desire: ${it.desire}`);
+  if (it.awareness_level) lines.push(`Planned awareness level: ${it.awareness_level}`);
   const video = it.format === "video" ? videoPlan(ctx) : null;
   const style = styleLine(video?.style ?? it.style, it.format);
   if (style) lines.push(`CONTENT STYLE (the business owner chose this; follow it): ${style}`);
@@ -118,15 +135,39 @@ export function buildFactBook(ctx: CreativeContext): FactBook {
       "",
       ctx.item.format === "video"
         ? "REAL PHOTOS (a scene can use one directly with gentle motion, or as the reference image for an AI scene that keeps the real product/person)"
-        : "REAL PHOTOS (pick one as the reference image when it fits; the image model keeps the real product/person)"
+        : "REAL PHOTOS (pick one as the reference image when it fits. A reference keeps the real product; only person and team photos keep their real person)"
     );
     ctx.assets.forEach((a, i) => {
       assets.set(`G${i + 1}`, a.id);
-      lines.push(`[G${i + 1}] ${a.kind}${a.offeringId && a.offeringId === ctx.offering?.id ? " of this offering" : ""}: ${a.description ?? "no description"}`);
+      if (ctx.item.format === "video") {
+        lines.push(`[G${i + 1}] ${a.kind}${a.offeringId && a.offeringId === ctx.offering?.id ? " of this offering" : ""}: ${a.description ?? "no description"}`);
+        return;
+      }
+      // Image ads: say which product a photo shows, so an ad about the brand can still pick a real one
+      const what = a.kind === "product_photo" && a.offeringName ? `product photo of "${a.offeringName}"${a.offeringId === ctx.offering?.id ? " (this offering)" : ""}` : a.kind.replace("_", " ");
+      lines.push(`[G${i + 1}] ${what}${a.description ? `: ${a.description}` : ""}`);
     });
   }
   if (ctx.photoStyle) lines.push("", `PHOTO STYLE: ${ctx.photoStyle}`);
-  if (ctx.item.format === "static") lines.push(`LAYOUTS THIS BRAND USES (pick one): ${ctx.layouts.join(", ")}`);
+  if (isFreeImageAd(ctx.item.format)) {
+    if (ctx.logoTone) {
+      lines.push(
+        "",
+        `LOGO: code adds the brand's logo after the picture is made. ${
+          ctx.logoTone === "both" ? "It has a light and a dark version, and the one that reads on the picture is used." : `It is a ${ctx.logoTone} logo, so keep its corner ${ctx.logoTone === "dark" ? "light" : "dark"}.`
+        }`
+      );
+    } else lines.push("", "LOGO: none goes on this ad.");
+    if (ctx.recentConcepts.length) lines.push("", "RECENT IMAGE ADS (newest first; make this one a different idea and a different-looking picture)", ...ctx.recentConcepts.map((c) => `- ${c}`));
+  } else if (ctx.item.format === "static") {
+    lines.push("", "LAYOUTS FOR THIS STYLE (pick the one that suits this message and photo)", ...ctx.layouts.map((l) => `- ${l}: ${TEMPLATE_NOTES[l]}`));
+    if (ctx.recentDesigns.length) {
+      lines.push(
+        "RECENT IMAGE DESIGNS (newest first; make this one look different)",
+        ...ctx.recentDesigns.map((d) => `- ${d.layout}, ${d.align} aligned, ${d.headlineCase} headline, price as ${d.priceStyle}`)
+      );
+    }
+  }
   if (ctx.bible.visualRules.length) lines.push(`VISUAL RULES: ${ctx.bible.visualRules.join("; ")}`);
   const moments = video ? videoSection(ctx, video, lines) : new Map<string, Moment>();
   if (ctx.recentHooks.length) lines.push("", "RECENT HOOKS (don't repeat or closely copy)", ...ctx.recentHooks.slice(0, 15).map((h) => `- ${h}`));

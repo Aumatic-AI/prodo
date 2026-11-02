@@ -2,6 +2,7 @@
 // checks, how brief labels become the client's photos and video moments, the look for a brand, and
 // the timeline the renderer draws (timing, captions, placement, sound).
 // Run: npm run smoke scripts/check/video-logic.ts
+process.env.IMAGE_AD_MODE ??= "designed";
 import assert from "node:assert/strict";
 import { FPS } from "@video/timeline";
 import { PRESETS } from "@video/presets";
@@ -110,7 +111,8 @@ const bookFor = (ctx: CreativeContext): FactBook => {
 const rawVideo = (scenes: Record<string, unknown>[]) =>
   rawBriefSchema.parse({
     message: "Handmade rings made to last",
-    hooks: [{ type: "question", text: "Who made your ring?" }],
+    hooks: ["question", "bold_claim", "contrarian", "number_list", "pov", "mistake", "result_first", "story_open"].map((type, i) => ({ type, text: i ? `Hook idea ${i + 1} about the ring` : "Who made your ring?" })),
+    diagnosis: { desire: "status", awareness: "problem_aware", sophistication: 3, belief: "Good rings are made by machines", mechanism: "Hand-finished by one maker" },
     chosenHook: 1,
     framework: "aida",
     levers: [],

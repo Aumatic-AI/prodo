@@ -10,7 +10,7 @@ import { INSIGHTS_SYSTEM, insightsSchema } from "@/prompts/agents/insights";
 import { agentStep, optional } from "@/agents/run";
 import { cronForEveryBusiness } from "@/jobs/every-business";
 import { loadPerformance, loadRejected, storedBaselines, type PerfPost } from "./data";
-import { baselines, groupLearnings, MIN_CONFIDENT, REJECTED_SCORE, REJECTED_WEIGHT, scorePost, type Learning, type Tagged } from "./score";
+import { baselines, BREAKOUT, confidenceLabel, fatigued, groupLearnings, MIN_CONFIDENT, REJECTED_SCORE, REJECTED_WEIGHT, scorePost, type Learning, type Tagged } from "./score";
 import { styleName } from "@/core/content/styles";
 
 // Agent 10 · Performance Analyst, weekly (Sunday early morning, before the Planner):
@@ -28,6 +28,10 @@ const DIMENSION_NAMES: Record<string, string> = {
   hook_type: "Hook type",
   format: "Format",
   style: "Content style",
+  ad_objective: "Objective",
+  desire: "Desire",
+  awareness_level: "Awareness level",
+  style_modifier: "Style modifier",
   framework: "Framework",
   lever: "Lever",
   pillar: "Pillar",
@@ -145,6 +149,13 @@ export const weeklyLearnings = inngest.createFunction(
           }
         }
 
+        // Tired angles, hooks and frameworks (two weak uses in a row) rest for a few weeks
+        const resting = fatigued(scored.filter((p) => p.score !== null).map((p) => ({ publishedAt: p.publishedAt, score: p.score!, tags: p.tags })));
+        // A breakout: at least twice the usual within a day of publishing (the Planner may add a follow-up)
+        const breakouts = scored
+          .filter((p) => p.score !== null && p.score >= BREAKOUT && Date.now() - new Date(p.publishedAt).getTime() <= 86400_000 * 2)
+          .map((p) => ({ platform: p.platform, score: p.score!, caption: p.caption.slice(0, 120) }));
+
         const today = zonedParts(new Date(), tz).day;
         const since = new Date(Date.now() - 7 * 86400_000).toISOString();
         const prevSince = new Date(Date.now() - 14 * 86400_000).toISOString();
@@ -165,6 +176,8 @@ export const weeklyLearnings = inngest.createFunction(
           winners,
           stats,
           videos: pick.map((p) => ({ key: p.media!.storage_key!, score: p.score!, caption: p.caption.slice(0, 200), platform: p.platform })),
+          resting,
+          breakouts,
           baselineFrom: Object.fromEntries(Object.entries(base).map(([k, b]) => [k, b.from])),
         };
       },
@@ -209,7 +222,9 @@ export const weeklyLearnings = inngest.createFunction(
           `Write in language: ${result.language}`,
           "",
           "LEARNINGS (score: 1.0 = the account's usual engagement)",
-          ...ranked.map((l, i) => `[L${i + 1}] ${DIMENSION_NAMES[l.dimension]} "${label(l)}": ${l.score.toFixed(2)}× from ${l.sample_size} posts${l.sample_size < MIN_CONFIDENT ? " (early sign)" : ""}`),
+          ...ranked.map((l, i) => `[L${i + 1}] ${DIMENSION_NAMES[l.dimension]} "${label(l)}": ${l.score.toFixed(2)}× from ${l.sample_size} posts, ${confidenceLabel(l.sample_size)} confidence${l.sample_size < MIN_CONFIDENT ? " (early sign)" : ""}`),
+          ...(result.resting.length ? ["", "TIRED (two weak uses in a row; resting 3–4 weeks)", ...result.resting.map((r) => `${DIMENSION_NAMES[r.dimension]} "${r.value}"`)] : []),
+          ...(result.breakouts.length ? ["", "BREAKOUTS (at least twice the usual within a day or two)", ...result.breakouts.map((b) => `${b.platform}, ${b.score.toFixed(2)}×: "${b.caption}"`)] : []),
           "",
           "THIS WEEK",
           `Posts: ${s.posts} (week before: ${s.prevPosts})`,
@@ -229,7 +244,7 @@ export const weeklyLearnings = inngest.createFunction(
             written && /\d/.test(written)
               ? written
               : `${DIMENSION_NAMES[l.dimension]} "${label(l)}" gets ${l.score.toFixed(2)}× the usual engagement over ${l.sample_size} posts${l.sample_size < MIN_CONFIDENT ? " (early sign)" : ""}.`;
-          await db().from("learnings").update({ insight }).eq("dimension", l.dimension).eq("value", l.value).is("platform", null);
+          await db().from("learnings").update({ insight: result.resting.some((r) => r.dimension === l.dimension && r.value === l.value) ? `${insight} Resting for 3–4 weeks: two weak uses in a row.` : insight }).eq("dimension", l.dimension).eq("value", l.value).is("platform", null);
         }
 
         const r = res.data.report;

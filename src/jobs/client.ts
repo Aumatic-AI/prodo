@@ -32,8 +32,12 @@ type Events = {
   // ---------- Weekly loop ----------
   /** Hourly from the cron, per business: plan next week if it's the business's plan day and hour */
   "plan/check-due": ForBusiness;
-  /** Plan the week starting on weekStart (Monday, "YYYY-MM-DD"); from the weekly cron or "Plan next week" */
-  "plan/requested": ForBusiness<{ weekStart: string; replace?: boolean; source: "cron" | "client" | "onboarding" }>;
+  /**
+   * Plan the week starting on weekStart (Monday, "YYYY-MM-DD"); from the weekly cron or "Plan next week".
+   * With `batch` ("Auto-create"): that many posts of each kind over the next days instead (weekStart is the week of the first one),
+   * `format` null = follow the client's content mix.
+   */
+  "plan/requested": ForBusiness<{ weekStart: string; replace?: boolean; source: "cron" | "client" | "onboarding"; batch?: { static: number; carousel: number; video: number; /** One chosen day ("YYYY-MM-DD") for every post; without it the posts spread over the next 7 days */ date?: string } }>;
   /** Make one slot: Creative Director → QA Gate 1 → Producer → QA Gate 2. `note` = the client's regenerate note */
   "plan-item/produce": ForBusiness<{ itemId: string; planId: string; note?: string | null; oneOff?: boolean }>;
   /** A slot finished producing (ready, needs review or failed) */

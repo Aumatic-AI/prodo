@@ -1,14 +1,19 @@
 // Offline checks of the weekly loop's pure logic (Planner slots, brief checks, captions, renders).
 // No vendor calls, no database. Run: npm run smoke scripts/check/weekly-logic.ts
 import assert from "node:assert/strict";
+import { freeAdPrompt } from "@/agents/producer/static-free";
+
+// Most checks below are about the designed layouts; the free image ad ones switch the mode on for their own run
+process.env.IMAGE_AD_MODE = "designed";
 import { addDays, nextWeekStart, weekStartOf, zonedParts, zonedToUtc } from "@/lib/zoned-time";
 import { allocate, allowedFormats, avoidRepeats, planSlots } from "@/agents/planner/slots";
-import { assembleBrief } from "@/agents/creative-director/assemble";
+import { assembleBrief, pickDesign } from "@/agents/creative-director/assemble";
 import { checkBrief, findBanned, pricesIn } from "@/agents/creative-director/checks";
 import type { FactBook } from "@/agents/creative-director/book";
 import type { CreativeContext } from "@/agents/creative-director/context";
 import { rawBriefSchema } from "@/prompts/agents/creative-brief";
-import { pictureOnly } from "@/agents/producer/picture-only";
+import { colourWord, photoWords, pictureOnly } from "@/agents/producer/picture-only";
+import { adPhotoPrompt, photoPrompt, referenceUse } from "@/agents/producer/photos";
 import { overallScore } from "@/prompts/agents/qa-brief";
 import { buildAss, groupWords } from "@/creative/subtitles";
 import { CANVAS } from "@/creative/sizes";
@@ -18,7 +23,10 @@ import { canvasesFor } from "@/agents/producer/canvases";
 import type { PlanItem } from "@/core/plans/types";
 import { stripLabels, stripLabelsDeep } from "@/lib/labels";
 import { contentRules } from "@/core/content/prefs";
-import { stylesFor } from "@/core/content/styles";
+import { IMAGE_STYLE_LAYOUTS, layoutsFor, stylesFor } from "@/core/content/styles";
+import { LAYOUT_PHOTO, TEMPLATE_NOTES } from "@/creative/templates/notes";
+import { TEMPLATE_IDS, type TemplateId } from "@/core/creative/brief";
+import { IMAGE_STYLES } from "@/core/onboarding/options";
 
 let passed = 0;
 const check = (name: string, fn: () => void | Promise<void>) =>
@@ -125,6 +133,41 @@ await check("planSlots: a part week starts at firstDay and gets its share of pos
   assert.equal(planSlots({ weekStart: "2026-10-19", firstDay: "2026-10-26", timezone: "UTC", postsPerWeek: { instagram: 7 }, pillars }).length, 0);
 });
 
+await check("planSlots (auto-create): the chosen number of each kind over the given days, on the platforms that take it", () => {
+  const days = ["2026-11-03", "2026-11-04", "2026-11-05", "2026-11-06", "2026-11-07", "2026-11-08", "2026-11-09"];
+  const base = { weekStart: "2026-11-02", timezone: "UTC", postsPerWeek: { instagram: 5, linkedin: 2, tiktok: 3 }, pillars, goals: ["sales"] };
+  const counts = (static_: number, carousel: number, video: number) => ({ static: static_, carousel, video });
+  const kinds = (slots: { format: string }[]) => ({ static: slots.filter((s) => s.format === "static").length, carousel: slots.filter((s) => s.format === "carousel").length, video: slots.filter((s) => s.format === "video").length });
+  // The default: two images and one video, interleaved so the video isn't last
+  const mixed = planSlots({ ...base, batch: { counts: counts(2, 0, 1), days } });
+  assert.deepEqual(kinds(mixed), counts(2, 0, 1));
+  assert.deepEqual(mixed.map((s) => s.format), ["static", "video", "static"]);
+  assert.equal(mixed.filter((s) => s.platforms.includes("instagram")).length, 3);
+  assert.ok(mixed.every((s) => days.includes(s.day) && s.style));
+  // The days are spread
+  assert.ok(new Set(mixed.map((s) => s.day)).size > 1);
+  // Platforms that can't take a kind are left out of its posts (linkedin takes no video here)
+  assert.ok(mixed.filter((s) => s.format === "video").every((s) => s.platforms.length > 0));
+  // Every kind at once, and one kind alone
+  assert.deepEqual(kinds(planSlots({ ...base, batch: { counts: counts(2, 2, 2), days } })), counts(2, 2, 2));
+  const images = planSlots({ ...base, batch: { counts: counts(4, 0, 0), days } });
+  assert.ok(images.length === 4 && images.every((s) => s.format === "static" && !s.platforms.includes("tiktok")));
+  // Videos by name beat an images-only mix
+  const videos = planSlots({ ...base, mix: "images", batch: { counts: counts(0, 0, 2), days } });
+  assert.ok(videos.length === 2 && videos.every((s) => s.format === "video"));
+  // No video renderer: the videos have nothing to make, the images still do
+  assert.deepEqual(kinds(planSlots({ ...base, videoAllowed: false, batch: { counts: counts(1, 0, 2), days } })), counts(1, 0, 0));
+  // Carousels work even when the client only picked single-image styles
+  const carousels = planSlots({ ...base, styles: { image: ["product"], video: [] }, batch: { counts: counts(0, 2, 0), days } });
+  assert.ok(carousels.length === 2 && carousels.every((s) => s.format === "carousel" && s.style));
+  // One chosen day takes every post, at different times
+  const oneDay = planSlots({ ...base, batch: { counts: counts(2, 1, 1), days: ["2026-11-05"] } });
+  assert.ok(oneDay.length === 4 && oneDay.every((s) => s.day === "2026-11-05"));
+  assert.equal(new Set(oneDay.map((s) => s.time)).size, 4);
+  // A week plan is unchanged by all this
+  assert.equal(planSlots(base).length, 5);
+});
+
 await check("planSlots: no video and no video-only platforms while video isn't set up", () => {
   const slots = planSlots({ weekStart: "2026-11-02", timezone: "UTC", postsPerWeek: { instagram: 5, tiktok: 3, youtube: 2 }, pillars, videoAllowed: false });
   assert.equal(slots.length, 5);
@@ -155,6 +198,10 @@ const ctx = {
   avoidWords: ["cheap"],
   bible: { neverSay: ["guaranteed"] },
   offer: null,
+  offering: null,
+  assets: [],
+  layouts: ["split", "spotlight", "poster"],
+  recentDesigns: [],
 } as unknown as CreativeContext;
 const book: FactBook = {
   text: "",
@@ -169,13 +216,14 @@ const raw = (over: Record<string, unknown> = {}) =>
     message: "Book a deep clean before the holidays",
     hooks: [
       { type: "question", text: "When did you last see your oven glass?" },
-      { type: "number", text: "3 spots every kitchen forgets" },
+      { type: "number_list", text: "3 spots every kitchen forgets", visual: "A hand wipes a greasy oven door", spoken: null, score: 4 },
     ],
+    diagnosis: { desire: "comfort", awareness: "problem_aware", sophistication: 3, belief: "A deep clean is a chore", mechanism: "A trained crew with steam tools" },
     chosenHook: 1,
     framework: "pas",
     levers: [
       { lever: "social_proof", source: "R1" },
-      { lever: "urgency", source: null },
+      { lever: "scarcity", source: null },
     ],
     cta: { label: "Book a clean", link: "shop" },
     claims: [
@@ -206,6 +254,14 @@ await check("assembleBrief: maps labels, drops unbacked claims, badge and fact l
   assert.equal(b.cta.link, "website"); // no shop link: falls back
   assert.equal(b.referenceAssetId, "00000000-0000-4000-8000-000000000001");
   assert.equal(out.dropped, 3);
+});
+
+await check("assembleBrief: the diagnosis comes before the copy, and the slot's objective wins", () => {
+  const ok = assembleBrief(raw(), "static", { ...ctx, item: { ...ctx.item, ad_objective: "converting" } } as CreativeContext, book);
+  assert.equal(ok.brief?.diagnosis?.desire, "comfort");
+  assert.equal(ok.brief?.objective, "converting");
+  const none = assembleBrief(raw({ diagnosis: null }), "static", ctx, book);
+  assert.ok(none.problems.some((p) => p.startsWith("Write the diagnosis")));
 });
 
 await check("assembleBrief: a missing caption is a problem to fix", () => {
@@ -281,8 +337,15 @@ await check("planSlots: two goals split about two thirds to one third", () => {
   const slots = planSlots({ weekStart: "2026-11-02", timezone: "UTC", postsPerWeek: { instagram: 9 }, pillars: [], goals: ["sales", "followers"] });
   assert.equal(slots.filter((s) => s.goal === "sales").length, 6);
   assert.equal(slots.filter((s) => s.goal === "followers").length, 3);
-  // Without pillars the funnel stage follows the slot's goal
-  assert.ok(slots.every((s) => s.funnelStage === (s.goal === "sales" ? "bofu" : "tofu")));
+  // Without pillars each goal's slots follow that goal's objective mix (knowledge base §7.2)
+  const mix = (goal: string) => {
+    const mine = slots.filter((s) => s.goal === goal);
+    return [mine.filter((s) => s.adObjective === "awareness").length, mine.filter((s) => s.adObjective === "converting").length, mine.filter((s) => s.adObjective === "retargeting").length];
+  };
+  assert.deepEqual(mix("sales"), [2, 3, 1]); // 35 / 45 / 20 of 6
+  assert.deepEqual(mix("followers"), [2, 1, 0]); // 60 / 30 / 10 of 3
+  // The funnel stage follows the objective
+  assert.ok(slots.every((s) => s.funnelStage === { awareness: "tofu", converting: "mofu", retargeting: "bofu" }[s.adObjective]));
 });
 
 await check("assembleBrief: the client's next step wins over a generic website link", () => {
@@ -305,7 +368,7 @@ await check("findBanned: whole words only, any case", () => {
 });
 
 await check("overallScore: weighted, one decimal", () => {
-  assert.equal(overallScore({ hook: 8, oneMessage: 7, personaFit: 7, cta: 7, proof: 6, compliance: 9 }), 7.6);
+  assert.equal(overallScore({ strategicFit: 8, hook: 8, oneMessage: 7, persuasion: 7, proof: 6, personaFit: 7, producibility: 7, brand: 9 }), 7.3);
 });
 
 await check("stripLabels: source tags leave client text, label fields stay", () => {
@@ -415,6 +478,111 @@ await check("pictureOnly: drops text, layout and font talk from a scene, keeps t
   const out = pictureOnly(scene);
   assert.equal(out, "A woman walks toward the softly lit gathering, then pauses. No text, letters or logos in the scene.");
   assert.equal(pictureOnly("Close-up of the cotton texture in warm side light."), "Close-up of the cotton texture in warm side light.");
+});
+
+// ---------- Image styles, layouts and designs ----------
+
+await check("layoutsFor: each image style has its own layouts; the brand kit narrows them only when some fit", () => {
+  for (const style of IMAGE_STYLES) assert.ok(IMAGE_STYLE_LAYOUTS[style].length >= 2, style);
+  for (const id of TEMPLATE_IDS) assert.ok(TEMPLATE_NOTES[id] && LAYOUT_PHOTO[id], id);
+  assert.deepEqual(layoutsFor("promo", []), ["offer", "bold", "split"]);
+  assert.deepEqual(layoutsFor("promo", ["split", "frame"]), ["split"]);
+  // A brand kit with no layout the style uses doesn't leave it with nothing
+  assert.deepEqual(layoutsFor("review", ["spotlight"]), ["quote", "frame"]);
+  assert.ok(!layoutsFor("product", []).includes("quote"));
+});
+
+await check("pickDesign: never the last ad's layout when another is allowed, never exactly its look", () => {
+  const allowed: TemplateId[] = ["spotlight", "editorial", "frame"];
+  const last = { layout: "spotlight" as TemplateId, align: "left", headlineCase: "normal", priceStyle: "circle" };
+  const wantsSame = { layout: "spotlight" as TemplateId, design: { align: "left" as const, headlineCase: "normal" as const, priceStyle: "circle" as const } };
+  assert.notEqual(pickDesign(wantsSame, { layouts: allowed, recentDesigns: [last] }).layout, "spotlight");
+  // Only one layout allowed: it stays, and the look still changes
+  const only = pickDesign(wantsSame, { layouts: ["spotlight"], recentDesigns: [last] });
+  assert.equal(only.layout, "spotlight");
+  assert.equal(only.design.align, "center");
+  // A layout the style doesn't allow becomes the style's first
+  assert.equal(pickDesign({ layout: "quote", design: null }, { layouts: allowed, recentDesigns: [] }).layout, "spotlight");
+  // The layout used longest ago is preferred
+  const recent = [last, { ...last, layout: "editorial" as TemplateId }];
+  assert.equal(pickDesign(wantsSame, { layouts: allowed, recentDesigns: recent }).layout, "frame");
+});
+
+await check("assembleBrief (image): the product's price is written by code; offer and quote layouts need what they show", () => {
+  const priced = { ...ctx, offering: { id: "o1", price: 1790, currency: "ILS", priceModel: null }, layouts: ["offer", "spotlight"] } as unknown as CreativeContext;
+  const ok = assembleBrief(raw({ badge: { text: "1790 ILS", source: "O1" }, layout: "offer" }), "static", priced, book);
+  assert.ok(ok.brief, ok.problems.join("; "));
+  assert.equal(ok.brief?.kind === "static" && ok.brief.badge?.text, "₪1,790");
+  assert.equal(ok.brief?.kind === "static" && ok.brief.layout, "offer");
+  // No price behind it: the offer layout falls back to the style's other layout
+  const noBadge = assembleBrief(raw({ badge: null, layout: "offer" }), "static", priced, book);
+  assert.equal(noBadge.brief?.kind === "static" && noBadge.brief.layout, "spotlight");
+  // A quote layout without a stored review claim falls back too
+  const quoteCtx = { ...ctx, layouts: ["quote", "frame"] } as unknown as CreativeContext;
+  const noReview = assembleBrief(raw({ claims: [], layout: "quote" }), "static", quoteCtx, book);
+  assert.equal(noReview.brief?.kind === "static" && noReview.brief.layout, "frame");
+});
+
+await check("checkBrief (image): a product style needs a real product photo as the reference", () => {
+  const withPhotos = { ...ctx, assets: [{ id: "a", kind: "product_photo" }] } as unknown as CreativeContext;
+  const brief = (over: Record<string, unknown>) => assembleBrief(raw({ photo: null, ...over }), "static", withPhotos, book).brief!;
+  assert.ok(checkBrief({ ...brief({}), style: "people" }, withPhotos).some((p) => p.includes("Show a real product")));
+  assert.ok(!checkBrief({ ...brief({ photo: "G1" }), style: "people" }, withPhotos).some((p) => p.includes("Show a real product")));
+  // No product photos to pick from: nothing to ask for
+  assert.ok(!checkBrief({ ...brief({}), style: "people" }, ctx).some((p) => p.includes("Show a real product")));
+});
+
+await check("referenceUse and adPhotoPrompt: a product photo gives the product only; video prompts are unchanged", () => {
+  assert.equal(referenceUse("product_photo"), "product");
+  assert.equal(referenceUse("team"), "person");
+  assert.equal(referenceUse("location"), "place");
+  const settings = { style: "warm", people: null as null };
+  const product = adPhotoPrompt("A woman in the kaftan from G1 on a rooftop in #81a2d0 light.", settings, "product", null, LAYOUT_PHOTO.spotlight);
+  assert.match(product, /different person from the one in the reference/);
+  assert.match(product, /headwear, jewellery, accessories, props and background are left out/);
+  assert.ok(!/G1|#81a2d0/.test(product), product);
+  assert.match(adPhotoPrompt("Studio shot", settings, "person", null, ""), /keep their face and look exactly/);
+  // The video scene prompt is exactly as before
+  assert.match(photoPrompt("A beach scene.", settings, true), /same shape, colours, materials and details/);
+  assert.doesNotMatch(photoPrompt("A beach scene.", settings, true), /different person/);
+});
+
+await check("free image ad: no diagnosis, hook-variety or word-limit problems; the logo corner is kept; truth checks stay", () => {
+  process.env.IMAGE_AD_MODE = "free";
+  try {
+    const out = assembleBrief(raw({ diagnosis: null, headline: "", logoCorner: "bottom-right", hooks: [{ type: "question", text: "Why save it for your suitcase?" }] }), "static", ctx, book);
+    assert.ok(out.brief, out.problems.join("; "));
+    assert.deepEqual(out.problems, []);
+    assert.equal(out.brief.kind === "static" && out.brief.logoCorner, "bottom-right");
+    assert.equal(out.brief.kind === "static" && out.brief.headline, "Why save it for your suitcase?"); // no words on the picture: the hook titles the post
+    const problems = checkBrief(out.brief!, ctx);
+    assert.ok(!problems.some((p) => /hook|diagnosis|words; keep it/i.test(p)), problems.join(" | "));
+    // A price painted into the picture that is not the current one is still caught
+    const wrongPrice = assembleBrief(raw({ diagnosis: null, imagePrompt: 'A bright kitchen with the text "Only €99" in the corner, plain space top left for a logo' }), "static", ctx, book);
+    assert.ok(checkBrief(wrongPrice.brief!, ctx).some((p) => p.includes("prices that aren't the current ones")));
+  } finally {
+    process.env.IMAGE_AD_MODE = "designed";
+  }
+});
+
+await check("freeAdPrompt: the director's words and quoted texts stay; the plain logo corner, the reference rule and redo notes are added", () => {
+  const prompt = freeAdPrompt('A poster with the line "Why save it for your suitcase?" in big serif type. Use [G1] for the cape.', { style: "warm natural light", people: "none" }, "product", "the cape looked wrong", "top-right", true);
+  assert.ok(prompt.includes('"Why save it for your suitcase?"'));
+  assert.ok(!prompt.includes("[G1]"));
+  assert.ok(prompt.includes("top-right corner plain"));
+  assert.ok(prompt.includes("No people"));
+  assert.ok(prompt.includes("reproduce the product exactly"));
+  assert.ok(prompt.includes("other sizes"));
+  assert.ok(prompt.includes("Fix these problems"));
+});
+
+await check("colourWord and photoWords: colour codes become plain words for the image model", () => {
+  assert.equal(colourWord("#ffffff"), "white");
+  assert.equal(colourWord("#000"), "black");
+  assert.ok(/blue/.test(colourWord("#81a2d0")) && /red/.test(colourWord("#b74737")));
+  assert.match(photoWords("Hero shot of [G2] on a #a39161 wall"), /^Hero shot of the reference image on a [a-z ]+ wall$/);
+  // pictureOnly itself (used by video) is unchanged: it still drops sentences with colour codes
+  assert.equal(pictureOnly("A calm studio. Background #81a2d0 behind her."), "A calm studio.");
 });
 
 console.log(`\n${passed} checks passed${process.exitCode ? ", some FAILED" : ""}`);

@@ -110,6 +110,31 @@ export interface CreateAdInput {
   style?: string | null;
 }
 
+export type AutoKind = "static" | "carousel" | "video";
+export type AutoCounts = Record<AutoKind, number>;
+
+/**
+ * "Auto-create": the Planner picks everything for the chosen number of posts. The posts show up one
+ * by one over the next minute or two, so the plan and activity are refreshed every few seconds for a while.
+ */
+export function useAutoCreate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: AutoCounts & { date?: string }) =>
+      apiFetch<{ weekStart: string; count: number }>("/api/plans/batch", { method: "POST", body: JSON.stringify(input) }),
+    onSuccess: () => {
+      const refresh = () => {
+        qc.invalidateQueries({ queryKey: ["plan"] });
+        qc.invalidateQueries({ queryKey: ["activity"] });
+        qc.invalidateQueries({ queryKey: ["notifications"] });
+      };
+      refresh();
+      const timer = setInterval(refresh, 4000);
+      setTimeout(() => clearInterval(timer), 150_000);
+    },
+  });
+}
+
 export function useCreateAd() {
   const refresh = useRefresh();
   return useMutation({

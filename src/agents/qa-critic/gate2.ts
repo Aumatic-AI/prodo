@@ -7,7 +7,8 @@ import type { QaCheck, QaReport } from "@/core/plans/types";
 import { CANVAS } from "@/creative/sizes";
 import { MIN_TEXT_CONTRAST } from "@/lib/color";
 import { ai } from "@/providers/ai/registry";
-import { IMAGE_QA_SYSTEM, SCENE_TEXT_SYSTEM, VIDEO_REVIEW_JSON_SCHEMA, imageReviewSchema, sceneTextSchema, videoReviewPrompt, type VideoReview } from "@/prompts/agents/qa-asset";
+import { isFreeImageAd } from "@/config/image-ads";
+import { IMAGE_QA_FREE, IMAGE_QA_SYSTEM, SCENE_TEXT_SYSTEM, VIDEO_REVIEW_JSON_SCHEMA, imageReviewSchema, sceneTextSchema, videoReviewPrompt, type VideoReview } from "@/prompts/agents/qa-asset";
 import type { Produced } from "@/agents/producer/types";
 import type { Task } from "@/agents/weekly/task";
 import { PASS_SCORE } from "./gate1";
@@ -58,17 +59,18 @@ async function reviewImages(brief: Brief, produced: Produced, track: (u: any) =>
   const images = [produced.referenceUrl, produced.photoUrl, ...produced.previewUrls.slice(0, 3)].filter((u): u is string => !!u);
   const res = await ai.structured(
     imageReviewSchema,
-    `Ad message: ${brief.message}\nHook: ${brief.hook.text}\nReference photo included: ${produced.referenceUrl ? "yes (first image)" : "no"}`,
-    { system: IMAGE_QA_SYSTEM, images, model: MODELS.critic }
+    `Ad message: ${brief.message}\nHook: ${brief.hook.text}\nReference photo included: ${produced.referenceUrl ? "yes (first image)" : "no"}${isFreeImageAd(brief.kind) && brief.kind === "static" ? `\nThe image prompt (the words to paint are in double quotes): ${brief.imagePrompt}` : ""}`,
+    { system: isFreeImageAd(brief.kind) ? IMAGE_QA_SYSTEM + IMAGE_QA_FREE : IMAGE_QA_SYSTEM, images, model: MODELS.critic }
   );
   track(res.usage);
   const r = res.data;
   const checks: QaCheck[] = [
     { name: "No stray AI text", passed: !r.strayText, detail: r.strayText ? "The photo has letters or fake logos in it" : undefined },
     { name: "Product matches", passed: r.productMatches !== false, detail: r.productMatches === null ? "No reference photo" : undefined },
+    { name: "Looks real", passed: !r.realismFails.length, detail: r.realismFails.join("; ") || undefined },
     { name: "On brand", passed: r.onBrand },
   ];
-  return { score: r.score, checks, notes: r.issues.join(" "), fix: r.fix || r.issues.slice(0, 2).join(" ") || null, redoScenes: [] as number[] };
+  return { score: r.score, checks, notes: r.issues.join(" "), fix: r.fix || r.issues.slice(0, 2).join(" ") || null, redoScenes: [] as number[], requiresAiLabel: r.requiresAiLabel };
 }
 
 async function reviewVideo(brief: Brief, produced: Produced, track: (u: any) => void) {
@@ -81,6 +83,7 @@ async function reviewVideo(brief: Brief, produced: Produced, track: (u: any) => 
   const checks: QaCheck[] = [
     { name: "Hook in the first 3 seconds", passed: !!r.hookVisible },
     { name: "Scenes match the script", passed: !(r.scenes ?? []).some((s) => !s.matches), detail: bad.filter((s) => !s.matches).map((s) => `Scene ${s.scene}: ${s.note}`).join(" ") || undefined },
+    { name: "Looks real", passed: !(r.realismFails ?? []).length, detail: (r.realismFails ?? []).join("; ") || undefined },
     { name: "No glitches", passed: !(r.scenes ?? []).some((s) => s.glitch || s.aiText), detail: bad.filter((s) => s.glitch || s.aiText).map((s) => `Scene ${s.scene}: ${s.note}`).join(" ") || undefined },
   ];
   const painted = await paintedTextScenes(produced, track);
@@ -91,7 +94,7 @@ async function reviewVideo(brief: Brief, produced: Produced, track: (u: any) => 
     detail: painted.scenes.length ? painted.notes : undefined,
   });
   const fix = [...bad.map((s) => s.note), ...(painted.scenes.length ? ["Make the picture with no words, letters, labels or text panels in it."] : [])].filter(Boolean).join(" ") || null;
-  return { score: Number(r.score) || 0, checks, notes: r.summary ?? "", fix, redoScenes };
+  return { score: Number(r.score) || 0, checks, notes: r.summary ?? "", fix, redoScenes, requiresAiLabel: !!r.requiresAiLabel };
 }
 
 /**
@@ -138,7 +141,8 @@ export async function gate2(task: Task, db: () => SupabaseClient, itemId: string
       const item = await getItem(db(), itemId);
       const report: QaReport = {
         ...(item.qa_report ?? {}),
-        gate2: { score: ai.score, notes: ai.notes, checks, redone: ai.redoScenes.map((i) => `Scene ${i + 1}`), attempts: round + 1 },
+        // The brief's own flag and what QA saw in the finished asset: either one puts the platform's AI label on the post
+        gate2: { score: ai.score, notes: ai.notes, checks, redone: ai.redoScenes.map((i) => `Scene ${i + 1}`), attempts: round + 1, requiresAiLabel: ai.requiresAiLabel || brief.requiresAiLabel },
       };
       await updateItem(db(), itemId, { qa_score: ai.score, qa_report: report });
       return { passed, score: ai.score, checks, notes: ai.notes, fix: ai.fix, redoScenes: ai.redoScenes };

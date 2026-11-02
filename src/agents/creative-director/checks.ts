@@ -1,4 +1,5 @@
 import { platformMeta } from "@/config/platforms";
+import { isFreeImageAd } from "@/config/image-ads";
 import { briefTexts, countWords, LIMITS, type Brief } from "@/core/creative/brief";
 import type { CreativeContext } from "./context";
 import { checkVideoBrief } from "./checks-video";
@@ -47,12 +48,29 @@ export function checkBrief(brief: Brief, ctx: CreativeContext): string[] {
   };
 
   over(brief.cta.label, LIMITS.ctaWords, "The call to action");
+
+  // A free image ad keeps only the truth checks below (facts, prices, never-say words, urgency, people)
+  const free = isFreeImageAd(brief.kind);
+
+  // Hooks (knowledge base §4): 8 ideas across at least 4 types; the chosen one at most 7 words on screen
+  const hooks = [brief.hook, ...brief.hookOptions];
+  if (!free) {
+    if (hooks.length < 6) problems.push(`Write 8 hook ideas (now ${hooks.length}).`);
+    else if (new Set(hooks.map((h) => h.type)).size < 4) problems.push("Spread the hook ideas over at least 4 different hook types.");
+    over(brief.hook.text, brief.kind === "video" ? LIMITS.overlayWords : 12, "The chosen hook");
+  }
+
+  // One desire, and a framework the facts can support
+  const reviews = (ctx.proof ?? []).length;
+  if (brief.framework === "witness" && reviews < 2) problems.push("The witness framework needs several stored reviews; pick another framework.");
+  if ((brief.kind === "static" && brief.staticFramework === "offer_card") && !ctx.offer) problems.push("offer_card needs a live offer; pick another shape.");
+  if ((brief.kind === "static" && brief.staticFramework === "golden_review") && !reviews) problems.push("golden_review needs a stored review; pick another shape.");
   for (const [platform, caption] of Object.entries(brief.captions)) {
     const max = platformMeta(platform).captionMaxLength;
     if (caption.length > max) problems.push(`The ${platformMeta(platform).label} caption is ${caption.length} characters; the limit is ${max}.`);
   }
 
-  if (brief.kind === "static") {
+  if (brief.kind === "static" && !free) {
     over(brief.headline, LIMITS.headlineWords, "The headline");
     if (brief.subhead) over(brief.subhead, LIMITS.subheadWords, "The subhead");
   }
@@ -82,6 +100,12 @@ export function checkBrief(brief: Brief, ctx: CreativeContext): string[] {
     problems.push("Remove the urgency or deadline: there is no live offer behind it.");
   }
 
+  // Only real products: an image ad that shows the product takes one of the client's product photos as its reference
+  const showsProduct = brief.kind === "static" || brief.kind === "carousel";
+  if (showsProduct && !brief.referenceAssetId && PRODUCT_STYLES.includes(brief.style ?? "") && ctx.assets.some((a) => a.kind === "product_photo")) {
+    problems.push('Show a real product: set "photo" to one of the REAL PHOTOS of a product ([G…]) instead of describing a new or generic one.');
+  }
+
   // The client wants no people: no person in any picture we ask for
   if (ctx.rules?.people === "none") {
     // Sentences that say "no people" or "without anyone" don't count
@@ -92,6 +116,9 @@ export function checkBrief(brief: Brief, ctx: CreativeContext): string[] {
   }
   return problems;
 }
+
+/** Image styles whose picture is the product itself, worn, used or on offer */
+const PRODUCT_STYLES = ["product", "life", "people", "promo", "ba"];
 
 // Words that put a person in a picture (hands alone are allowed)
 const PEOPLE = /\b(person|people|man|men|woman|women|girl|boy|guy|lady|model|models|customer|customers|client|clients|face|faces|smiling|portrait|selfie|couple|family|team|staff|worker|chef|stylist|someone|crowd)\b/i;

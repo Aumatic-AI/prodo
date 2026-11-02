@@ -1,7 +1,7 @@
 // Offline checks of the Performance Analyst's maths (agent 10). No vendors, no database.
 // Run: npm run smoke scripts/check/learning-logic.ts
 import assert from "node:assert/strict";
-import { baselines, confidence, engagementRate, groupLearnings, hourSlot, median, scorePost, REJECTED_SCORE, REJECTED_WEIGHT } from "@/agents/performance-analyst/score";
+import { baselines, confidence, confidenceLabel, fatigued, shrink, engagementRate, groupLearnings, hourSlot, median, scorePost, REJECTED_SCORE, REJECTED_WEIGHT } from "@/agents/performance-analyst/score";
 import { tagsOf } from "@/agents/performance-analyst/data";
 
 let passed = 0;
@@ -64,8 +64,29 @@ check("groupLearnings: weighted means overall and per platform, rejections at ha
   const out = groupLearnings(items);
   const all = out.find((l) => l.platform === null)!;
   assert.equal(all.sample_size, 3);
-  assert.equal(all.score, Math.round(((2 + 1 + 0.3) / 2.5) * 100) / 100);
-  assert.equal(out.find((l) => l.platform === "instagram")!.score, 1.5);
+  // Few posts: the raw means (3.3 / 2.5 and 1.5) move toward 1.0
+  assert.equal(all.score, Math.round(shrink((2 + 1 + 0.3) / 2.5, 3) * 100) / 100);
+  assert.equal(out.find((l) => l.platform === "instagram")!.score, Math.round(shrink(1.5, 2) * 100) / 100);
+});
+
+check("shrink: full weight from 15 posts, an extreme from 2 posts mostly stays near average", () => {
+  assert.equal(shrink(3, 15), 3);
+  assert.equal(shrink(3, 30), 3);
+  assert.ok(shrink(3, 2) < 1.4 && shrink(3, 2) > 1);
+  assert.ok(shrink(0.2, 2) > 0.8);
+});
+
+check("confidenceLabel: under 5 low, 5–14 medium, 15+ high", () => {
+  assert.deepEqual([4, 5, 14, 15].map(confidenceLabel), ["low", "medium", "medium", "high"]);
+});
+
+check("fatigued: a good value that then scores under 0.8 twice in a row rests", () => {
+  const tag = (value: string) => [{ dimension: "hook_type" as const, value }];
+  const post = (day: number, score: number, value = "question") => ({ publishedAt: `2026-10-${String(day).padStart(2, "0")}T10:00:00Z`, score, tags: tag(value) });
+  assert.deepEqual(fatigued([post(1, 1.6), post(8, 0.7), post(15, 0.6)]), [{ dimension: "hook_type", value: "question" }]);
+  // One weak use isn't tiredness, and a value that never did well is just weak
+  assert.deepEqual(fatigued([post(1, 1.6), post(8, 1.2), post(15, 0.6)]), []);
+  assert.deepEqual(fatigued([post(1, 0.5), post(8, 0.7), post(15, 0.6)]), []);
 });
 
 check("confidence grows with posts", () => {

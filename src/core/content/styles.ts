@@ -1,5 +1,6 @@
 import type { ContentMix, ImageStyle, PeopleChoice, VideoStyle } from "@/core/onboarding/options";
 import { IMAGE_STYLES, VIDEO_STYLE_SOUND, VIDEO_STYLES } from "@/core/onboarding/options";
+import type { TemplateId } from "@/core/creative/brief";
 
 // What each content style from onboarding means for the agents: which formats can carry it, how a
 // video sounds, whether it needs people, and a plain description the Creative Director works from.
@@ -54,15 +55,41 @@ export const MIX_VIDEO_SHARE: Record<ContentMix, number> = {
 };
 
 const IMAGE_BRIEFS: Record<ImageStyle, string> = {
-  product: "Product photo: the product or a finished result on a clean, simple background; the item is the hero.",
-  life: "Lifestyle: the product or service in a real-life setting where the customer would use it.",
-  people: "In use: a person using, wearing or holding the product, or the expert at work.",
-  promo: "Offer ad: the product with a strong headline and the price or deal as the focus.",
+  product:
+    "Product photo: the product alone is the hero, on a clean, simple backdrop or styled flat, close enough to see its material and details. No person, or only hands or a cropped body when it's worn. Calm and premium; the words stay short.",
+  life: "Lifestyle: the product in the life it belongs to: a real place, moment and mood where the customer would use or wear it. The setting tells a small story; the product stays clearly visible.",
+  people: "In use: a person wearing, using or holding the product, natural and candid, the product clearly visible on them. The person fits the persona.",
+  promo: "Offer ad: the product clear and simple, with the price or the live deal as the loudest thing on the ad. Only with a real price or a live offer.",
   tips: "Tips: useful tips, steps, myths vs facts or a list, one idea per slide.",
-  review: "Review: a real customer's words (from a stored review) carry the post.",
+  review: "Review: a real customer's words from a stored review are the hero, set big; the product photo supports them. Only with a stored review.",
   ba: "Before and after: the difference the product or service makes, side by side or as a reveal.",
-  bts: "Behind the scenes: how it's made, packed or run; the team, tools and process.",
+  bts: "Behind the scenes: how it's made, packed or run: hands at work, tools, materials, the studio. Documentary and unposed.",
 };
+
+/**
+ * The layouts each image style is drawn with, most typical first. The style keeps its look; within
+ * it the layout, alignment, headline case and price treatment change from ad to ad.
+ */
+export const IMAGE_STYLE_LAYOUTS: Record<ImageStyle, TemplateId[]> = {
+  product: ["poster", "split", "frame", "editorial"],
+  life: ["spotlight", "editorial", "frame", "poster"],
+  people: ["spotlight", "editorial", "split", "frame"],
+  promo: ["offer", "bold", "split"],
+  tips: ["split", "frame"],
+  review: ["quote", "frame"],
+  ba: ["split", "bold"],
+  bts: ["frame", "editorial", "spotlight"],
+};
+
+/**
+ * Layouts a static ad may use: its style's, narrowed to the ones the brand chose in its brand kit
+ * when any of them fit (the style the client picked for the ad wins over the kit).
+ */
+export function layoutsFor(style: string | null | undefined, brandLayouts: readonly TemplateId[]): TemplateId[] {
+  const forStyle = style && isImageStyle(style) ? IMAGE_STYLE_LAYOUTS[style] : (["spotlight", "split", "frame", "editorial", "poster", "bold"] as TemplateId[]);
+  const both = forStyle.filter((l) => brandLayouts.includes(l));
+  return both.length ? both : forStyle;
+}
 
 const VIDEO_BRIEFS: Record<VideoStyle, string> = {
   showcase: "Showcase: close-ups and details of the product or finished work, cut to music. No voice-over.",

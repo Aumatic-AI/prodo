@@ -3,8 +3,13 @@
 // persona and posting time. Pure functions, checked offline.
 
 export const MIN_POSTS_FOR_BASELINE = 10;
-/** Nothing is called a confident learning below this many posts */
+/** Nothing is called a confident learning below this many posts (knowledge base §11.3: under 5 low, 5–14 medium, 15+ high) */
 export const MIN_CONFIDENT = 5;
+export const HIGH_CONFIDENT = 15;
+/** A post at this many times the account's usual, within a day of publishing, is a breakout (§7.2) */
+export const BREAKOUT = 2;
+/** A winning angle or hook scoring under this twice in a row is tired and rests 3–4 weeks (§11.3) */
+export const FATIGUE = 0.8;
 /** A rejected post counts like a weak post, at half weight */
 export const REJECTED_SCORE = 0.6;
 export const REJECTED_WEIGHT = 0.5;
@@ -105,7 +110,20 @@ export interface Tagged {
   tags: { dimension: Dimension; value: string }[];
 }
 
-export type Dimension = "angle" | "hook_type" | "format" | "style" | "framework" | "lever" | "pillar" | "persona" | "time_slot";
+export type Dimension =
+  | "angle"
+  | "hook_type"
+  | "format"
+  | "style"
+  | "framework"
+  | "lever"
+  | "pillar"
+  | "persona"
+  | "time_slot"
+  | "ad_objective"
+  | "desire"
+  | "awareness_level"
+  | "style_modifier";
 
 export interface Learning {
   dimension: Dimension;
@@ -119,6 +137,34 @@ export interface Learning {
 /** More posts = more confidence: 5 posts ≈ 0.5, 10 ≈ 0.67, 20 ≈ 0.8. */
 export function confidence(n: number): number {
   return Math.round((n / (n + 5)) * 100) / 100;
+}
+
+export type ConfidenceLabel = "low" | "medium" | "high";
+export const confidenceLabel = (n: number): ConfidenceLabel => (n >= HIGH_CONFIDENT ? "high" : n >= MIN_CONFIDENT ? "medium" : "low");
+
+/** Extreme scores from few posts move toward 1.0 (average): full weight only from 15 posts. */
+export function shrink(score: number, n: number): number {
+  return 1 + (score - 1) * Math.min(1, n / HIGH_CONFIDENT);
+}
+
+/**
+ * Values (per dimension) whose last two uses both scored under FATIGUE, after having done well before:
+ * they rest for a few weeks and their winning parts get remixed. `posts` come in any order.
+ */
+export function fatigued(posts: { publishedAt: string; score: number; tags: { dimension: Dimension; value: string }[] }[], dimensions: Dimension[] = ["angle", "hook_type", "framework"]): { dimension: Dimension; value: string }[] {
+  const uses = new Map<string, { dimension: Dimension; value: string; scores: number[] }>();
+  for (const p of [...posts].sort((a, b) => a.publishedAt.localeCompare(b.publishedAt))) {
+    for (const t of p.tags) {
+      if (!dimensions.includes(t.dimension)) continue;
+      const key = `${t.dimension}|${t.value}`;
+      const u = uses.get(key) ?? { dimension: t.dimension, value: t.value, scores: [] };
+      u.scores.push(p.score);
+      uses.set(key, u);
+    }
+  }
+  return [...uses.values()]
+    .filter((u) => u.scores.length >= 3 && u.scores.slice(-2).every((x) => x < FATIGUE) && Math.max(...u.scores.slice(0, -2)) >= 1)
+    .map(({ dimension, value }) => ({ dimension, value }));
 }
 
 /** Weighted mean score per dimension value, across all platforms and per platform. */
@@ -143,7 +189,7 @@ export function groupLearnings(items: Tagged[]): Learning[] {
       value: g.value,
       platform: g.platform,
       sample_size: g.n,
-      score: Math.round((g.sum / g.weight) * 100) / 100,
+      score: Math.round(shrink(g.sum / g.weight, g.n) * 100) / 100,
       confidence: confidence(g.n),
     }));
 }

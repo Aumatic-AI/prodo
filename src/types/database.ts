@@ -1046,12 +1046,15 @@ export type Database = {
       }
       plan_items: {
         Row: {
+          ad_objective: string | null
           angle: string | null
           attempts: number
+          awareness_level: string | null
           brief: Json | null
           brief_score: number | null
           captions: Json | null
           created_at: string
+          desire: string | null
           error: string | null
           format: string
           framework: string | null
@@ -1077,12 +1080,15 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          ad_objective?: string | null
           angle?: string | null
           attempts?: number
+          awareness_level?: string | null
           brief?: Json | null
           brief_score?: number | null
           captions?: Json | null
           created_at?: string
+          desire?: string | null
           error?: string | null
           format: string
           framework?: string | null
@@ -1108,12 +1114,15 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          ad_objective?: string | null
           angle?: string | null
           attempts?: number
+          awareness_level?: string | null
           brief?: Json | null
           brief_score?: number | null
           captions?: Json | null
           created_at?: string
+          desire?: string | null
           error?: string | null
           format?: string
           framework?: string | null

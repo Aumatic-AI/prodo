@@ -73,7 +73,7 @@ export function buildPlannerPrompt(ctx: PlannerContext, slots: SlotPlan[]): { pr
     const platforms = s.platforms.map((p) => platformMeta(p).label).join(", ");
     const weekday = WEEKDAY[new Date(`${s.day}T12:00:00Z`).getUTCDay()];
     lines.push(
-      `[${label}] ${weekday} ${s.day} ${s.time} · ${platforms} · ${LABELS.format[s.format]}${s.style && s.format !== "text" ? ` · style: ${styleBrief(s.style, s.format)}` : ""} · pillar: ${s.pillarName ?? "any"} · stage: ${s.funnelStage}${s.goal ? ` · goal: ${s.goal}` : ""}${s.isExperiment ? " · EXPERIMENT" : ""}`
+      `[${label}] ${weekday} ${s.day} ${s.time} · ${platforms} · ${LABELS.format[s.format]}${s.style && s.format !== "text" ? ` · style: ${styleBrief(s.style, s.format)}` : ""} · pillar: ${s.pillarName ?? "any"} · objective: ${s.adObjective}${s.goal ? ` · goal: ${s.goal}` : ""}${s.isExperiment ? " · EXPERIMENT" : ""}`
     );
   });
 

@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { AppError } from "@/core/errors";
-import { findPlanByWeek } from "@/core/plans/plans";
+import { findPlanByWeek, planForWeek, setPlanStatus } from "@/core/plans/plans";
+import { weekStartOf, zonedParts } from "@/lib/zoned-time";
 import type { ContentPlan, PlanStrategy } from "@/core/plans/types";
 import type { PlannedItem } from "./merge";
 
@@ -47,31 +48,57 @@ export async function openPlan(db: SupabaseClient, weekStart: string, bibleId: s
   return data as ContentPlan;
 }
 
+const itemRow = (planId: string, i: PlannedItem) => ({
+  plan_id: planId,
+  slot_at: i.slotAt,
+  platforms: i.platforms,
+  format: i.format,
+  style: i.style,
+  pillar_id: i.pillarId,
+  persona_id: i.personaId,
+  offering_id: i.offeringId,
+  offer_id: i.offerId,
+  funnel_stage: i.funnelStage,
+  objective: i.objective,
+  ad_objective: i.adObjective,
+  desire: i.desire,
+  awareness_level: i.awarenessLevel,
+  angle: i.angle,
+  hook_type: i.hookType,
+  levers: i.levers,
+  is_experiment: i.isExperiment,
+  rationale: i.rationale,
+  status: "planned",
+});
+
+/**
+ * "Auto-create": the posts go into the plan of the week their slot falls in (a week of single ads is
+ * made when there is none), next to what's already there. The week's own strategy and status stay;
+ * a week of single ads that was waiting for the client goes back to producing. Returns each new item
+ * with the plan it landed in, in slot order.
+ */
+export async function saveBatch(db: SupabaseClient, items: PlannedItem[], timezone: string): Promise<{ id: string; planId: string }[]> {
+  const byWeek = new Map<string, PlannedItem[]>();
+  for (const item of items) {
+    const week = weekStartOf(zonedParts(new Date(item.slotAt), timezone).day);
+    byWeek.set(week, [...(byWeek.get(week) ?? []), item]);
+  }
+  const placed: { id: string; planId: string; slotAt: string }[] = [];
+  for (const [week, weekItems] of byWeek) {
+    const plan = await planForWeek(db, week);
+    const { data, error } = await db.from("plan_items").insert(weekItems.map((i) => itemRow(plan.id, i))).select("id, slot_at");
+    if (error) throw error;
+    if (plan.strategy?.adhoc && plan.status === "review") await setPlanStatus(db, plan.id, "producing");
+    placed.push(...(data ?? []).map((r) => ({ id: r.id, planId: plan.id, slotAt: r.slot_at as string })));
+  }
+  return placed.sort((a, b) => a.slotAt.localeCompare(b.slotAt)).map(({ id, planId }) => ({ id, planId }));
+}
+
 /** Writes the slots and moves the plan on to production. Returns the new item ids in slot order. */
 export async function savePlan(db: SupabaseClient, planId: string, items: PlannedItem[], strategy: PlanStrategy): Promise<string[]> {
   const { data, error } = await db
     .from("plan_items")
-    .insert(
-      items.map((i) => ({
-        plan_id: planId,
-        slot_at: i.slotAt,
-        platforms: i.platforms,
-        format: i.format,
-        style: i.style,
-        pillar_id: i.pillarId,
-        persona_id: i.personaId,
-        offering_id: i.offeringId,
-        offer_id: i.offerId,
-        funnel_stage: i.funnelStage,
-        objective: i.objective,
-        angle: i.angle,
-        hook_type: i.hookType,
-        levers: i.levers,
-        is_experiment: i.isExperiment,
-        rationale: i.rationale,
-        status: "planned",
-      }))
-    )
+    .insert(items.map((i) => itemRow(planId, i)))
     .select("id, slot_at")
     .order("slot_at");
   if (error) throw error;

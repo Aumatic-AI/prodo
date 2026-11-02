@@ -3,6 +3,8 @@ import { contrast } from "@/lib/color";
 import type { StaticBrief } from "@/core/creative/brief";
 import { renderPng } from "@/creative/render";
 import { AD_TEMPLATES } from "@/creative/templates/ads";
+import { LAYOUT_PHOTO } from "@/creative/templates/notes";
+import { linkText } from "@/creative/video/parts";
 import { loadTheme, themePairs } from "@/creative/theme";
 import { finalName, mediaKey, publicUrl, ratioName } from "@/providers/storage/paths";
 import { upload } from "@/providers/storage/r2";
@@ -10,11 +12,13 @@ import { logUsage } from "@/agents/weekly/task";
 import { canvasesFor, kieRatio } from "./canvases";
 import { startJob, waitForJobs } from "./kie";
 import { keepPhoto, markMediaReady, saveFile } from "./media";
-import { photoPrompt, photoSettings, referencePhoto } from "./photos";
+import { photoLook } from "./photo-look";
+import { adPhotoPrompt, photoSettings, referencePhoto } from "./photos";
 import type { ProduceArgs, Produced } from "./types";
 
-// Static ad: one AI photo (with the real product as reference) → our layout draws headline,
-// subhead, badge, CTA and logo in brand colours → one file per platform size.
+// Static ad: one AI photo (with the real product as reference, framed for the layout) → one look at
+// the finished photo (its calm side, the subject, how light its edges are) → our layout draws the
+// headline, subhead, price, call to action and logo around it → one file per platform size.
 
 export async function produceStatic(a: ProduceArgs, brief: StaticBrief): Promise<Produced> {
   const canvases = canvasesFor("static", a.item.platforms);
@@ -23,10 +27,10 @@ export async function produceStatic(a: ProduceArgs, brief: StaticBrief): Promise
     `photo-start-${a.round}`,
     async (track) => {
       const reference = await referencePhoto(a.db(), brief, a.item);
-      const prompt = photoPrompt(brief.imagePrompt, await photoSettings(a.db()), !!reference, a.fix);
-      const res = await startJob({ key: "photo", kind: "image", prompt, aspect: kieRatio(canvases[0].ratio), refs: reference ? [reference] : [] });
+      const prompt = adPhotoPrompt(brief.imagePrompt, await photoSettings(a.db()), reference?.use ?? null, a.fix, LAYOUT_PHOTO[brief.layout]);
+      const res = await startJob({ key: "photo", kind: "image", prompt, aspect: kieRatio(canvases[0].ratio), refs: reference ? [reference.url] : [] });
       track(res.usage);
-      return { job: res.job, reference };
+      return { job: res.job, reference: reference?.url ?? null };
     },
     () => "Started the background photo"
   );
@@ -41,15 +45,30 @@ export async function produceStatic(a: ProduceArgs, brief: StaticBrief): Promise
   // Our own copy of the photo: the provider's link is temporary and can be slow
   const photoUrl = await a.task(`keep-photo-${a.round}`, () => keepPhoto(a.db(), a.businessId, a.mediaId, done[0].url!, `photo-r${a.round}`), () => "Saved the background photo");
 
+  // Where the words can go and where the subject is, so the layout works around this photo
+  const look = await a.task(
+    `photo-look-${a.round}`,
+    async (track) => {
+      const res = await photoLook(photoUrl);
+      track(res.usage);
+      return res.look;
+    },
+    (l) => `Found the photo's calm side (${l.zone}) and its subject`
+  );
+
   return a.task(
     `render-${a.round}`,
     async () => {
-      const theme = await loadTheme(a.db());
+      const [theme, { data: profile, error }] = await Promise.all([loadTheme(a.db()), a.db().from("business_profile").select("website, cta_links").single()]);
+      if (error) throw error;
+      // Where the call to action leads, as people read it ("royal-gypsy.com"): nothing in the image is clickable
+      const links: Record<string, string> = { website: profile?.website ?? "", ...(profile?.cta_links ?? {}) };
+      const link = linkText(links[brief.cta.link] || links.website) || null;
       const Template = AD_TEMPLATES[brief.layout];
       const files: Produced["canvases"] = [];
       for (const [i, canvas] of canvases.entries()) {
         const png = await renderPng(
-          Template({ canvas, theme, photoUrl, headline: brief.headline, subhead: brief.subhead, cta: brief.cta.label, badge: brief.badge?.text ?? null }),
+          Template({ canvas, theme, photoUrl, headline: brief.headline, subhead: brief.subhead, cta: brief.cta.label, link, badge: brief.badge?.text ?? null, design: brief.design, photo: look }),
           canvas,
           theme
         );
@@ -70,6 +89,6 @@ export async function produceStatic(a: ProduceArgs, brief: StaticBrief): Promise
         canvases: files,
       } satisfies Produced;
     },
-    (r) => `Designed the ad in ${r.canvases.map((c) => c.ratio).join(", ")}`
+    (r) => `Designed the ad (${brief.layout}) in ${r.canvases.map((c) => c.ratio).join(", ")}`
   );
 }

@@ -121,6 +121,15 @@ export function assembleBible(core: BibleCore, audience: Audience, book: SourceB
       never_say: neverSay,
       personas,
       pillars,
+      // The market diagnosis is judgement, not a fact: only its mechanism needs a source
+      strategy: core.strategy
+        ? {
+            ...core.strategy,
+            mechanism: core.strategy.mechanism ? toClaim(core.strategy.mechanism) : null,
+            beliefs: core.strategy.beliefs.filter((b) => !usesBannedWord(b, neverSay)),
+            identity: usesBannedWord(core.strategy.identity, neverSay) ? "" : core.strategy.identity,
+          }
+        : null,
       note,
     }),
     dropped,

@@ -4,15 +4,15 @@ import { failureMessage } from "@/jobs/to-inngest-error";
 import { MODELS } from "@/config/models";
 import { AppError, userMessage } from "@/core/errors";
 import { notify } from "@/core/notifications/notify";
-import { approvedBible } from "@/core/plans/plans";
+import { approvedBible, planForWeek } from "@/core/plans/plans";
 import { businessDb } from "@/lib/supabase/business";
 import { agentStep } from "@/agents/run";
 import { ai } from "@/providers/ai/registry";
-import { PLANNER_SYSTEM, plannerSchema } from "@/prompts/agents/planner";
+import { PLANNER_BATCH_NOTE, PLANNER_SYSTEM, plannerSchema } from "@/prompts/agents/planner";
 import { bestTimes, formatScores, loadPlannerContext, styleScores } from "./context";
 import { mergePlan, pillarMix } from "./merge";
 import { buildPlannerPrompt } from "./prompt";
-import { openPlan, savePlan } from "./save";
+import { openPlan, saveBatch, savePlan } from "./save";
 import { openDays, planSlots } from "./slots";
 import { videoReady } from "@/providers/ffmpeg/client";
 import { addDays, zonedParts } from "@/lib/zoned-time";
@@ -21,6 +21,8 @@ import { addDays, zonedParts } from "@/lib/zoned-time";
 // Plans one week: open the plan → read the brand → slots by code (count, days, platforms, times,
 // formats, pillar mix, experiments) → content per slot by AI (offering, persona, angle, reason)
 // → checks by code → save → start production of every slot.
+// "Auto-create" runs the same steps for a chosen number of posts over the next days: no week is
+// replaced, the posts join the plans of the weeks they fall in, and each is made as a single ad.
 
 export const planner = inngest.createFunction(
   {
@@ -29,14 +31,15 @@ export const planner = inngest.createFunction(
     // One plan at a time per business; a second request for the same week waits, then finds it planned
     concurrency: [{ limit: 1, key: "event.data.businessId" }],
     onFailure: async ({ event, error }) => {
-      const { businessId, weekStart } = event.data.event.data;
+      const { businessId, weekStart, batch } = event.data.event.data;
       const db = businessDb(businessId);
       const message = failureMessage(error);
-      await db.from("content_plans").update({ status: "failed", error: message }).eq("week_start", weekStart).eq("status", "planning");
+      // A batch never touches a week's plan, so there's no plan to mark failed
+      if (!batch) await db.from("content_plans").update({ status: "failed", error: message }).eq("week_start", weekStart).eq("status", "planning");
       await notify(db, {
         kind: "agent_stopped",
-        title: "Prodo couldn't plan the week",
-        body: `The plan for the week of ${weekStart} stopped: ${message}`,
+        title: batch ? "Prodo couldn't create your posts" : "Prodo couldn't plan the week",
+        body: batch ? `Creating ${batch.static + batch.carousel + batch.video} post${batch.static + batch.carousel + batch.video === 1 ? "" : "s"} stopped: ${message}` : `The plan for the week of ${weekStart} stopped: ${message}`,
         link: "/week",
         email: true,
       });
@@ -44,13 +47,14 @@ export const planner = inngest.createFunction(
   },
   { event: "plan/requested" },
   async ({ event, step }) => {
-    const { businessId, weekStart, replace = false } = event.data;
+    const { businessId, weekStart, replace = false, batch = null } = event.data;
     const db = () => businessDb(businessId);
 
     const plan = await step.run("open-plan", async () => {
       try {
         const bible = await approvedBible(db());
-        return await openPlan(db(), weekStart, bible.id, replace);
+        // A batch joins the week's plan (a week of single ads is made when there is none); a week's plan is opened fresh
+        return batch ? await planForWeek(db(), weekStart) : await openPlan(db(), weekStart, bible.id, replace);
       } catch (err) {
         throw new NonRetriableError(userMessage(err));
       }
@@ -69,8 +73,8 @@ export const planner = inngest.createFunction(
       async () => {
         // Never a slot in the past: the current week starts tomorrow
         const today = zonedParts(new Date(), ctx.timezone).day;
-        const firstDay = weekStart <= today ? addDays(today, 1) : weekStart;
-        if (!openDays(weekStart, firstDay).length) {
+        const firstDay = batch ? (batch.date && batch.date > today ? batch.date : addDays(today, 1)) : weekStart <= today ? addDays(today, 1) : weekStart;
+        if (!batch && !openDays(weekStart, firstDay).length) {
           throw new AppError("This week is over. Plan next week instead.", "INVALID_INPUT", false);
         }
         if (!Object.values(ctx.postsPerWeek).some((n) => n > 0)) {
@@ -93,7 +97,22 @@ export const planner = inngest.createFunction(
           styleScores: styleScores(ctx),
           formatScores: formatScores(ctx),
           bestTimes: bestTimes(ctx),
+          // The next 7 days, starting tomorrow
+          // A chosen day takes every post; otherwise the next 7 days
+          batch: batch ? { counts: batch, days: batch.date ? [firstDay] : Array.from({ length: 7 }, (_, i) => addDays(firstDay, i)) } : undefined,
         });
+        // Every kind asked for needs a platform that takes it
+        const missing = batch ? (["static", "carousel", "video"] as const).filter((f) => batch[f] > 0 && !result.some((r) => r.format === f)) : [];
+        if (missing.length) {
+          const name = (f: string) => (f === "static" ? "image ads" : f === "carousel" ? "carousels" : "videos");
+          throw new AppError(
+            missing.includes("video") && !video.ok
+              ? `Videos aren't set up yet: ${video.reason}`
+              : `None of the platforms you post to take ${missing.map(name).join(" or ")}. Pick another kind, or change your platforms in Settings → Automation.`,
+            "INVALID_INPUT",
+            false
+          );
+        }
         if (!result.length) {
           throw new AppError(
             !video.ok
@@ -116,28 +135,30 @@ export const planner = inngest.createFunction(
     const reply = await task(
       "choose-content",
       async (track) => {
-        const res = await ai.structured(plannerSchema, prompt, { system: PLANNER_SYSTEM, model: MODELS.analyze });
+        const res = await ai.structured(plannerSchema, prompt, { system: batch ? PLANNER_SYSTEM + PLANNER_BATCH_NOTE : PLANNER_SYSTEM, model: MODELS.analyze });
         track(res.usage);
         return res.data;
       },
       (r) => `Chose the angle, offering and persona for ${r.slots.length} slots. Theme: ${r.theme}`
     );
 
-    const itemIds = await task(
+    const placed = await task(
       "check-and-save",
       async () => {
         // Labels are rebuilt the same way, so they mean the same thing as in the prompt
         const items = mergePlan(ctx, slots, reply, buildPlannerPrompt(ctx, slots).labels);
+        if (batch) return saveBatch(db(), items, ctx.timezone);
         const events = [...new Set(ctx.events.filter((e) => e.date >= weekStart).map((e) => e.name))];
-        return savePlan(db(), plan.id, items, { theme: reply.theme, rationale: reply.rationale, mix: pillarMix(ctx, items), events });
+        const ids = await savePlan(db(), plan.id, items, { theme: reply.theme, rationale: reply.rationale, mix: pillarMix(ctx, items), events });
+        return ids.map((id) => ({ id, planId: plan.id }));
       },
-      (r) => `Saved the plan with ${r.length} slots`
+      (r) => (batch ? `Saved ${r.length} post${r.length === 1 ? "" : "s"}: ${reply.theme}` : `Saved the plan with ${r.length} slots`)
     );
 
     await step.sendEvent(
       "start-production",
-      itemIds.map((itemId) => ({ name: "plan-item/produce", id: `produce-${itemId}`, data: { businessId, itemId, planId: plan.id } }))
+      placed.map(({ id, planId }) => ({ name: "plan-item/produce", id: `produce-${id}`, data: { businessId, itemId: id, planId, ...(batch ? { oneOff: true } : {}) } }))
     );
-    return { planId: plan.id, items: itemIds.length };
+    return { planId: plan.id, items: placed.length };
   }
 );

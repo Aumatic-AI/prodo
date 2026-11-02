@@ -2,7 +2,7 @@ import { contrast } from "@/lib/color";
 import { fitText } from "../fit";
 import { safeBox, type Canvas } from "../sizes";
 import type { CreativeTheme } from "../theme";
-import { Brand, CtaPill, flex, Photo } from "./parts";
+import { Brand, CtaLine, CtaPill, flex, Photo } from "./parts";
 
 // Carousel slides: a hook cover on a photo, numbered content slides, and a call-to-action slide.
 
@@ -87,7 +87,8 @@ export function ContentSlide({ canvas, theme, index, total, title, body }: Slide
   );
 }
 
-export function CtaSlide({ canvas, theme, index, total, title, body, cta }: SlideBase & { title: string; body: string; cta: string }) {
+/** The last slide: the payoff and the call to action as words with where to go (nothing in a carousel is clickable). */
+export function CtaSlide({ canvas, theme, index, total, title, body, cta, link }: SlideBase & { title: string; body: string; cta: string; link: string | null }) {
   const unit = canvas.width / 1080;
   const box = safeBox(canvas);
   const surface = theme.primary;
@@ -108,7 +109,7 @@ export function CtaSlide({ canvas, theme, index, total, title, body, cta }: Slid
         <div style={flex({ fontFamily: theme.fonts.heading, fontWeight: 800, fontSize: head.size, lineHeight: 1.06, color: surface.text, letterSpacing: -1 })}>{title}</div>
         {body && <div style={flex({ fontFamily: theme.fonts.body, fontSize: 38 * unit, lineHeight: 1.4, color: surface.text, opacity: 0.88 })}>{body}</div>}
         <div style={flex({ marginTop: 12 * unit })}>
-          <CtaPill label={cta} pair={surface.text === "#ffffff" ? theme.light : theme.dark} size={36 * unit} font={theme.fonts.body} />
+          <CtaLine cta={cta} link={link} color={surface.text} font={theme.fonts.body} size={36 * unit} />
         </div>
       </div>
       <Dots index={index} total={total} color={surface.text} unit={unit} />

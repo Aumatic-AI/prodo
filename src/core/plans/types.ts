@@ -1,4 +1,4 @@
-import type { Brief, Format, Lever } from "@/core/creative/brief";
+import type { AdObjective, AwarenessLevel, Brief, Desire, Format, Lever } from "@/core/creative/brief";
 
 // A weekly plan (content_plans) and its slots (plan_items). See docs/database.md.
 
@@ -52,7 +52,7 @@ export interface QaCheck {
 
 export interface QaReport {
   gate1?: { score: number; notes: string; scores?: Record<string, number>; attempts: number };
-  gate2?: { score: number; notes: string; checks: QaCheck[]; redone?: string[]; attempts: number };
+  gate2?: { score: number; notes: string; checks: QaCheck[]; redone?: string[]; attempts: number; requiresAiLabel?: boolean };
   /** Plain reason shown when the item needs review */
   reason?: string;
 }
@@ -71,6 +71,10 @@ export interface PlanItem {
   offer_id: string | null;
   funnel_stage: FunnelStage | null;
   objective: string | null;
+  /** The Planner's strategy (knowledge base §7.4); null on plans made before it */
+  ad_objective: AdObjective | null;
+  desire: Desire | null;
+  awareness_level: AwarenessLevel | null;
   angle: string | null;
   framework: string | null;
   hook_type: string | null;

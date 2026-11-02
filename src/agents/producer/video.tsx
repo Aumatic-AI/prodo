@@ -35,8 +35,9 @@ import { peoplePromptLine } from "@/core/content/prefs";
 // 6. a timeline per size (9:16, plus 4:5 for feed platforms) → rendered on the worker
 // A QA redo makes only the failed AI scenes again and keeps everything else.
 
+// The clip prompt's closing line (knowledge base §8.1, §8.2): the camera comes first, then this
 const CLIP_STYLE =
-  "Cinematic, natural colour grade, smooth camera movement only, no cuts, photorealistic, keep the exact composition of the image. Nobody talks or moves their lips. No text, letters or logos.";
+  "Real time, normal speed, no slow motion. Natural colour grade, one light logic, natural physics, keep the exact composition, product shape and colour of the first frame. Mouth closed, nobody talks or moves their lips. No cuts. No text, letters or logos.";
 const MAX_RENDER_POLLS = 40;
 
 /** A scene's picture once made: a key in our storage and how to play it */
@@ -196,7 +197,7 @@ export async function produceVideo(a: ProduceArgs, brief: VideoBrief, previous: 
         const i = Number(img.key.split("-")[1]) - 1;
         if (!needsClip(scenes[i], brief.style)) continue;
         const duration = Math.min(15, Math.max(4, Math.ceil(seconds[i])));
-        const prompt = [`${scenes[i].motion}.`, pictureOnly(scenes[i].visual), CLIP_STYLE, peoplePromptLine(people)].filter(Boolean).join(" ");
+        const prompt = [`Camera: ${scenes[i].motion.replace(/\.$/, "")}.`, pictureOnly(scenes[i].visual), CLIP_STYLE, peoplePromptLine(people)].filter(Boolean).join(" ");
         const res = await startJob({ key: img.key, kind: "video", prompt, aspect: "9:16", refs: [], firstFrame: img.url, duration });
         track(res.usage);
         jobs.push(res.job);

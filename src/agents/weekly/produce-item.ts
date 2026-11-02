@@ -9,6 +9,8 @@ import { gate2, type Gate2Result } from "@/agents/qa-critic/gate2";
 import { produceCarousel } from "@/agents/producer/carousel";
 import { startMedia, syncCost } from "@/agents/producer/media";
 import { produceStatic } from "@/agents/producer/static";
+import { produceStaticFree } from "@/agents/producer/static-free";
+import { isFreeImageAd } from "@/config/image-ads";
 import type { ProduceArgs, Produced } from "@/agents/producer/types";
 import { produceVideo, type VideoState } from "@/agents/producer/video";
 import { taskFor } from "./task";
@@ -104,7 +106,7 @@ export const produceItem = inngest.createFunction(
     for (let round = 0; round <= MAX_REDOS; round++) {
       const args: ProduceArgs = { step, businessId, task: producer, db, item, mediaId, round, fix };
       let produced: Produced;
-      if (brief.kind === "static") produced = await produceStatic(args, brief);
+      if (brief.kind === "static") produced = isFreeImageAd("static") ? await produceStaticFree(args, brief) : await produceStatic(args, brief);
       else if (brief.kind === "carousel") produced = await produceCarousel(args, brief);
       else {
         const res = await produceVideo(args, brief, videoState, round ? redoScenes : null);
