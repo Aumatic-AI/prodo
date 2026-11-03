@@ -113,10 +113,6 @@ export function MediaPage() {
           retry.mutate(m.id);
           setOpenId(null);
         }}
-        onDelete={(m) => {
-          setOpenId(null);
-          setDeleting(m);
-        }}
       />
 
       <ConfirmDialog

@@ -6,8 +6,12 @@ export const PRICING = {
     "gpt-6.1-sol": { input: 2.0, output: 8.0 },
     "text-embedding-3-small": { input: 0.02, output: 0 },
   } as Record<string, { input: number; output: number }>,
+  // OpenAI image model, per picture by quality (portrait size)
+  openaiImage: { low: 0.02, medium: 0.07, high: 0.25, auto: 0.25 } as Record<string, number>,
   kie: {
     imagePerTask: 0.04,
+    // GPT Image 2 on Kie, per picture by resolution
+    gptImage: { "1K": 0.03, "2K": 0.05 } as Record<string, number>,
     videoPerSecond: 0.03,
   },
   elevenlabs: {

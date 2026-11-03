@@ -10,7 +10,8 @@ import { produceCarousel } from "@/agents/producer/carousel";
 import { startMedia, syncCost } from "@/agents/producer/media";
 import { produceStatic } from "@/agents/producer/static";
 import { produceStaticFree } from "@/agents/producer/static-free";
-import { isFreeImageAd } from "@/config/image-ads";
+import { isDirectImageAd, isFreeImageAd } from "@/config/image-ads";
+import { produceDirect } from "./produce-direct";
 import type { ProduceArgs, Produced } from "@/agents/producer/types";
 import { produceVideo, type VideoState } from "@/agents/producer/video";
 import { taskFor } from "./task";
@@ -54,10 +55,17 @@ export const produceItem = inngest.createFunction(
       });
 
     // Videos need our renderer: check it before the brief, so nothing is spent on a video that can't be made
-    await step.run("check-video-setup", async () => {
+    const format = await step.run("check-video-setup", async () => {
       const item = await getItem(db(), itemId);
       if (item.format === "video") await assertVideoReady().catch(toInngestError);
+      return item.format;
     });
+
+    // The "direct" test mode: no Creative Director and no QA; the image model gets everything and its picture is final
+    if (isDirectImageAd(format)) {
+      const res = await produceDirect(step, db, { businessId, planId, itemId, oneOff }, settle);
+      return res;
+    }
 
     // ---------- Brief and Gate 1 ----------
     let brief: Brief | null = null;

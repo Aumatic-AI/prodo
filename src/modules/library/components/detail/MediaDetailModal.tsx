@@ -6,7 +6,8 @@ import { Modal } from "@/components/kit/Modal";
 import { TextArea } from "@/components/kit/inputs";
 import { button } from "@/components/kit/styles";
 import { publicUrl } from "@/components/kit/MediaUploader";
-import { useMediaItem, useRedoMedia } from "../../hooks/useMedia";
+import { downloadFile } from "@/lib/download";
+import { useDeleteMedia, useMediaItem, useRedoMedia } from "../../hooks/useMedia";
 import { TYPE_META } from "../../lib/display";
 import type { MediaListItem } from "../../types";
 import { DetailFacts } from "./DetailFacts";
@@ -17,21 +18,25 @@ interface MediaDetailModalProps {
   onClose: () => void;
   onCreatePost: (media: MediaListItem) => void;
   onRetry: (media: MediaListItem) => void;
-  onDelete: (media: MediaListItem) => void;
 }
 
 /** Big preview on the left, idea, inputs and cost on the right. */
-export function MediaDetailModal({ media, onClose, onCreatePost, onRetry, onDelete }: MediaDetailModalProps) {
+export function MediaDetailModal({ media, onClose, onCreatePost, onRetry }: MediaDetailModalProps) {
   const needsFiles = media?.type === "carousel";
   const { data: detail, isLoading } = useMediaItem(needsFiles ? media.id : null);
   const redo = useRedoMedia();
+  const remove = useDeleteMedia();
   const [redoing, setRedoing] = useState(false);
+  // Deleting asks inside this dialog (never a second dialog on top of it)
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [note, setNote] = useState("");
 
   useEffect(() => {
     setRedoing(false);
+    setConfirmingDelete(false);
     setNote("");
     redo.reset();
+    remove.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [media?.id]);
 
@@ -39,7 +44,30 @@ export function MediaDetailModal({ media, onClose, onCreatePost, onRetry, onDele
   const generated = media.source === "generated" && media.type !== "text";
   const canRedo = generated && !media.plan_item_id && media.status !== "generating";
 
-  const footer = redoing ? (
+  const footer = confirmingDelete ? (
+    <div className="flex flex-col gap-3">
+      <p className="m-0 text-sm text-ob-ink-soft">
+        <strong className="text-ob-ink">Delete this media?</strong> The file is removed for good. Media used by a post can&apos;t be deleted; delete the post first.
+      </p>
+      {remove.error && <p className="m-0 text-sm font-medium text-ob-danger">{remove.error.message}</p>}
+      <div className="flex justify-end gap-2">
+        <button
+          type="button"
+          className={button({ variant: "secondary", size: "sm" })}
+          disabled={remove.isPending}
+          onClick={() => {
+            setConfirmingDelete(false);
+            remove.reset();
+          }}
+        >
+          Cancel
+        </button>
+        <button type="button" className={button({ variant: "dangerSolid", size: "sm" })} disabled={remove.isPending} onClick={() => remove.mutate(media.id, { onSuccess: onClose })}>
+          <Trash2 size={15} /> {remove.isPending ? "Deleting…" : "Delete"}
+        </button>
+      </div>
+    </div>
+  ) : redoing ? (
     <div className="flex flex-col gap-2.5">
       <TextArea rows={2} autoFocus value={note} onValueChange={setNote} placeholder="What should change? e.g. Brighter colours, show the product closer" />
       {redo.error && <p className="m-0 text-sm text-ob-danger">{redo.error.message}</p>}
@@ -59,14 +87,14 @@ export function MediaDetailModal({ media, onClose, onCreatePost, onRetry, onDele
     </div>
   ) : (
     <div className="flex flex-wrap items-center justify-between gap-3">
-      <button type="button" className={button({ variant: "danger", size: "sm" })} onClick={() => onDelete(media)}>
+      <button type="button" className={button({ variant: "danger", size: "sm" })} onClick={() => setConfirmingDelete(true)}>
         <Trash2 size={15} /> Delete
       </button>
       <div className="flex flex-wrap gap-2">
         {media.storage_key && (
-          <a href={publicUrl(media.storage_key)} target="_blank" rel="noreferrer" download className={button({ variant: "secondary", size: "sm" })}>
+          <button type="button" className={button({ variant: "secondary", size: "sm" })} onClick={() => downloadFile(publicUrl(media.storage_key!), `prodo-${media.type}-${media.id.slice(0, 8)}`)}>
             <Download size={15} /> Download
-          </a>
+          </button>
         )}
         {generated && (
           <button type="button" className={button({ variant: "secondary", size: "sm" })} onClick={() => onRetry(media)} title="Same inputs, new result">

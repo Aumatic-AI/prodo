@@ -113,7 +113,7 @@ No unit test suite yet; the offline checks above are the tests. Inngest dev serv
 
 ### Code vs AI vs vendor
 
-Our own code does anything rule-based (maths, layout, rendering, scheduling, validation, timing). AI only for judgement. A paid vendor only where code can't do the job. Every word on a video (headline, CTA, price, captions, logo) is drawn by our code (Remotion), never by the video model. Image ads are the exception (`IMAGE_AD_MODE`, free by default): the image model paints the whole ad, words included, and our code adds only the logo; `IMAGE_AD_MODE=designed` brings back the Satori layouts. Carousels and the video end card are still drawn by our code.
+Our own code does anything rule-based (maths, layout, rendering, scheduling, validation, timing). AI only for judgement. A paid vendor only where code can't do the job. Every word on a video (headline, CTA, price, captions, logo) is drawn by our code (Remotion), never by the video model. Image ads are the exception (`IMAGE_AD_MODE`, free by default): the image model paints the whole ad, words included, and our code adds only the logo; `IMAGE_AD_MODE=designed` brings back the Satori layouts, and `IMAGE_AD_MODE=direct` (a test) sends all the context, the product photos and the logo straight to the image model with no Creative Director, no QA and no logo from code (`IMAGE_AD_ENGINE`: `kie-gpt2` GPT Image 2 on Kie by default, `openai`, or `kie` nano-banana-2). Carousels and the video end card are still drawn by our code.
 
 ### Provider adapter pattern (critical)
 

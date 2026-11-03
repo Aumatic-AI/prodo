@@ -2,6 +2,8 @@
 // No vendor calls, no database. Run: npm run smoke scripts/check/weekly-logic.ts
 import assert from "node:assert/strict";
 import { freeAdPrompt } from "@/agents/producer/static-free";
+import { gpt2Resolution, openaiImageSize } from "@/config/image-ads";
+import { directBrief, directContext, directPrompt } from "@/agents/creative-director/direct-context";
 
 // Most checks below are about the designed layouts; the free image ad ones switch the mode on for their own run
 process.env.IMAGE_AD_MODE = "designed";
@@ -574,6 +576,43 @@ await check("freeAdPrompt: the director's words and quoted texts stay; the plain
   assert.ok(prompt.includes("reproduce the product exactly"));
   assert.ok(prompt.includes("other sizes"));
   assert.ok(prompt.includes("Fix these problems"));
+});
+
+await check("direct image ad: everything the director reads goes to the image model as plain facts; the brief is made by code", () => {
+  const images = [
+    { url: "https://x/p.jpg", what: 'real product photo of "Oven clean"' },
+    { url: "https://x/logo.png", what: "the brand's logo" },
+  ];
+  // A fuller context than the shared fixture: the business, voice, product, reviews and website text
+  const full = {
+    ...ctx,
+    business: { name: "Acme Clean", language: "en", description: "Kitchen deep cleaning", tone: "casual, calm", goals: ["bookings"] },
+    bible: { positioning: "The deep clean that fits your week", valueProp: "", tone: "Warm", traits: ["Direct"], examples: [], dos: [], donts: [], neverSay: ["guaranteed"], visualRules: [], strategy: null },
+    persona: { id: "p", name: "Busy parent", summary: "No time", pains: ["no time"], desires: ["a clean kitchen"], objections: [], triggers: [], phrases: [] },
+    pillar: null,
+    offering: { id: "o1", name: "Oven clean", kind: "service", price: 89, currency: "EUR", priceModel: "fixed", description: "Full oven clean", benefits: ["Done in 2 hours"], audience: null, objections: [] },
+    proof: [{ id: "r1", kind: "review", author: "Maria", rating: 5, content: "Spotless oven" }],
+    passages: [{ id: "c1", text: "We clean ovens across Malta." }],
+    disclaimers: [],
+    photoStyle: "warm natural light",
+  } as unknown as CreativeContext;
+  const text = directContext(full, { primary: "#2F45C5", accent: "#FFC83D", heading: "Fraunces", body: "Inter" }, images);
+  assert.ok(text.includes("BUSINESS:") && text.includes("THIS POST") && text.includes("ATTACHED IMAGES"));
+  assert.ok(text.includes("Image 1: real product photo") && text.includes("Image 2: the brand's logo"));
+  assert.ok(text.includes("#2F45C5") && text.includes("Fraunces"));
+  assert.ok(text.includes("Oven clean") && text.includes("price 89 EUR") && text.includes("Spotless oven") && text.includes("across Malta") && text.includes("Busy parent") && text.includes("warm natural light"));
+  // No instructions about how the picture is made, no labels to cite, no layouts
+  assert.ok(!/cite the label|LAYOUTS|\[O1\]|headline|layout/i.test(text), text);
+  const prompt = directPrompt(text + '\nContent pillar: One piece (sources: ["A2", "O1"]) (more)');
+  assert.ok(prompt.startsWith("Create one new ad image"));
+  assert.ok(!prompt.includes("sources:") && prompt.includes("Content pillar: One piece (more)"), "research labels are stripped");
+  assert.ok(directPrompt("x".repeat(20000)).length < 12100);
+  assert.deepEqual(["1:1", "4:5", "9:16", "16:9"].map(gpt2Resolution), ["2K", "1K", "2K", "2K"]); // Kie's GPT Image 2 has 4:5 only at 1K
+  assert.deepEqual(["1:1", "4:5", "9:16", "16:9"].map(openaiImageSize), ["1024x1024", "1088x1360", "1088x1936", "1936x1088"]);
+  const brief = directBrief(full, "00000000-0000-4000-8000-000000000001");
+  assert.equal(brief.kind, "static");
+  assert.equal(Object.keys(brief.captions).sort().join(), ctx.item.platforms.slice().sort().join());
+  assert.equal(brief.referenceAssetId, "00000000-0000-4000-8000-000000000001");
 });
 
 await check("colourWord and photoWords: colour codes become plain words for the image model", () => {

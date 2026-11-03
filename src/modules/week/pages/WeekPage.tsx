@@ -47,7 +47,11 @@ export function WeekPage() {
       if (v) q.set(k, v);
       else q.delete(k);
     }
-    router.replace(`/week${q.size ? `?${q}` : ""}`, { scroll: false });
+    const url = `/week${q.size ? `?${q}` : ""}`;
+    // Opening or closing a post only changes the address: no trip to the server, so it is instant and never
+    // waits behind a busy server (useSearchParams follows history.replaceState). A new week does need the router.
+    if (Object.keys(next).every((k) => k === "item")) window.history.replaceState(null, "", url);
+    else router.replace(url, { scroll: false });
   };
   const shift = (days: number) => data && go({ week: addDays(data.weekStart, days), item: null });
 

@@ -1,10 +1,10 @@
-import OpenAI from "openai";
+import OpenAI, { toFile } from "openai";
 import sharp from "sharp";
 import type { z } from "zod";
 import { env } from "@/config/env";
 import { LIMITS } from "@/config/limits";
 import { MODELS } from "@/config/models";
-import { tokenCost } from "@/config/pricing";
+import { PRICING, tokenCost } from "@/config/pricing";
 import { AppError, notConfigured, userMessage, type ErrorType } from "@/core/errors";
 import { cleanReason, isPermanentNetworkError, networkReason, quoted, statusText } from "@/core/error-text";
 import { parseJson } from "@/lib/json";
@@ -220,6 +220,39 @@ function safeParse(raw: string): unknown {
     return parseJson(raw);
   } catch {
     return undefined;
+  }
+}
+
+/**
+ * One picture from OpenAI's image model, made from a prompt and reference images (the real product
+ * photos, the logo). Returns the PNG itself: unlike Kie there is nothing to wait for or download.
+ */
+export async function generateImage(
+  prompt: string,
+  refUrls: string[],
+  opts: { model: string; size: string; /** Used when the model doesn't take `size` */ fallbackSize: "1024x1024" | "1024x1536" | "1536x1024"; quality: "low" | "medium" | "high" | "auto" }
+): Promise<Result<Buffer>> {
+  try {
+    const files = await Promise.all(
+      refUrls.map(async (url, i) => {
+        const res = await request("File storage", url, {}, LIMITS.downloadTimeoutMs);
+        if (!res.ok) throw new AppError(`Couldn't load a reference image for OpenAI (${shortUrl(url)}).`, "PROVIDER_DOWN", true);
+        const type = res.headers.get("content-type")?.split(";")[0] || "image/png";
+        return toFile(Buffer.from(await res.arrayBuffer()), `reference-${i + 1}.${type === "image/jpeg" ? "jpg" : type === "image/webp" ? "webp" : "png"}`, { type });
+      })
+    );
+    // A high-quality picture can take a minute or two
+    const draw = (size: string) => getClient().images.edit({ model: opts.model, image: files, prompt, size: size as "1024x1024", quality: opts.quality, n: 1 }, { timeout: LIMITS.downloadTimeoutMs });
+    const res = await draw(opts.size).catch((err: unknown) => {
+      // An unusual size the model doesn't take: the nearest standard one (the ad is cropped to fit afterwards)
+      if (err instanceof OpenAI.APIError && err.status === 400 && /size/i.test(err.message)) return draw(opts.fallbackSize);
+      throw err;
+    });
+    const b64 = res.data?.[0]?.b64_json;
+    if (!b64) throw new AppError("OpenAI's image model answered without a picture.", "PROVIDER_DOWN", true);
+    return { data: Buffer.from(b64, "base64"), usage: { provider: "openai", model: opts.model, costUsd: PRICING.openaiImage[opts.quality] ?? 0.25 } };
+  } catch (err) {
+    throw toAppError(err);
   }
 }
 

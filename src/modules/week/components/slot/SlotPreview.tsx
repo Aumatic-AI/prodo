@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { ExternalLink } from "lucide-react";
 import { platformMeta } from "@/config/platforms";
+import { ImageLightbox } from "@/components/kit/ImageLightbox";
 import { publicUrl } from "@/components/kit/MediaUploader";
 import type { PlanItemView } from "@/core/plans/types";
 import { cn } from "@/lib/utils";
@@ -37,6 +37,8 @@ function sizesOf(media: PostMedia | undefined): { label: string; url: string }[]
 /** The whole design, fitted to the space: one image, every slide side by side, or the video. */
 function Design({ item, media }: { item: PlanItemView; media: PostMedia | undefined }) {
   const [size, setSize] = useState(0);
+  // The picture open full screen inside the app (null = closed)
+  const [zoom, setZoom] = useState<number | null>(null);
   if (item.format === "video" && media?.storage_key) {
     return (
       <div className={stage}>
@@ -51,16 +53,17 @@ function Design({ item, media }: { item: PlanItemView; media: PostMedia | undefi
       <div className="flex min-h-0 w-full flex-1 flex-col gap-2">
         <div className={cn(stage, "snap-x snap-mandatory justify-start gap-3 overflow-x-auto pb-2")}>
           {slides.map((url, i) => (
-            <a key={url} href={url} target="_blank" rel="noreferrer" className="relative h-full shrink-0 snap-center" title={`Slide ${i + 1}: open full size`}>
+            <button key={url} type="button" onClick={() => setZoom(i)} className="relative h-full shrink-0 cursor-zoom-in snap-center" title={`Slide ${i + 1}: click to see it bigger`}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={url} alt={`Slide ${i + 1}`} className="h-full w-auto rounded-ob-md object-contain shadow-ob-sm" />
               <span className="absolute left-2 top-2 rounded-full bg-ob-dark/70 px-2 py-0.5 text-[11px] font-bold text-ob-on-dark">
                 {i + 1}/{slides.length}
               </span>
-            </a>
+            </button>
           ))}
         </div>
-        <span className="shrink-0 text-center text-xs text-ob-muted">Swipe or scroll to see every slide · click one for full size</span>
+        <span className="shrink-0 text-center text-xs text-ob-muted">Swipe or scroll to see every slide · click one to see it bigger</span>
+        <ImageLightbox images={slides} index={zoom} onIndexChange={setZoom} label="Carousel slide" fileName="prodo-slide" />
       </div>
     );
   }
@@ -80,12 +83,12 @@ function Design({ item, media }: { item: PlanItemView; media: PostMedia | undefi
         </div>
       )}
       <div className={stage}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={current.url} alt="The finished ad" className={fitted} />
+        <button type="button" onClick={() => setZoom(0)} className="flex max-h-full max-w-full cursor-zoom-in items-center justify-center" title="Click to see it bigger">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={current.url} alt="The finished ad" className={fitted} />
+        </button>
       </div>
-      <a href={current.url} target="_blank" rel="noreferrer" className="inline-flex shrink-0 items-center gap-1.5 text-[12.5px] font-semibold text-ob-primary hover:underline">
-        <ExternalLink size={13} /> Open full size
-      </a>
+      <ImageLightbox images={[current.url]} index={zoom} onIndexChange={setZoom} label="The finished ad" fileName={`prodo-ad-${current.label.replace(":", "x")}`} />
     </div>
   );
 }

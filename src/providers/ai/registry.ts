@@ -13,6 +13,10 @@ export const ai = {
   structured: OpenAI.structured,
   embed: OpenAI.embed,
 
+  /** A picture made by OpenAI's image model from a prompt and reference images */
+  imageFromReferences: OpenAI.generateImage,
+  /** GPT Image 2 on Kie: a picture from a prompt and reference images, in the canvas's own proportions */
+  imageGpt2: Kie.createGptImageTask,
   image: {
     create: Kie.createImageTask,
     status: Kie.checkTaskStatus,

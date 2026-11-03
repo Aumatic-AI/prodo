@@ -91,6 +91,18 @@ export async function createImageTask(
   return { data: taskId, usage: { provider: "kie", model: MODELS.image, costUsd: PRICING.kie.imagePerTask } };
 }
 
+/**
+ * GPT Image 2 on Kie (docs.kie.ai/market/gpt/gpt-image-2-image-to-image): the real product photos and the
+ * logo go in `input_urls` (up to 16), and the picture comes out in the canvas's own proportions. At 2K Kie
+ * doesn't take 4:5, so 4:5 is made at 1K. With no reference images the text-to-image model is used.
+ */
+export async function createGptImageTask(prompt: string, aspectRatio: "1:1" | "4:5" | "9:16" | "16:9", resolution: "1K" | "2K", referenceImageUrls: string[] = []): Promise<Result<string>> {
+  const withRefs = referenceImageUrls.length > 0;
+  const model = withRefs ? "gpt-image-2-image-to-image" : "gpt-image-2-text-to-image";
+  const taskId = await createTask(model, { prompt, aspect_ratio: aspectRatio, resolution, ...(withRefs ? { input_urls: referenceImageUrls } : {}) });
+  return { data: taskId, usage: { provider: "kie", model, costUsd: PRICING.kie.gptImage[resolution] } };
+}
+
 export async function createVideoTask(
   prompt: string,
   firstFrameUrl: string | undefined,
