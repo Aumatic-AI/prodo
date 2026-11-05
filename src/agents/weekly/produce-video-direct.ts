@@ -12,6 +12,7 @@ import { DIRECT_VIDEO } from "@/config/video-direct";
 import { isVideoStyle } from "@/core/content/styles";
 import { AppError } from "@/core/errors";
 import { getItem, updateItem } from "@/core/plans/plans";
+import { trace } from "@/lib/trace";
 import type { PlanItem } from "@/core/plans/types";
 import { loadTheme } from "@/creative/theme";
 import { ai } from "@/providers/ai/registry";
@@ -157,10 +158,10 @@ export async function produceDirectVideo(
     );
 
   let started = await start("direct-video-start", !!audioUrl);
-  let made = await waitForVideo(step, "direct-video", started.taskId);
+  let made = await waitForVideo(step, planId, "direct-video", started.taskId);
   if ("fail" in made && started.withAudio && /copyright/i.test(made.fail)) {
     started = await start("direct-video-start-new-music", false);
-    made = await waitForVideo(step, "direct-video-again", started.taskId);
+    made = await waitForVideo(step, planId, "direct-video-again", started.taskId);
   }
   if ("fail" in made) throw new NonRetriableError(made.fail);
   const videoUrl = made.url;
@@ -185,15 +186,19 @@ export async function produceDirectVideo(
 }
 
 /** Waits for the Seedance job: first after 90 s, then every 30 s, up to 20 minutes. A failure comes back as its message. */
-async function waitForVideo(step: Step, prefix: string, taskId: string): Promise<{ url: string } | { fail: string }> {
+async function waitForVideo(step: Step, planId: string, prefix: string, taskId: string): Promise<{ url: string } | { fail: string }> {
   for (let i = 0; i < 40; i++) {
     await step.sleep(`${prefix}-wait-${i}`, i ? "30s" : "90s");
-    const result = await step.run(`${prefix}-poll-${i}`, async (): Promise<{ url: string } | { fail: string } | null> => {
-      const status = await ai.image.status(taskId);
-      if (status.state === "success") return { url: ai.task.resultUrl(status) };
-      if (status.state === "fail") return { fail: ai.task.error(status, "video").message };
-      return null;
-    });
+    const id = `${prefix}-poll-${i}`;
+    // Traced with the plan's run, so the trace log shows Seedance's answers next to the request
+    const result = await step.run(id, () =>
+      trace.scope({ runId: planId, agent: "producer", step: id }, async (): Promise<{ url: string } | { fail: string } | null> => {
+        const status = await ai.image.status(taskId);
+        if (status.state === "success") return { url: ai.task.resultUrl(status) };
+        if (status.state === "fail") return { fail: ai.task.error(status, "video").message };
+        return null;
+      })
+    );
     if (result) return result;
   }
   return { fail: "Seedance didn't finish the video within 20 minutes. Try again." };

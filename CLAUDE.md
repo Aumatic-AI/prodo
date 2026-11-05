@@ -142,7 +142,7 @@ Layout: one folder per agent. `index.ts` reads top to bottom as the agent's step
 
 ### Videos
 
-**Now every video is a direct video** (`config/video-direct.ts`, `weekly/produce-video-direct.ts`): one OpenAI call writes one detailed prompt from the whole context, and Seedance 2.5 on Kie makes the finished video in one go (speech, lip sync, music, captions, logo), up to 30 seconds; no Remotion or worker. The scene pipeline below stays for `VIDEO_MODE = "scenes"`.
+**Now every video is a direct video** (`config/video-direct.ts`, `weekly/produce-video-direct.ts`): one OpenAI call writes one detailed prompt from the whole context (its only fixed knowledge is the truth and post-text rules; the Planner gives it an angle, not a concept), and Seedance 2.5 on Kie makes the finished video in one go (speech, lip sync, music, captions, logo), up to 30 seconds; no Remotion or worker. The scene pipeline below stays for `VIDEO_MODE = "scenes"`.
 
 The Creative Director fills a **storyline** for the slot's style (`src/core/creative/video.ts`) with scenes from the **scene library**, each with its picture (the client's video moment `[V…]`, their photo `[G…]` or AI). Code picks the sound and the **look** (`src/creative/video/preset.ts`). The Producer makes only the missing pictures, records voices and music, finds where the subject is in each picture, then `buildTimeline()` (`src/creative/video/timeline.ts`) decides every frame, position and sound from data, and the worker draws it (`worker/remotion/ad/`). Never let the renderer or a model decide timing or placement. Full flow in `docs/technical.md` → Videos.
 

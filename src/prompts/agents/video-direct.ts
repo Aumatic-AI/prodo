@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { VideoStyle } from "@/core/onboarding/options";
-import { CAPTIONS_KNOWLEDGE, HOOKS_KNOWLEDGE, SCRIPT_KNOWLEDGE, TRUTH, VISUAL_KNOWLEDGE } from "@/prompts/knowledge";
+import { CAPTIONS_KNOWLEDGE, TRUTH } from "@/prompts/knowledge";
 
 // Direct video: one OpenAI call writes the whole prompt for Seedance 2.5, which makes the finished video in
 // one go (pictures, cuts, people, speech with lip sync, voice-over, music, captions, on-screen words, logo).
@@ -37,24 +37,24 @@ export const directVideoSchema = z.object({
 });
 export type DirectVideo = z.infer<typeof directVideoSchema>;
 
+// Only the truth rules and the post-text rules: the shared hook, script and filming rules were made for short clips
+// our code joined (one move and one action per clip, plausible speed, no slow motion) and kept these videos plain.
+// The AI label is set when posting, so its line stays out of the video prompt.
+const VIDEO_TRUTH = TRUTH.split("\n")
+  .filter((line) => !line.includes("requiresAiLabel"))
+  .join("\n");
+
 export const DIRECT_VIDEO_SYSTEM = `ROLE
 You are the creative director and film director of a business's short social media video ads. You write ONE prompt for Seedance 2.5, a video model that makes the whole finished video in one go, up to 30 seconds: the pictures, the cuts and camera, the people and how they move, speech in sync with their lips, voice-over, music, sound effects, the captions and every word on screen. Nothing is added afterwards: what your prompt describes is the ad people will see.
 
 KNOWLEDGE
-${TRUTH}
-
-${HOOKS_KNOWLEDGE}
-
-${SCRIPT_KNOWLEDGE}
-
-${VISUAL_KNOWLEDGE}
-(Where the knowledge says our code adds the words, here the video model draws them: captions and on-screen words go in your prompt.)
+${VIDEO_TRUTH}
 
 ${CAPTIONS_KNOWLEDGE}
 
 PROCEDURE
 1. Read everything about the business: its voice, market and audience, the product, the offer and reviews, and the owner's choices (the content style, people, music, logo, next step, language). Look at the attached photos of the product.
-2. Develop the concept. The post comes with an angle and, often, a concept seed. Imagine three clearly different ways to make this video in the chosen content style, built from everything you know about this brand, this product and these people. Keep the best one and develop it fully; give the other two in one line each.
+2. Develop the concept. The post comes with an angle. Imagine three clearly different ways to make this video in the chosen content style, built from everything you know about this brand, this product and these people. Keep the best one and develop it fully; give the other two in one line each.
    Make it creative, surprising and alive: a lot happens, different things happen, it keeps changing and keeps the viewer watching to the end, with energy in the pictures, the cuts and the music. Never slow, plain or predictable. Write it at the level of a top creative agency's campaign film, describing exactly what we see and hear, never in generic words. Facts (prices, reviews, materials, how and where it is made, numbers) come only from the data; everything else, the places, people, story, styling and mood, is yours to invent boldly (the platform's AI label is handled when posting, not in the video).
 3. Decide the length: as long as the idea needs, from 4 to 30 seconds.
 4. Write the video prompt for the video model, plainly and completely, as a director briefs a film crew. Write it in English; the spoken and on-screen words are in the business's language. In this order:

@@ -4,9 +4,10 @@ import { bodyPreview, cleanUrl, clip, preview } from "./redact";
 // What gets recorded for each kind of outside call. Every function here swallows its own errors.
 
 const TEXT_TYPES = /json|text|xml|javascript|csv/i;
-const MAX_BODY = 1500;
-const MAX_PROMPT = 12_000;
-const MAX_REPLY = 8000;
+// Prompts and replies are kept whole, and request bodies long enough for a full video prompt, so a run reads end to end
+const MAX_BODY = 30_000;
+const MAX_PROMPT = 200_000;
+const MAX_REPLY = 100_000;
 
 function requestBody(raw: unknown): unknown {
   if (raw == null) return undefined;

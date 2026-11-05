@@ -28,10 +28,13 @@ export function buildPlannerPrompt(ctx: PlannerContext, slots: SlotPlan[]): { pr
 
   lines.push("", "OFFERINGS");
   const roles = new Map(ctx.offerStack.map((o) => [o.offeringId, o.role]));
+  // How often each offering was promoted lately, so one product doesn't take every post
+  const promoted = new Map<string, number>();
+  for (const r of ctx.recent) if (r.offeringId) promoted.set(r.offeringId, (promoted.get(r.offeringId) ?? 0) + 1);
   ctx.offerings.forEach((o, i) => {
     labels.offering.set(`O${i + 1}`, o.id);
     const price = o.price !== null ? ` · ${o.price} ${o.currency ?? ""}`.trimEnd() : "";
-    lines.push(`[O${i + 1}] ${o.name} (${o.kind}${o.isHero ? ", hero" : ""}${roles.get(o.id) ? `, ${roles.get(o.id)}` : ""})${price}`);
+    lines.push(`[O${i + 1}] ${o.name} (${o.kind}${o.isHero ? ", hero" : ""}${roles.get(o.id) ? `, ${roles.get(o.id)}` : ""})${price} · ${promoted.get(o.id) ?? 0} posts in the last 3 weeks`);
   });
   if (!ctx.offerings.length) lines.push("none confirmed yet: plan brand and value posts only (offering null)");
 
@@ -63,7 +66,18 @@ export function buildPlannerPrompt(ctx: PlannerContext, slots: SlotPlan[]): { pr
     lines.push("", "LEARNINGS: not enough posts yet. Use sound defaults and vary angles to learn.");
   }
 
-  const recentAngles = [...new Set(ctx.recent.map((r) => r.angle).filter(Boolean))];
+  // Each recent angle's first line, with the product it promoted
+  const offeringName = new Map(ctx.offerings.map((o) => [o.id, o.name]));
+  const recentAngles = [
+    ...new Set(
+      ctx.recent
+        .filter((r) => r.angle)
+        .map((r) => {
+          const name = r.offeringId ? offeringName.get(r.offeringId) : null;
+          return `${name ? `[${name}] ` : ""}${r.angle!.split("\n")[0]}`;
+        })
+    ),
+  ];
   if (recentAngles.length) lines.push("", "RECENT ANGLES (don't repeat)", ...recentAngles.slice(0, 30).map((a) => `- ${a}`));
 
   lines.push("", "SLOTS");

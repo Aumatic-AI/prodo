@@ -66,8 +66,7 @@ export function mergePlan(ctx: PlannerContext, slots: SlotPlan[], reply: Planner
       offeringId,
       offerId,
       personaId,
-      // A video slot carries its concept seed with the angle, for the video prompt writer
-      angle: [stripLabels(c?.angle ?? `${slot.pillarName ?? "Brand"} post`), slot.format === "video" && c?.concept ? `Concept: ${stripLabels(c.concept)}` : ""].filter(Boolean).join("\n\n"),
+      angle: stripLabels(c?.angle ?? `${slot.pillarName ?? "Brand"} post`),
       objective: stripLabels(c?.objective ?? "Build interest in the brand"),
       desire: c?.desire ?? null,
       awarenessLevel: fitAwareness(slot.adObjective, c?.awarenessLevel ?? null),
