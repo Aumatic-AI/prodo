@@ -114,6 +114,23 @@ export async function metaAdvertisers(query: string): Promise<Result<AdvertiserM
   return { data: matches, usage };
 }
 
+/** One Meta Ad Library ad from its link or id: its video (when it has one) and text. */
+export async function metaAd(link: string): Promise<Result<{ videoUrl: string | null; text: string | null; pageName: string | null } | null>> {
+  const id = link.match(/[?&]id=(\d+)/)?.[1] ?? (/^\d+$/.test(link.trim()) ? link.trim() : undefined);
+  const { body, usage } = await get("/v1/facebook/adLibrary/ad", id ? { id } : { url: link });
+  const snap = body?.snapshot;
+  if (!snap) return { data: null, usage };
+  const video = snap.videos?.find((v: any) => v.video_hd_url || v.video_sd_url) ?? snap.cards?.find((c: any) => c.video_hd_url || c.video_sd_url);
+  return {
+    data: {
+      videoUrl: video?.video_hd_url || video?.video_sd_url || null,
+      text: typeof snap.body === "string" ? snap.body : (snap.body?.text ?? null),
+      pageName: snap.page_name ?? body?.pageName ?? null,
+    },
+    usage,
+  };
+}
+
 /** Active Meta (Facebook and Instagram) ads of a page. */
 export async function metaAds(pageId: string, country?: string): Promise<Result<AdCreative[]>> {
   const { body, usage } = await get("/v1/facebook/adLibrary/company/ads", {

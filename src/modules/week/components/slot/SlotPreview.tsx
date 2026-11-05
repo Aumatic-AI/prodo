@@ -4,6 +4,8 @@ import { useState } from "react";
 import { platformMeta } from "@/config/platforms";
 import { ImageLightbox } from "@/components/kit/ImageLightbox";
 import { publicUrl } from "@/components/kit/MediaUploader";
+import { Skeleton } from "@/components/kit/Skeleton";
+import { VideoPlayer } from "@/components/kit/VideoPlayer";
 import type { PlanItemView } from "@/core/plans/types";
 import { cn } from "@/lib/utils";
 import { useSession } from "@/stores/SessionStoreProvider";
@@ -39,10 +41,18 @@ function Design({ item, media }: { item: PlanItemView; media: PostMedia | undefi
   const [size, setSize] = useState(0);
   // The picture open full screen inside the app (null = closed)
   const [zoom, setZoom] = useState<number | null>(null);
-  if (item.format === "video" && media?.storage_key) {
+  // The file is still loading (or the post was opened while it was being made): a placeholder, never a blank panel
+  if (!media?.storage_key) {
     return (
       <div className={stage}>
-        <video src={publicUrl(media.storage_key)} controls playsInline preload="metadata" className={cn(fitted, "bg-ob-dark")} />
+        <Skeleton className={cn("h-full max-h-[60vh]", item.format === "video" ? "aspect-[9/16]" : "aspect-[4/5]")} />
+      </div>
+    );
+  }
+  if (item.format === "video") {
+    return (
+      <div className={stage}>
+        <VideoPlayer src={publicUrl(media.storage_key)} className="h-full w-fit max-w-full shadow-ob-sm" videoClassName="h-full w-auto max-w-full object-contain" fileName={`prodo-video-${item.id.slice(0, 8)}`} />
       </div>
     );
   }

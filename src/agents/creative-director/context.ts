@@ -6,6 +6,8 @@ import { TEMPLATE_IDS, type TemplateId } from "@/core/creative/brief";
 import { contentRules, type ContentRules } from "@/core/content/prefs";
 import { layoutsFor } from "@/core/content/styles";
 import { loadMoments, referenceLessons, type Moment } from "@/core/brand/footage";
+import type { ReferenceVideo } from "@/prompts/agents/reference-video";
+import { loadReference } from "./reference";
 import { ai } from "@/providers/ai/registry";
 import type { Usage } from "@/providers/usage";
 
@@ -21,7 +23,6 @@ export interface CreativeContext {
   rules: ContentRules;
   ctaLinks: Record<string, string>;
   avoidWords: string[];
-  disclaimers: string[];
   bible: { positioning: string; valueProp: string; tone: string; traits: string[]; examples: string[]; dos: string[]; donts: string[]; neverSay: string[]; visualRules: string[]; strategy: BibleStrategy | null };
   persona: { id: string; name: string; summary: string | null; pains: string[]; desires: string[]; objections: string[]; triggers: string[]; phrases: string[] } | null;
   pillar: { name: string; description: string | null } | null;
@@ -45,6 +46,8 @@ export interface CreativeContext {
   moments: Moment[];
   /** Video slots: what the client's reference videos do well (pacing, structure), never copied */
   lessons: string[];
+  /** Video slots made from a reference video: its scene-by-scene breakdown, to make the same video for this product */
+  reference?: ReferenceVideo | null;
   /** Brand tone sliders (0–100), for the video look */
   tone: Record<string, number>;
   industry: string | null;
@@ -111,6 +114,8 @@ export async function loadCreativeContext(db: SupabaseClient, itemId: string): P
   const video = item.format === "video";
   const people = contentRules(profile.data).people;
   const [moments, lessons] = video ? await Promise.all([loadMoments(db, { offeringId: item.offering_id, people }), referenceLessons(db)]) : [[], []];
+  // The post's own reference video, watched before the brief (produce-item)
+  const reference = video && item.reference_video_id ? await loadReference(db, item.reference_video_id) : null;
 
   // Brand Brain passages about this slot's angle and offering
   const query = [item.angle, offering.data?.name, item.objective].filter(Boolean).join(" · ");
@@ -145,7 +150,6 @@ export async function loadCreativeContext(db: SupabaseClient, itemId: string): P
       ctaLinks: Object.fromEntries(Object.entries({ website: p.website, ...(p.cta_links ?? {}) }).filter(([, v]) => typeof v === "string" && v)) as Record<string, string>,
       // The client's list, plus the claims their industry may never make in ads
       avoidWords: [...new Set([...(p.compliance?.avoid_words ?? []), ...rules.industryNeverSay])],
-      disclaimers: p.compliance?.disclaimers ?? [],
       bible: {
         positioning: c.positioning?.text ?? "",
         valueProp: c.value_prop?.text ?? "",
@@ -202,6 +206,7 @@ export async function loadCreativeContext(db: SupabaseClient, itemId: string): P
       photoStyle: kit.data?.photo_style ?? null,
       moments,
       lessons,
+      reference,
       tone: (p.tone ?? {}) as Record<string, number>,
       industry: p.industry ?? null,
       layouts: layoutsFor(

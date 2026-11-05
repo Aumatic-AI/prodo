@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Bot } from "lucide-react";
 import { Badge } from "@/components/kit/Badge";
+import { styleName } from "@/core/content/styles";
 import { STATUS_META, TYPE_META, fullDate, money } from "../../lib/display";
 import type { MediaListItem } from "../../types";
 
@@ -16,6 +17,10 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
 /** What was asked for and what it cost. */
 export function DetailFacts({ media }: { media: MediaListItem }) {
   const isVideo = media.type === "video";
+  // The content style it was made in (kept in the brief the post was made from); older and manual media have none
+  const style = styleName((media.creative_spec as { style?: string | null } | null)?.style);
+  // A voice is only worth showing when one was actually picked: "Default" says nothing, and videos Prodo makes follow their style's sound
+  const voice = media.voice_name || (media.audio_style === "No Voice" ? "No voice" : null);
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap gap-1.5">
@@ -42,9 +47,10 @@ export function DetailFacts({ media }: { media: MediaListItem }) {
 
       <dl className="m-0 divide-y divide-ob-line rounded-ob-md border border-ob-line bg-ob-surface px-4">
         {media.product_name && <Fact label="Product">{media.product_name}</Fact>}
+        {style && <Fact label="Style">{style}</Fact>}
         {media.aspect_ratio && <Fact label="Size">{media.aspect_ratio}</Fact>}
         {isVideo && media.duration_sec && <Fact label="Length">{media.duration_sec} sec</Fact>}
-        {isVideo && <Fact label="Voice">{media.voice_name || (media.audio_style === "No Voice" ? "No voice" : "Default")}</Fact>}
+        {isVideo && voice && <Fact label="Voice">{voice}</Fact>}
         {isVideo && media.language && <Fact label="Language">{media.language}</Fact>}
         {media.type === "image" && media.use_logo != null && <Fact label="Logo">{media.use_logo ? "Added" : "Not added"}</Fact>}
         {media.reference_image_key && <Fact label="Reference photo">Used</Fact>}

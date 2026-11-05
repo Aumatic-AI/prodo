@@ -38,19 +38,17 @@ export function checkVideoBrief(brief: VideoBrief, ctx: CreativeContext): string
   const storyline = STORYLINES[brief.style && isVideoStyle(brief.style) ? brief.style : "faceless"];
 
   // The storyline's shape
-  if (scenes.length < storyline.minScenes || scenes.length > storyline.maxScenes) problems.push(`Use ${storyline.minScenes}–${storyline.maxScenes} scenes (now ${scenes.length}).`);
+  const maxScenes = ctx.reference ? Math.max(LIMITS.maxScenes, Math.min(LIMITS.maxReferenceScenes, ctx.reference.scenes.length)) : LIMITS.maxScenes;
+  if (scenes.length < LIMITS.minScenes || scenes.length > maxScenes) problems.push(`Use ${LIMITS.minScenes}–${maxScenes} scenes (now ${scenes.length}).`);
   if (scenes[0]?.kind !== "hook") problems.push('Scene 1 must be kind "hook".');
   if (scenes.at(-1)?.kind !== "cta") problems.push('The last scene must be kind "cta".');
-  scenes.slice(1, -1).forEach((s, i) => {
-    if (!storyline.middle.includes(s.kind)) problems.push(`Scene ${i + 2} is "${s.kind}", which this style doesn't use. Use one of: ${storyline.middle.join(", ")}.`);
-  });
   if (!scenes[0]?.overlay.trim()) problems.push("The hook scene needs its on-screen line (overlay).");
 
   // Words on screen and spoken
   scenes.forEach((s, i) => {
     if (countWords(s.overlay) > LIMITS.overlayWords) problems.push(`Scene ${i + 1}'s on-screen line has ${countWords(s.overlay)} words; keep it to ${LIMITS.overlayWords} or fewer.`);
     const sec = spokenSeconds(s.voiceover);
-    if (sec > 8.5) problems.push(`Scene ${i + 1}'s voice-over takes about ${Math.round(sec)} seconds to say; keep each scene under 8 seconds.`);
+    if (sec > LIMITS.sceneMaxSeconds - 0.5) problems.push(`Scene ${i + 1}'s voice-over takes about ${Math.round(sec)} seconds to say; a scene lasts at most ${LIMITS.sceneMaxSeconds} seconds, so shorten it or split it into two scenes.`);
   });
   const voiced = brief.sound === "voice" || brief.sound === "voice_music";
   if (voiced) {
@@ -68,8 +66,8 @@ export function checkVideoBrief(brief: VideoBrief, ctx: CreativeContext): string
 
   // Total length (the closing card adds its own seconds)
   const total = scenes.reduce((sum, s) => sum + plannedSeconds(s), 0);
-  if (total > 40) problems.push(`The video runs about ${Math.round(total)} seconds; keep it under 35.`);
-  if (total < 10) problems.push(`The video is only about ${Math.round(total)} seconds; aim for 15–35.`);
+  if (total > LIMITS.videoMaxSeconds + 2) problems.push(`The video runs about ${Math.round(total)} seconds; keep it to ${LIMITS.videoMaxSeconds} or less.`);
+  if (total < 5) problems.push(`The video is only about ${Math.round(total)} seconds; give the idea the time it needs.`);
 
   // Real footage must be long enough for its scene, and used once
   const used = new Set<string>();
@@ -87,6 +85,13 @@ export function checkVideoBrief(brief: VideoBrief, ctx: CreativeContext): string
   });
   if (storyline.prefer === "photos" && ctx.assets.length >= 3 && scenes.filter((s) => s.kind !== "cta" && s.source.kind === "ai").length > 1) {
     problems.push("This style is built on the client's real photos: use G… photos for the scenes, AI only when nothing fits.");
+  }
+
+  // Only photo styles show a real photo as it is; the others make new scenes that take the product from it
+  if (storyline.prefer !== "photos") {
+    scenes.forEach((s, i) => {
+      if (s.source.kind === "photo") problems.push(`Scene ${i + 1} shows one of the client's photos as it is. This style makes new scenes: set its source to "AI", describe a new scene in "visual", and put that photo's label in "reference" so it only gives the product.`);
+    });
   }
 
   // Numbers come from their fact

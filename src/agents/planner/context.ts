@@ -1,3 +1,4 @@
+import { VIDEO_MODE } from "@/config/video-direct";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { approvedBible } from "@/core/plans/plans";
 import { contentRules, type ContentRules } from "@/core/content/prefs";
@@ -56,7 +57,8 @@ export async function loadPlannerContext(db: SupabaseClient, weekStart: string):
     timezone: safeZone(p.timezone),
     goals: contentRules(p).goals,
     rules: contentRules(p),
-    talkingFootage: await hasTalkingFootage(db, contentRules(p).people),
+    // Direct videos make the person who talks themselves (lip sync), so talking styles need no footage of the client's
+    talkingFootage: VIDEO_MODE === "direct" ? contentRules(p).people !== "none" : await hasTalkingFootage(db, contentRules(p).people),
     description: p.description ?? "",
     postsPerWeek: (p.posting_prefs?.platforms ?? {}) as Record<string, number>,
     bibleId: bible.id,

@@ -210,7 +210,13 @@ export const LIMITS = {
   minSlides: 5,
   maxSlides: 8,
   minScenes: 3,
-  maxScenes: 6,
+  /** Scenes in a video; one made from a reference video may follow it up to maxReferenceScenes */
+  maxScenes: 12,
+  maxReferenceScenes: 20,
+  /** The longest clip the video model makes in one go (Seedance 2 mini: 15 s), so the longest scene */
+  sceneMaxSeconds: 15,
+  /** A whole video, at most */
+  videoMaxSeconds: 50,
 };
 
 const words = (s: string) => s.trim().split(/\s+/).filter(Boolean).length;
@@ -328,7 +334,8 @@ export const carouselBriefSchema = z.object({
 
 /** A scene's picture: one of the client's photos, a moment of the client's own video, or made by AI */
 export const sceneSourceSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("ai") }),
+  /** Made by AI; the real photo it takes its product from, when one is named */
+  z.object({ kind: z.literal("ai"), referenceAssetId: z.string().uuid().nullish() }),
   z.object({ kind: z.literal("photo"), assetId: z.string().uuid() }),
   z.object({
     kind: z.literal("clip"),
@@ -348,7 +355,7 @@ export const videoSceneSchema = z.object({
   /** Spoken words; empty in music-only scenes and in talking moments (the person speaks) */
   voiceover: z.string().trim().max(240).default(""),
   /** Length in seconds when nothing is spoken; voiced scenes follow the speech */
-  seconds: z.number().min(1.5).max(15).nullable().default(null),
+  seconds: z.number().min(0.3).max(15).nullable().default(null),
   /** Big text on screen, at most 7 words */
   overlay: z.string().trim().max(60).default(""),
   /** Up to 3 words from the voice-over or the on-screen line to stand out */
@@ -389,7 +396,7 @@ export type VideoScene = z.infer<typeof videoSceneSchema>;
 export const videoBriefSchema = z.object({
   kind: z.literal("video"),
   ...base,
-  scenes: z.array(videoSceneSchema).min(2).max(9),
+  scenes: z.array(videoSceneSchema).min(2).max(20),
   musicMood: z.string().trim().max(60).default("upbeat"),
   sound: z.enum(VIDEO_SOUNDS).default("voice_music"),
   /** The look (presets in worker/remotion/shared/presets.ts), picked by code from the brand */

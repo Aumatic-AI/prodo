@@ -1,20 +1,22 @@
 "use client";
 
 import { useState } from "react";
-import { FileText, Image as ImageIcon, Upload, Video, type LucideIcon } from "lucide-react";
+import { Copy, FileText, Image as ImageIcon, Upload, Video, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Modal } from "@/components/kit/Modal";
 import { focusRing } from "@/components/kit/styles";
+import { CopyTab } from "./CopyTab";
 import { ImageTab } from "./ImageTab";
 import { TextTab } from "./TextTab";
 import { UploadTab } from "./UploadTab";
 import { VideoTab } from "./VideoTab";
 
-export type CreateTab = "image" | "video" | "text" | "upload";
+export type CreateTab = "image" | "video" | "copy" | "text" | "upload";
 
 const TABS: { value: CreateTab; label: string; text: string; icon: LucideIcon }[] = [
-  { value: "image", label: "Image", text: "AI photo", icon: ImageIcon },
-  { value: "video", label: "Video", text: "Reel with voice", icon: Video },
+  { value: "image", label: "Image", text: "Image ad", icon: ImageIcon },
+  { value: "video", label: "Video", text: "Video ad", icon: Video },
+  { value: "copy", label: "Copy a video", text: "With your product", icon: Copy },
   { value: "text", label: "Text", text: "Written post", icon: FileText },
   { value: "upload", label: "Upload", text: "Your own files", icon: Upload },
 ];
@@ -24,7 +26,7 @@ export function CreateContentModal({ initialTab, onClose }: { initialTab: Create
   const [tab, setTab] = useState<CreateTab>(initialTab);
 
   const toolbar = (
-    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4" role="tablist" aria-label="What to create">
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-5" role="tablist" aria-label="What to create">
       {TABS.map(({ value, label, text, icon: Icon }) => {
         const on = tab === value;
         return (
@@ -57,6 +59,7 @@ export function CreateContentModal({ initialTab, onClose }: { initialTab: Create
     <Modal open onOpenChange={(open) => !open && onClose()} title="Create content" description="Made in the background. It shows up in your library when ready." toolbar={toolbar} className="w-[min(calc(100vw-32px),760px)]">
       {tab === "image" && <ImageTab onDone={onClose} />}
       {tab === "video" && <VideoTab onDone={onClose} />}
+      {tab === "copy" && <CopyTab onDone={onClose} />}
       {tab === "text" && <TextTab onDone={onClose} />}
       {tab === "upload" && <UploadTab onDone={onClose} />}
     </Modal>

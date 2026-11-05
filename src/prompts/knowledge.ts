@@ -15,7 +15,7 @@ export const TRUTH = `NON-NEGOTIABLES (these override everything)
 - No fake scarcity or urgency: "ends Sunday" or "only 20 left" only when a live offer has that end date or quantity.
 - No unqualified superiority ("best", "#1", "clinically proven") unless a stored proof backs it.
 - Never name, show or imitate a real person, creator or celebrity, and never name a competitor; compare with "the old way" or the category.
-- Health, finance and legal claims carry the required disclaimers; no cure claims, no guaranteed income, no before/after that suggests typical results without proof.
+- Health, finance and legal claims: no cure claims, no guaranteed income, no before/after that suggests typical results without proof.
 - Nothing prohibited in a scene (weapons, smoking or vaping, alcohol near minors, drugs, gambling cues, dangerous stunts, medical procedures), no sexualised content, gore or body shaming, no fake UI (play buttons, notifications, system dialogs).
 - Native style is fine, but never claim it isn't an ad ("not sponsored", "not an ad"). No deliberate mistakes to bait comments, no staged debates.
 - A realistic AI-made human anywhere in the ad means it carries the platform's AI label (requiresAiLabel: true). The brand's own real photos and footage don't need it.`;
@@ -130,10 +130,10 @@ export const VISUAL_KNOWLEDGE = `MAKING AI PICTURES AND CLIPS LOOK FILMED
 - Continuity: the same product, clothes, hair, props, time of day and grade across the scenes of one ad.
 - Scale: the product at its real size; rooms lived-in with real materials; people doing plausible things at plausible speed.
 - No text in the picture: never ask the model for words, labels, prices or logos; our code adds them.
-- Nobody talks in voice-over scenes: "mouth closed, no talking".
+- Nobody talks in voice-over scenes: a calm natural expression, mouth closed. A person's whole head and face stay in the frame; never crop, hide or leave out the face to avoid talking.
 - The camera sits on something real (tripod, slider, dolly on rails, gimbal, handheld operator, drone); name the rig.
 - Imperfection reads as real: slight handheld movement for native looks, natural focus, dust in a light beam. Never "perfect, flawless, ultra-smooth, 8K, hyper-detailed".
-- One camera move and one action per clip (4–6 s is one beat). The picture must support the move (no "over the shoulder" without a person).
+- One camera move and one action per clip. The picture must support the move (no "over the shoulder" without a person).
 - Camera moves by meaning (camera_move): static (let it speak), dolly_in (realisation, "this matters", start on a trigger), dolly_out or crane (scale, a reveal), low_to_high (product hero), slider (product on a table, with something in the foreground), arc or orbit (all sides of an object; never a full orbit on a face), slow_zoom (tension, safe for faces), crash_zoom (punchline), whip_pan (energy, toward a target), handheld (native, documentary), follow / reverse_tracking / side_tracking (walking with someone), push_past (entering a space past a doorframe), top_down (flat-lay, process, food), drone (place), motion_control or time_layer (before/after on the same path). Values: ${CAMERA_MOVES.join(", ")}.
 - Lenses: 24–35 mm for places and selfie feel, 50 mm for people, 65–85 mm for close-ups and product details, 100 mm macro for texture. Vary shot sizes; never three close-ups in a row.`;
 
@@ -147,7 +147,7 @@ export const REALISM_CHECKLIST = `REALISM CHECKLIST
 - Light direction and colour consistent within and across scenes
 - Camera move matches the brief and is physically plausible; no drift where a locked shot was asked for
 - No in-scene gibberish text or fake logos
-- No talking mouth in voiceover scenes
+- No talking mouth in voiceover scenes (the face itself must be visible, not cropped out)
 - Continuity across scenes (wardrobe, props, time of day, grade)
 - Nothing prohibited in frame
 - Realistic AI human present → requires_ai_label: true`;

@@ -23,6 +23,8 @@ export const UPLOAD_RULES = {
   media: { types: [...IMAGE_TYPES, ...VIDEO_TYPES], maxBytes: LIMITS.videoMaxBytes, folder: null, hint: MEDIA_HINT },
   // Posts and ads the client likes
   reference: { types: [...IMAGE_TYPES, ...VIDEO_TYPES], maxBytes: LIMITS.videoMaxBytes, folder: "references", hint: MEDIA_HINT },
+  // A video to make again for one post
+  referenceVideo: { types: VIDEO_TYPES, maxBytes: LIMITS.videoMaxBytes, folder: "references", hint: "MP4 or MOV, up to 100 MB" },
 } satisfies Record<string, UploadRule>;
 
 export type UploadPurpose = keyof typeof UPLOAD_RULES;

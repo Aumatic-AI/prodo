@@ -23,7 +23,12 @@ export interface BuildScene {
   /** "reveal" scenes: the after picture */
   reveal: SceneMedia | null;
   /** From the picture analysis or the footage log */
-  layout: { subject: Box | null; zone: Zone | null; light: boolean | null };
+  layout: {
+    subject: Box | null;
+    /** The calmest band for words */
+    zone: Zone | null;
+    light: boolean | null;
+  };
   /** Made voice-over for this scene */
   voice: { url: string; durationSec: number; words: BuildWord[] } | null;
   /** A talking moment's own words (seconds from the scene's start) */
@@ -78,16 +83,18 @@ function contentSeconds(s: BuildScene): number {
   return s.kind === "cta" ? Math.max(base, CTA_HOLD_SEC) : base;
 }
 
-/** Zones for the on-screen line and the captions of one scene, so they never sit on each other or on the subject. */
-export function zonesFor(scene: BuildScene, hasTitle: boolean): { title: Zone; captions: Zone } {
+/**
+ * Zones for the on-screen line and the captions of one scene. Captions always sit in the same lower
+ * place, whatever is behind them. The on-screen line takes the calm band (never the captions' band); a
+ * scene without captions (music-only videos) puts its line low, where captions would be.
+ */
+export function zonesFor(scene: BuildScene, hasTitle: boolean, hasCaptions = true): { title: Zone; captions: Zone } {
   const subject = scene.layout.subject;
-  // Where the subject isn't: its centre decides
   const cy = subject ? subject.y + subject.h / 2 : 0.5;
-  const free: Zone = scene.layout.zone ?? (cy > 0.55 ? "top" : "bottom");
-  if (!hasTitle) return { title: free, captions: free === "middle" ? "bottom" : free };
-  if (free === "top") return { title: "top", captions: cy < 0.62 ? "bottom" : "middle" };
-  if (free === "bottom") return { title: "bottom", captions: cy > 0.4 ? "top" : "middle" };
-  return { title: "middle", captions: "bottom" };
+  const calm: Zone = scene.layout.zone ?? (cy > 0.55 ? "top" : "bottom");
+  const captions: Zone = "bottom";
+  const title: Zone = hasTitle ? (hasCaptions ? (([calm, "top", "middle", "bottom"] as Zone[]).find((z) => z !== captions) ?? "top") : captions) : calm;
+  return { title, captions };
 }
 
 /** Pages of 1–3 words: a new page after the preset's count, at a sentence end or a pause. */
@@ -190,7 +197,6 @@ export function buildTimeline(input: BuildInput): Timeline {
     const end = t.start + t.frames;
     const isCta = s.kind === "cta";
     const title = i === 0 ? s.overlay || input.hook : s.overlay;
-    const zones = zonesFor(s, !!title && !isCta);
 
     // Spoken words with frame times (made voice or a talking moment)
     const spoken = s.voice?.words ?? (s.speech ? speechWords(s.speech) : []);
@@ -200,6 +206,7 @@ export function buildTimeline(input: BuildInput): Timeline {
       endFrame: Math.max(t.contentStart + f(w.start) + 2, t.contentStart + f(w.end)),
       emphasis: isKey(w.word, s.keywords),
     }));
+    const zones = zonesFor(s, !!title && !isCta, words.length > 0 && !isCta);
     if (words.length && !isCta) captionWords.push({ words, zone: zones.captions });
     /** When the first key word is said (or a moment after the scene settles) */
     const keyFrame = words.find((w) => w.emphasis)?.startFrame ?? t.contentStart + 8;

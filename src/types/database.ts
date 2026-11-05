@@ -1068,6 +1068,7 @@ export type Database = {
           offer_id: string | null
           offering_id: string | null
           persona_id: string | null
+          reference_video_id: string | null
           pillar_id: string | null
           plan_id: string
           platforms: string[]
@@ -1102,6 +1103,7 @@ export type Database = {
           offer_id?: string | null
           offering_id?: string | null
           persona_id?: string | null
+          reference_video_id?: string | null
           pillar_id?: string | null
           plan_id: string
           platforms?: string[]
@@ -1136,6 +1138,7 @@ export type Database = {
           offer_id?: string | null
           offering_id?: string | null
           persona_id?: string | null
+          reference_video_id?: string | null
           pillar_id?: string | null
           plan_id?: string
           platforms?: string[]

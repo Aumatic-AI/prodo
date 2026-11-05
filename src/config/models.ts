@@ -15,6 +15,8 @@ export const MODELS = {
   embed: env.EMBEDDING_MODEL,
   image: "nano-banana-2",
   video: "bytedance/seedance-2-mini",
+  /** A whole video in one go, with its own sound (direct video mode, config/video-direct.ts) */
+  videoFull: "bytedance/seedance-2-5",
   voice: "eleven_flash_v2_5",
   music: "music_v1",
   analyzeVideo: "pegasus1.5",

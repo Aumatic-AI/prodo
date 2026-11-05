@@ -1,11 +1,13 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { apiHandler } from "@/lib/api-handler";
-import { currentBusiness } from "@/core/business";
+import { assertOwnKey, currentBusiness } from "@/core/business";
+import { brandFolder } from "@/providers/storage/paths";
+import { referenceFromLink } from "@/core/brand/reference-link";
 import { AppError } from "@/core/errors";
 import { FORMATS, type Format } from "@/core/creative/brief";
 import { loadContentRules } from "@/core/content/prefs";
-import { stylesFor } from "@/core/content/styles";
+import { isVideoStyle, stylesFor } from "@/core/content/styles";
 import { hasTalkingFootage } from "@/core/brand/footage";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { approvedBible, getItemView, planForWeek } from "@/core/plans/plans";
@@ -19,26 +21,32 @@ const schema = z.object({
   format: z.enum(FORMATS),
   platforms: z.array(z.string()).min(1, "Pick at least one platform"),
   /** What the ad is about, in the client's words */
-  idea: z.string().trim().min(3, "Say what the ad is about").max(300),
+  /** Not needed when copying a reference video */
+  idea: z.string().trim().max(10000).default(""),
   offeringId: z.string().uuid().nullish(),
   personaId: z.string().uuid().nullish(),
   /** When it should go out (ISO); default tomorrow at the same time */
   slotAt: z.string().datetime().nullish(),
   /** A content style (image or video style id); default the client's top pick for the format */
   style: z.string().nullish(),
+  /** A video to make again with this product (a storage key the browser uploaded); everything else comes from it */
+  referenceVideoKey: z.string().trim().min(1).nullish(),
+  /** Or a link to it: a Meta Ad Library ad, an Instagram, TikTok or YouTube post, or a video file */
+  referenceUrl: z.string().trim().min(5).max(2000).nullish(),
 });
 
 /**
  * The style for a one-off ad: the one asked for whenever it fits the format (the client picked it for
- * this ad, so it isn't limited to their onboarding picks), else their top pick.
+ * this ad, so it isn't limited to their onboarding picks), else their top pick. Auto-create (the
+ * Planner) keeps to the onboarding picks.
  */
 async function styleFor(db: SupabaseClient, format: Format, asked: string | null | undefined): Promise<string | null> {
   if (format === "text") return null;
   const rules = await loadContentRules(db);
   const talking = await hasTalkingFootage(db, rules.people);
   const options = stylesFor(format, { image: rules.imageStyles, video: rules.videoStyles }, rules.people, talking);
-  // Videos: only the client's onboarding picks, as before
-  if (format === "video") return asked && (options as string[]).includes(asked) ? asked : (options[0] ?? null);
+  // Videos: any video style; one that needs the client's talking footage becomes a voice-over explainer without it (videoPlan)
+  if (format === "video") return asked && isVideoStyle(asked) ? asked : (options[0] ?? null);
   // Images: any style the format can take (none with people when the client wants none)
   const possible = stylesFor(format, { image: [], video: [] }, rules.people, talking) as string[];
   if (asked && possible.includes(asked)) return asked;
@@ -74,8 +82,29 @@ export const POST = apiHandler(async (req: NextRequest) => {
   // Videos need our renderer; say so now instead of after paying for a brief
   if (input.format === "video") await assertVideoReady();
 
-  const style = await styleFor(db, input.format, input.style);
+  const copying = !!(input.referenceVideoKey || input.referenceUrl);
+  if (!copying && input.idea.length < 3) throw new AppError("Say what the ad is about.", "INVALID_INPUT", false);
+  if (copying && !input.offeringId) throw new AppError("Pick the product for this video.", "INVALID_INPUT", false);
+  // A copied video follows the reference, not a content style
+  const style = copying ? null : await styleFor(db, input.format, input.style);
   await assertStyleHasFacts(db, style, input.offeringId ?? null);
+
+  // A reference video: kept with the brand's references ("Video we like") and linked to this post
+  let referenceVideoId: string | null = null;
+  if (copying) {
+    if (input.format !== "video") throw new AppError("A reference video is only for video posts.", "INVALID_INPUT", false);
+    // A pasted link: the video is found, downloaded and kept in the brand's references first
+    const referenceKey = input.referenceVideoKey ?? (await referenceFromLink(businessId, input.referenceUrl!));
+    assertOwnKey(businessId, referenceKey);
+    if (!referenceKey.startsWith(brandFolder(businessId, "references"))) throw new AppError("This reference video couldn't be found. Please upload it again.", "INVALID_INPUT", false);
+    const { data: asset, error: assetError } = await db
+      .from("brand_assets")
+      .insert({ kind: "reference_video", storage_key: referenceKey, offering_id: input.offeringId ?? null })
+      .select("id")
+      .single();
+    if (assetError) throw assetError;
+    referenceVideoId = asset.id;
+  }
 
   const clock = await weekClock(db);
   const slotAt = input.slotAt ? new Date(input.slotAt) : new Date(Date.now() + 24 * 3600_000);
@@ -91,14 +120,15 @@ export const POST = apiHandler(async (req: NextRequest) => {
       format: input.format,
       style,
       offering_id: input.offeringId ?? null,
-      persona_id: input.personaId ?? null,
-      angle: input.idea,
-      // What the ad should achieve. The Creative Director reads it, so for images it must never read like a
-      // product fact ("Made on request" ended up printed on ads); videos keep theirs until they're reworked.
-      objective: input.format === "video" ? "Made on request" : input.offeringId ? "Sell this product" : "Make people want to discover the brand",
+      persona_id: copying ? null : (input.personaId ?? null),
+      angle: copying ? "The reference video, made again with this product" : input.idea,
+      // What the ad should achieve. The Creative Director and QA read it, so it must never read like a
+      // product fact ("Made on request" was printed on ads and judged as a promise)
+      objective: input.offeringId ? "Sell this product" : "Make people want to discover the brand",
       funnel_stage: input.offeringId ? "bofu" : "tofu",
       rationale: "You asked for this ad.",
       status: "planned",
+      ...(referenceVideoId ? { reference_video_id: referenceVideoId } : {}),
     })
     .select("id")
     .single();

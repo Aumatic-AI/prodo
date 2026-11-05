@@ -92,7 +92,6 @@ export function directContext(ctx: CreativeContext, colours: DirectColours | nul
   lines.push("", "WHERE PEOPLE GO NEXT");
   lines.push(...Object.entries(ctx.ctaLinks).map(([k, v]) => `${k}: ${v}`));
   if (ctx.rules.cta) lines.push(`Owner's chosen next step: ${ctaWords(ctx.rules.cta)}`);
-  lines.push(...list("Required disclaimers", ctx.disclaimers));
 
   if (images.length) lines.push("", "ATTACHED IMAGES", ...images.map((im, i) => `Image ${i + 1}: ${im.what}`));
   return lines.join("\n");

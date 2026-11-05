@@ -14,7 +14,7 @@ const MAX_POSTS = 10;
 const KINDS: { value: AutoKind; label: string; hint: string; unit: [string, string]; icon: React.ReactNode }[] = [
   { value: "static", label: "Image ads", hint: "Designed images, about $0.10 each", unit: ["image", "images"], icon: <ImageIcon size={18} /> },
   { value: "carousel", label: "Carousels", hint: "5–8 swipeable slides, about $0.15 each", unit: ["carousel", "carousels"], icon: <GalleryHorizontal size={18} /> },
-  { value: "video", label: "Videos", hint: "15–35 s, edited with music, about $1 each", unit: ["video", "videos"], icon: <Clapperboard size={18} /> },
+  { value: "video", label: "Videos", hint: "Up to 50 s, edited with music, about $1 each", unit: ["video", "videos"], icon: <Clapperboard size={18} /> },
 ];
 
 /** Starting point: two images and one video */

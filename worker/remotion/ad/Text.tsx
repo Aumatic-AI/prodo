@@ -6,7 +6,7 @@ import type { CSSProperties } from "react";
 import { interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
 import type { Preset } from "../shared/presets.ts";
 import type { CaptionPage, Layer, Theme, Timeline } from "../shared/timeline.ts";
-import { family, highlight, readable, zoneBox } from "./layout.ts";
+import { captionSafe, family, highlight, readable, zoneBox } from "./layout.ts";
 
 type TitleLayer = Extract<Layer, { kind: "title" }>;
 
@@ -93,7 +93,7 @@ export function Title({ layer, preset, timeline, stepAbove }: { layer: TitleLaye
 /** The caption page on screen at this frame: the spoken word lights up, key words stand out. */
 export function Captions({ pages, preset, timeline }: { pages: CaptionPage[]; preset: Preset; timeline: Timeline }) {
   const frame = useCurrentFrame();
-  const { fps, width } = useVideoConfig();
+  const { fps, width, height } = useVideoConfig();
   const page = pages.find((p) => frame >= p.startFrame && frame < p.endFrame);
   if (!page) return null;
   const size = width * preset.captions.size;
@@ -101,7 +101,7 @@ export function Captions({ pages, preset, timeline }: { pages: CaptionPage[]; pr
   const accent = timeline.theme.accent;
   const lightUp = highlight(timeline.theme);
   return (
-    <div style={zoneBox(page.zone, timeline.safe)}>
+    <div style={zoneBox(page.zone, captionSafe(timeline.safe, height))}>
       <div
         style={{
           fontFamily: family(timeline.theme.heading),

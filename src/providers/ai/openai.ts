@@ -18,7 +18,7 @@ let client: OpenAI | null = null;
 function getClient() {
   if (!env.OPENAI_API_KEY) throw notConfigured(SERVICE, "OPENAI_API_KEY is empty on the server");
   // Inngest is the only retry layer
-  client ??= new OpenAI({ apiKey: env.OPENAI_API_KEY, maxRetries: 0, timeout: LIMITS.fetchTimeoutMs });
+  client ??= new OpenAI({ apiKey: env.OPENAI_API_KEY, maxRetries: 0, timeout: LIMITS.modelTimeoutMs });
   return client;
 }
 
@@ -50,7 +50,7 @@ const spread = (ms: number) => Math.max(ms, 5_000) + Math.round(Math.random() * 
 function toAppError(err: unknown): AppError {
   if (err instanceof AppError) return err;
   if (err instanceof OpenAI.APIConnectionTimeoutError) {
-    return new AppError(`OpenAI didn't answer within ${Math.round(LIMITS.fetchTimeoutMs / 1000)} seconds.`, "TIMEOUT", true);
+    return new AppError(`OpenAI didn't answer within ${Math.round(LIMITS.modelTimeoutMs / 1000)} seconds.`, "TIMEOUT", true);
   }
   if (err instanceof OpenAI.APIConnectionError) {
     const permanent = isPermanentNetworkError(err);

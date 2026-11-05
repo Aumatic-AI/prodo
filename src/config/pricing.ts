@@ -13,6 +13,8 @@ export const PRICING = {
     // GPT Image 2 on Kie, per picture by resolution
     gptImage: { "1K": 0.03, "2K": 0.05 } as Record<string, number>,
     videoPerSecond: 0.03,
+    /** Seedance 2.5, per second of video, with text and images only (kie.ai/seedance-2-5) */
+    seedance25PerSecond: { "480p": 0.14, "720p": 0.315, "1080p": 0.79 },
   },
   elevenlabs: {
     voicePer1kChars: 0.06,

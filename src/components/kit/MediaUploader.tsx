@@ -17,7 +17,7 @@ interface Pending {
 }
 
 interface MediaUploaderProps<T extends Upload> {
-  purpose: Extract<UploadPurpose, "photo" | "video" | "media" | "reference">;
+  purpose: Extract<UploadPurpose, "photo" | "video" | "media" | "reference" | "referenceVideo">;
   value: T[];
   onChange: (value: T[]) => void;
   max: number;

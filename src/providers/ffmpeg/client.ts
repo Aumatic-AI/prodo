@@ -1,4 +1,5 @@
 import { env } from "@/config/env";
+import { VIDEO_MODE } from "@/config/video-direct";
 import { AppError } from "@/core/errors";
 import { uploadPostBackend } from "./backends/upload-post";
 import { workerBackend } from "./backends/worker";
@@ -63,6 +64,8 @@ export async function renderReady(): Promise<Readiness> {
  * check). Checked before any money is spent on scene images, clips or voice.
  */
 export async function videoReady(): Promise<Readiness> {
+  // Direct videos are made whole by the video model: no worker needed
+  if (VIDEO_MODE === "direct") return { ok: true };
   return renderReady();
 }
 

@@ -212,7 +212,7 @@ export function BasicsStep() {
               htmlFor="disclaimers"
               path="disclaimers"
               optional
-              hint={filled.includes("disclaimers") ? "Found on your website. Added to posts that need them." : "Added to posts that need them, e.g. 'Results may vary.'"}
+              hint={filled.includes("disclaimers") ? "Found on your website. Kept with your brand; not added to posts for now." : "Kept with your brand; not added to posts for now."}
             >
               <TagInput id="disclaimers" value={b.disclaimers} onChange={(disclaimers) => set({ disclaimers })} placeholder="Type a disclaimer and press Enter" max={10} />
             </Field>

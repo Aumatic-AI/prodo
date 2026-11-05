@@ -99,7 +99,7 @@ const VIDEO_BRIEFS: Record<VideoStyle, string> = {
   howto: "How-to: show how it works or how to use it, step by step, with a voice guiding each step.",
   bts: "Behind the scenes: the making, packing or work process, set to music. No voice-over.",
   ba: "Before and after: a quick transformation reveal, set to music. No voice-over.",
-  slides: "Photo slideshow: the brand's own photos with gentle motion, set to music. No voice-over.",
+  slides: "Photo slideshow: still pictures of the product made for the ad, with gentle motion, set to music. No voice-over.",
 };
 
 export function styleBrief(style: string, format: StyleFormat): string {
@@ -147,4 +147,10 @@ export function stylesFor(
   const usable = people === "none" ? fits.filter((s) => !PEOPLE_STYLES.includes(s)) : fits;
   // Videos: styles without the footage they need are made as their stand-in, so drop duplicates
   return format === "video" ? [...new Set((usable as VideoStyle[]).map((s) => videoStyleWeMake(s, talkingFootage)))] : usable;
+}
+
+/** The styles a person can pick for one ad of a format (the style pickers of Create an ad and Media → Create). */
+export function styleChoices(format: StyleFormat): { id: string; label: string }[] {
+  const ids: string[] = format === "video" ? [...VIDEO_STYLES] : IMAGE_STYLES.filter((s) => IMAGE_STYLE_FORMATS[s].includes(format));
+  return ids.map((id) => ({ id, label: STYLE_NAMES[id as ImageStyle | VideoStyle] }));
 }

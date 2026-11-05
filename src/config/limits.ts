@@ -14,5 +14,7 @@ export const LIMITS = {
   scanPhotosPerOffering: 2,
   captionMaxChars: 63206,
   fetchTimeoutMs: 60_000,
+  /** A written answer from the language model: a full video brief takes over a minute */
+  modelTimeoutMs: 4 * 60_000,
   downloadTimeoutMs: 5 * 60_000,
 } as const;

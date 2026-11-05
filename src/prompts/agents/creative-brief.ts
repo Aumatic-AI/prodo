@@ -140,8 +140,10 @@ export const rawBriefSchema = z.object({
       kind: z.enum(SCENE_KINDS).catch("benefit"),
       /** "V3", "G2" or "AI" */
       source: opt(10),
+      /** "G2": the real photo an AI scene takes its product from */
+      reference: opt(10),
       voiceover: opt(300).transform((v) => v ?? ""),
-      seconds: z.number().min(1).max(15).nullish().catch(null).transform((v) => v ?? null),
+      seconds: z.number().min(0.3).max(15).nullish().catch(null).transform((v) => v ?? null),
       overlay: str(80).default(""),
       keywords: z
         .array(z.string())
@@ -164,7 +166,7 @@ export const rawBriefSchema = z.object({
       revealVisual: opt(800),
       transition: z.enum(TRANSITION_INTENTS).catch("smooth"),
     }),
-    9
+    20
   ),
   musicMood: opt(60),
 });
@@ -183,7 +185,7 @@ const FACT_RULES = `FACTS AND LABELS
 - Levers: 1–3, each { lever, source }. social_proof, authority, scarcity and risk_reversal need the fact label behind them; the others use null.
 - "photo": the label of the real photo to use as reference ([G1]…) when one shows the product, team or place this ad is about; otherwise null.
 - Call to action: "cta.label" up to ${LIMITS.ctaWords} words, benefit-loaded; "cta.link" is one of the available links.
-- Captions: one per platform key given, within its character limit, ending with the call to action, plus a required disclaimer when a claim needs it.
+- Captions: one per platform key given, within its character limit, ending with the call to action.
 - Respect the voice, the do and don't rules and NEVER SAY. Write in the business's language.`;
 
 const PROCEDURE = `PROCEDURE (in this order)
@@ -224,17 +226,18 @@ ${PHOTO_RULES}
 - imagePrompt: the cover photo, leaving space at the bottom for the hook. ${PICTURE_RULE}
 ${PHOTO_RULES}`,
   video: `FORMAT: short vertical video ad (Reels, TikTok, Shorts). Our renderer cuts the scenes together and draws every word itself: word-by-word captions of the voice with your key words standing out, on-screen lines, counting numbers, review cards, the price and the closing card, plus music and sound effects. You decide what each scene is, what is in it and what it says.
-- Follow the VIDEO STORYLINE: scene 1 is kind "hook", the last is kind "cta", the middle uses the kinds it lists, in the order that tells the story best. 15–35 seconds in total.
+- The VIDEO STYLE says what kind of video this is; how the story unfolds, how many scenes it has and in what order is yours to decide. Scene 1 is kind "hook", the last is kind "cta". The video is as long as the idea needs, at most ${LIMITS.videoMaxSeconds} seconds.
 - The first 2 seconds decide everything: open on the most striking picture with the hook line on screen ("overlay", at most ${LIMITS.overlayWords} words) and, when there's a voice, say the hook straight away. No greetings, no logo intro.
-- One idea per scene. Change the picture every 2–5 seconds; a scene longer than 6 seconds needs a strong reason.
+- One idea per scene. Each scene lasts as long as its moment needs, from a flash of under a second up to ${LIMITS.sceneMaxSeconds} seconds; the story and the style set the rhythm.
 - Each scene:
-  - kind: from the storyline.
-  - source: the picture. A moment of the client's own video ("V3"), one of their real photos ("G2"), or "AI" (made from "visual"). Real footage and photos come first; AI only when nothing real fits. Use each V or G at most once per video. Pick moments whose length fits the scene.
-  - voiceover: follow the SOUND line. Spoken and natural, about ${LIMITS.wordsPerSecond} words per second, 2–7 seconds per scene, short sentences. "" for talking moments (the person speaks) and in music-only videos.
-  - seconds: null when the scene is voiced or a talking moment; the length (2–5) when nothing is spoken.
+  - kind: what the scene is for, from the scene kinds.
+  - source: the picture. A moment of the client's own video ("V3"), or "AI" (a new picture made from "visual"). Real footage comes first; every other scene is AI. Only a photo-based style (a slideshow, a before/after) shows a real photo ("G2") as it is. Use each V at most once per video. Pick moments whose length fits the scene.
+  - reference: for an AI scene, the label of the real product photo ("G2") the product is taken from, or null. Pick the photo that shows the product best for this scene (a close photo for a detail, a full view for the product); the same photo may serve several scenes. The photo gives the product and nothing else.
+  - voiceover: follow the SOUND line. Spoken and natural, about ${LIMITS.wordsPerSecond} words per second, short sentences; the line sets the scene's length (at most ${LIMITS.sceneMaxSeconds} seconds). "" for talking moments (the person speaks) and in music-only videos.
+  - seconds: null when the scene is voiced or a talking moment; otherwise the scene's length in seconds (any length up to ${LIMITS.sceneMaxSeconds}, decimals allowed).
   - overlay: a short on-screen line (at most ${LIMITS.overlayWords} words) only when it adds what the voice doesn't say, or carries the message in music-only videos; otherwise "". The hook always has one.
   - keywords: 1–3 exact words from that scene's voiceover or overlay that matter most (the number, the product, the result); the renderer makes them stand out.
-  - visual: for AI scenes, in this order: SUBJECT (who or what, matching the reference exactly), ACTION (ONE physical action with its cause, paced for the scene), ENVIRONMENT (a specific, lived-in place and time of day), LIGHT (key light direction, quality and colour temperature, the same in every scene), the lens and shot size, and where calm space is for the words (top or bottom). Keep the same product, clothes, props and light across scenes. For real ones, describe what you picked. No text, letters or logos in AI pictures; in voiced scenes nobody on screen talks ("mouth closed").
+  - visual: for AI scenes, in this order: SUBJECT (the product exactly as in its reference photo; any person is a NEW person who fits the persona and the content style, never the reference's model), ACTION (ONE physical action with its cause, paced for the scene), ENVIRONMENT (a specific, lived-in place and time of day), LIGHT (key light direction, quality and colour temperature, the same in every scene), the lens and shot size, and where calm space is for the words (top or bottom). Be creative: a new place, a new pose and a new moment in every scene, chosen for this brand, its persona, the content style and the offering; the reference photo's pose, place, framing and props are never reused. Scenes must still belong together: describe the one person (if there is one) in scene 1 in a few words and repeat that description, keep the same product and one consistent look and light, and let each scene follow the one before it. For real ones, describe what you picked. No text, letters or logos in AI pictures; in voiced scenes nobody on screen talks (a calm natural expression, mouth closed), but a person's whole head and face are always in the frame, never cropped out, cut off at the chin or hidden.
   - cameraMove: the move that fits what the moment means (${CAMERA_MOVES.join(", ")}).
   - motion: the camera, written first in the clip prompt, as one line: "Movement: [the move and its rig, e.g. slow dolly in on rails]. Start: [locked for a beat then eases in | already moving on frame one]. Speed: [ease-in | constant | creeping | builds then slows]. Framing: [what stays stable]. End: [the final frame and hold]." One move per scene; the picture must support it. The hook scene is already moving on frame one.
   - sticker: a STICKERS name or null, on a scene where it adds meaning to a key word.
@@ -281,7 +284,7 @@ OUTPUT: JSON with these keys: ${DIAGNOSIS_KEYS}, objective, message, hooks [{typ
       : format === "carousel"
         ? ", staticFramework, slides [{title, body}], imagePrompt"
         : format === "video"
-          ? ", scenes [{kind, source, voiceover, seconds, overlay, keywords, visual, cameraMove, motion, sticker, stat, review, price, reveal, revealVisual, transition}], musicMood"
+          ? ", scenes [{kind, source, reference, voiceover, seconds, overlay, keywords, visual, cameraMove, motion, sticker, stat, review, price, reveal, revealVisual, transition}], musicMood"
           : ""
   }.`;
 }

@@ -55,6 +55,22 @@ export async function rejectItem(db: SupabaseClient, itemId: string, note: strin
   await feedback(db, item, "reject", note);
 }
 
+/**
+ * Stops a slot the agents are still making. `cancel` stops its run before anything is marked, so a
+ * step that was running can't write over it; what was already made stays in Media as failed.
+ */
+export async function stopItem(db: SupabaseClient, itemId: string, cancel: () => Promise<unknown>): Promise<PlanItem> {
+  const item = await getItem(db, itemId);
+  if (!["planned", "briefed", "producing", "qa"].includes(item.status)) throw new AppError("This post isn't being made right now.", "INVALID_INPUT", false);
+  await cancel();
+  const message = "Stopped by you. Choose Try again to make it again, or Skip.";
+  const { error } = await db.from("plan_items").update({ status: "failed", error: message }).eq("id", itemId);
+  if (error) throw error;
+  const { error: mediaError } = await db.from("media").update({ status: "failed", error: message }).eq("plan_item_id", itemId).eq("status", "generating");
+  if (mediaError) throw mediaError;
+  return { ...item, status: "failed", error: message };
+}
+
 /** Puts a slot back to the start so the agents make it again, following the client's note. */
 export async function regenerateItem(db: SupabaseClient, itemId: string, note: string | null): Promise<PlanItem> {
   const item = await getItem(db, itemId);

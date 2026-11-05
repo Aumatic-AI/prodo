@@ -20,6 +20,14 @@ export function zoneBox(zone: Zone, safe: Timeline["safe"]): CSSProperties {
   };
 }
 
+/** Captions sit this far up from the bottom edge (a share of the height): low, below the middle, whatever is behind them */
+export const CAPTION_BOTTOM = 0.16;
+
+/** The safe area with the bottom margin captions use */
+export function captionSafe(safe: Timeline["safe"], height: number): Timeline["safe"] {
+  return { ...safe, bottom: Math.round(height * CAPTION_BOTTOM) };
+}
+
 /** White text with an outline and soft shadow, readable on any picture (strength 0–1 from the preset). */
 export function readable(strength: number, width: number): CSSProperties {
   const stroke = Math.round(width * 0.006 * strength);

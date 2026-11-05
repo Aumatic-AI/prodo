@@ -1,5 +1,5 @@
 import { PRESETS } from "@video/presets";
-import type { SceneSource } from "@/core/creative/brief";
+import { LIMITS, type SceneSource } from "@/core/creative/brief";
 import type { RawBrief } from "@/prompts/agents/creative-brief";
 import type { FactBook } from "./book";
 import type { CreativeContext } from "./context";
@@ -10,8 +10,8 @@ import type { CreativeContext } from "./context";
 
 const clean = (label: string | null | undefined) => (label ?? "").trim().replace(/^\[|\]$/g, "").toUpperCase();
 
-/** Unspoken scenes: 2–5 seconds unless the brief asked otherwise */
-const clampSeconds = (s: number | null) => Math.min(6, Math.max(2, s ?? 3.5));
+/** Unspoken scenes: the length the brief asked for, up to the longest clip */
+const clampSeconds = (s: number | null) => Math.min(LIMITS.sceneMaxSeconds, Math.max(0.3, s ?? 3.5));
 /** A talking moment plays as recorded, up to this long */
 export const MAX_TALKING_SEC = 12;
 
@@ -35,7 +35,12 @@ export function assembleVideoScenes(raw: RawBrief, ctx: CreativeContext, book: F
   };
 
   const scenes = raw.scenes.map((s, i) => {
-    const source = sourceOf(s.source, i);
+    let source = sourceOf(s.source, i);
+    // An AI scene takes its product from the photo it names
+    if (source.kind === "ai") {
+      const referenceAssetId = book.asset(s.reference);
+      if (referenceAssetId) source = { kind: "ai", referenceAssetId };
+    }
     const talking = source.kind === "clip" && source.keepAudio;
     // Who speaks: the made voice-over, the person in the clip, or nobody (music)
     const voiced = (plan.sound === "voice" || plan.sound === "voice_music") && !talking;

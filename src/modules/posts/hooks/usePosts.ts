@@ -97,6 +97,8 @@ export function usePostMedia(id: string | null) {
     queryKey: ["media-item", id],
     queryFn: () => apiFetch(`/api/media/${id}`),
     enabled: !!id,
+    // Opened while it was being made: look again until the file is there
+    refetchInterval: (query) => (query.state.data && (query.state.data.status === "generating" || !query.state.data.storage_key) ? 5000 : false),
   });
 }
 

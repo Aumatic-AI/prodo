@@ -93,8 +93,8 @@ const VIDEO_WORDS: Record<VideoStyle, { product: Words; service: Words }> = {
     service: { title: "Transformation", description: "Before and after in a few seconds" },
   },
   slides: {
-    product: { title: "Photo slideshow", description: "Your photos with motion and music" },
-    service: { title: "Portfolio slideshow", description: "Your best work with motion and music" },
+    product: { title: "Photo slideshow", description: "Product pictures with motion and music" },
+    service: { title: "Portfolio slideshow", description: "Pictures of your work with motion and music" },
   },
 };
 

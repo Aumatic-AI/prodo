@@ -544,9 +544,11 @@ await check("referenceUse and adPhotoPrompt: a product photo gives the product o
   assert.match(product, /headwear, jewellery, accessories, props and background are left out/);
   assert.ok(!/G1|#81a2d0/.test(product), product);
   assert.match(adPhotoPrompt("Studio shot", settings, "person", null, ""), /keep their face and look exactly/);
-  // The video scene prompt is exactly as before
-  assert.match(photoPrompt("A beach scene.", settings, true), /same shape, colours, materials and details/);
-  assert.doesNotMatch(photoPrompt("A beach scene.", settings, true), /different person/);
+  // A video scene's product photo gives the product only; a reveal's "before" is kept exactly
+  assert.match(photoPrompt("A beach scene.", settings, "product"), /different person from the one in the reference/);
+  assert.match(photoPrompt("A beach scene.", settings, "person"), /keep their face and look exactly/);
+  assert.match(photoPrompt("A beach scene.", settings, "scene"), /same shape, colours, materials and details/);
+  assert.doesNotMatch(photoPrompt("A beach scene.", settings, "scene"), /different person/);
 });
 
 await check("free image ad: no diagnosis, hook-variety or word-limit problems; the logo corner is kept; truth checks stay", () => {
@@ -593,7 +595,6 @@ await check("direct image ad: everything the director reads goes to the image mo
     offering: { id: "o1", name: "Oven clean", kind: "service", price: 89, currency: "EUR", priceModel: "fixed", description: "Full oven clean", benefits: ["Done in 2 hours"], audience: null, objections: [] },
     proof: [{ id: "r1", kind: "review", author: "Maria", rating: 5, content: "Spotless oven" }],
     passages: [{ id: "c1", text: "We clean ovens across Malta." }],
-    disclaimers: [],
     photoStyle: "warm natural light",
   } as unknown as CreativeContext;
   const text = directContext(full, { primary: "#2F45C5", accent: "#FFC83D", heading: "Fraunces", body: "Inter" }, images);

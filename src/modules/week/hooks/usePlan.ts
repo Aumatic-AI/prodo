@@ -79,7 +79,7 @@ export function useApprovePlan() {
   });
 }
 
-type ItemAction = "approve" | "reject" | "regenerate" | "schedule";
+type ItemAction = "approve" | "reject" | "regenerate" | "schedule" | "stop";
 
 export function useItemAction() {
   const refresh = useRefresh();
@@ -108,6 +108,10 @@ export interface CreateAdInput {
   slotAt?: string | null;
   /** A content style id; null = the client's top pick for the format */
   style?: string | null;
+  /** A video to copy with this product (videos only); everything else comes from it */
+  referenceVideoKey?: string | null;
+  /** Or a link to the video to copy */
+  referenceUrl?: string | null;
 }
 
 export type AutoKind = "static" | "carousel" | "video";

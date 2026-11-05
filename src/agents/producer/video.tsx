@@ -1,6 +1,6 @@
 import { NonRetriableError } from "inngest";
 import type { SfxName } from "@video/presets";
-import type { VideoBrief, VideoScene } from "@/core/creative/brief";
+import { LIMITS, type VideoBrief, type VideoScene } from "@/core/creative/brief";
 import { CARD_SCENES, STICKERS, STORYLINES } from "@/core/creative/video";
 import { isVideoStyle } from "@/core/content/styles";
 import { MODELS } from "@/config/models";
@@ -20,7 +20,7 @@ import { pictureOnly } from "./picture-only";
 import { canvasesFor } from "./canvases";
 import { startJob, waitForJobs, type KieJob } from "./kie";
 import { copyToStorage, markMediaReady, saveFile } from "./media";
-import { photoPrompt, photoSettings } from "./photos";
+import { photoPrompt, photoSettings, referenceUse } from "./photos";
 import type { ProduceArgs, Produced } from "./types";
 import { peoplePromptLine } from "@/core/content/prefs";
 
@@ -82,15 +82,15 @@ export async function produceVideo(a: ProduceArgs, brief: VideoBrief, previous: 
   const real = await a.task(
     `video-real-${a.round}`,
     async () => {
-      const ids = [...new Set(scenes.flatMap((s) => [s.source, s.revealSource]).flatMap((src) => (src && src.kind !== "ai" ? [src.assetId] : [])))];
+      const ids = [...new Set(scenes.flatMap((s) => [s.source, s.revealSource]).flatMap((src) => (src ? (src.kind === "ai" ? (src.referenceAssetId ? [src.referenceAssetId] : []) : [src.assetId]) : [])))];
       const reference = brief.referenceAssetId;
       const { data, error } = await a
         .db()
         .from("brand_assets")
-        .select("id, storage_key, analysis")
+        .select("id, storage_key, analysis, kind")
         .in("id", [...ids, ...(reference ? [reference] : [])]);
       if (error) throw error;
-      return Object.fromEntries((data ?? []).map((r) => [r.id, { key: r.storage_key as string, analysis: r.analysis as FootageAnalysis | null }]));
+      return Object.fromEntries((data ?? []).map((r) => [r.id, { key: r.storage_key as string, analysis: r.analysis as FootageAnalysis | null, kind: r.kind as string }]));
     },
     (r) => `Found ${Object.keys(r).length} of your photos and videos for this video`
   );
@@ -149,13 +149,15 @@ export async function produceVideo(a: ProduceArgs, brief: VideoBrief, previous: 
     `scene-images-${a.round}`,
     async (track) => {
       const settings = await photoSettings(a.db());
-      const ref = brief.referenceAssetId && real[brief.referenceAssetId] ? publicUrl(real[brief.referenceAssetId].key) : null;
       const jobs: KieJob[] = [];
       for (const i of aiScenes) {
         const scene = scenes[i];
-        // The real product anchors product-like scenes, so it looks like itself
-        const useRef = ref && ["hook", "product", "detail", "result", "after", "benefit"].includes(scene.kind) ? ref : null;
-        const res = await startJob({ key: `scene-${i + 1}`, kind: "image", prompt: photoPrompt(scene.visual, settings, !!useRef, a.fix), aspect: "9:16", refs: useRef ? [useRef] : [] });
+        // The photo the scene names gives it its product; otherwise the brief's photo anchors product-like scenes, so the product looks like itself
+        const named = scene.source.kind === "ai" ? scene.source.referenceAssetId : null;
+        const refId = named && real[named] ? named : brief.referenceAssetId && real[brief.referenceAssetId] && ["hook", "product", "detail", "result", "after", "benefit"].includes(scene.kind) ? brief.referenceAssetId : null;
+        const useRef = refId ? publicUrl(real[refId].key) : null;
+        const use = refId ? referenceUse(real[refId].kind) : null;
+        const res = await startJob({ key: `scene-${i + 1}`, kind: "image", prompt: photoPrompt(scene.visual, settings, use, a.fix), aspect: "9:16", refs: useRef ? [useRef] : [] });
         track(res.usage);
         jobs.push(res.job);
       }
@@ -175,7 +177,7 @@ export async function produceVideo(a: ProduceArgs, brief: VideoBrief, previous: 
       for (const [i, scene] of scenes.entries()) {
         if (scene.kind !== "reveal" || !redo.has(i) || scene.revealSource?.kind !== "ai") continue;
         const before = images.find((j) => j.key === `scene-${i + 1}`)?.url ?? (fromSource(scene.source) ? publicUrl(stillOf(fromSource(scene.source)) ?? fromSource(scene.source)!.key) : null);
-        const prompt = photoPrompt(`${scene.revealVisual || scene.visual}. The same place, framing and light as the reference image, now showing the result.`, settings, !!before, a.fix);
+        const prompt = photoPrompt(`${scene.revealVisual || scene.visual}. The same place, framing and light as the reference image, now showing the result.`, settings, before ? "scene" : null, a.fix);
         const res = await startJob({ key: `reveal-${i + 1}`, kind: "image", prompt, aspect: "9:16", refs: before ? [before] : [] });
         track(res.usage);
         jobs.push(res.job);
@@ -196,7 +198,8 @@ export async function produceVideo(a: ProduceArgs, brief: VideoBrief, previous: 
       for (const img of images) {
         const i = Number(img.key.split("-")[1]) - 1;
         if (!needsClip(scenes[i], brief.style)) continue;
-        const duration = Math.min(15, Math.max(4, Math.ceil(seconds[i])));
+        // The video model makes 4 s at least; a shorter scene uses the start of its clip
+        const duration = Math.min(LIMITS.sceneMaxSeconds, Math.max(4, Math.ceil(seconds[i])));
         const prompt = [`Camera: ${scenes[i].motion.replace(/\.$/, "")}.`, pictureOnly(scenes[i].visual), CLIP_STYLE, peoplePromptLine(people)].filter(Boolean).join(" ");
         const res = await startJob({ key: img.key, kind: "video", prompt, aspect: "9:16", refs: [], firstFrame: img.url, duration });
         track(res.usage);

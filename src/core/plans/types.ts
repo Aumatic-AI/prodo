@@ -69,6 +69,8 @@ export interface PlanItem {
   persona_id: string | null;
   offering_id: string | null;
   offer_id: string | null;
+  /** A video the owner wants made again for this post's product (brand_assets, kind reference_video) */
+  reference_video_id?: string | null;
   funnel_stage: FunnelStage | null;
   objective: string | null;
   /** The Planner's strategy (knowledge base §7.4); null on plans made before it */

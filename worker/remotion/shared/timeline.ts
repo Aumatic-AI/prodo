@@ -91,7 +91,12 @@ export type Transition = {
 export type CaptionWord = { text: string; startFrame: number; endFrame: number; emphasis: boolean };
 
 /** A few words shown together; the spoken one is highlighted */
-export type CaptionPage = { startFrame: number; endFrame: number; zone: Zone; words: CaptionWord[] };
+export type CaptionPage = {
+  startFrame: number;
+  endFrame: number;
+  zone: Zone;
+  words: CaptionWord[];
+};
 
 type Timed = { startFrame: number; durationFrames: number };
 

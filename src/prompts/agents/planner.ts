@@ -15,6 +15,8 @@ const slotChoice = z.object({
   offer: z.string().nullish().transform((v) => v || null),
   persona: z.string().nullish().transform((v) => v || null),
   angle: clip(200).pipe(z.string().min(3)),
+  /** Video slots: the creative seed the video prompt writer develops */
+  concept: clip(900).nullish().catch(null).transform((v) => v || null),
   objective: clip(200).pipe(z.string().min(3)),
   desire: z.enum(DESIRES).nullish().catch(null).transform((v) => v ?? null),
   awarenessLevel: z.enum(AWARENESS_LEVELS).nullish().catch(null).transform((v) => v ?? null),
@@ -68,6 +70,7 @@ Our code already fixed each slot's day, time, platforms, format, content style, 
 - desire: the persona's ONE dominant desire for this post (${DESIRES.join(", ")}).
 - awarenessLevel: ${AWARENESS_LEVELS.join(", ")}, fitting the slot's objective (awareness: unaware or problem_aware; converting: problem_aware to product_aware; retargeting: product_aware or most_aware).
 - angle: the specific reason this audience should care right now, in one short line (e.g. "the 3 mistakes people make before buying a sofa"). It fits the slot's style (a tips slot gets tips, a before-and-after slot a transformation, a showcase slot one product's details) and its objective (an awareness slot entertains or teaches; it doesn't ask to buy). Every angle is different, and different from the recent angles.
+- concept: for VIDEO slots only (null for every other format): a bold, creative seed of the video in 3–5 sentences, built from this brand, product and audience: what happens, where, who is in it, the feeling and the moment people will remember. Full of energy and change, never slow, plain or a feature check, and described in specific words, never generic ones. Every video concept is clearly different from the others in this batch and from the recent angles.
 - objective: what the post should make the viewer do or feel, in plain words.
 - hookType: one of ${HOOK_TYPES.join(", ")} that suits the awareness level.
 - levers: 1–3 of ${LEVERS.join(", ")}. social_proof, authority, scarcity and risk_reversal only when a stored fact backs them (reviews, credentials, a live offer, a real guarantee).
@@ -81,4 +84,4 @@ Write in the business's language. Never invent products, prices, offers or facts
 
 SELF-CHECK: no slot needs a fact the brand doesn't have; no urgency without a live offer; one desire per slot; no two slots in a row with the same angle or offering on a platform.
 
-OUTPUT: JSON { "theme": string, "rationale": string, "slots": [{ "slot": "S1", "offering": "O1" | null, "offer": "F1" | null, "persona": "P1" | null, "desire": string, "awarenessLevel": string, "angle": string, "objective": string, "hookType": string, "levers": string[], "rationale": string }] }`;
+OUTPUT: JSON { "theme": string, "rationale": string, "slots": [{ "slot": "S1", "offering": "O1" | null, "offer": "F1" | null, "persona": "P1" | null, "desire": string, "awarenessLevel": string, "angle": string, "concept": string | null, "objective": string, "hookType": string, "levers": string[], "rationale": string }] }`;

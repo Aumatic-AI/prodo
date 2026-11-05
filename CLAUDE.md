@@ -30,7 +30,7 @@ Older planning pages (the Blueprint, Data Model and Sprint plans on claude.ai) a
 
 - Built: onboarding v2 (website scan first) → brand research (agents 1–4) → Brand Bible approval → weekly loop (agents 5–9) → learning loop (agent 10). Manual Media, Posts and Calendar screens. Performance, Activity and Costs screens. Settings: Business profile, Content, Automation, Connected accounts.
 - Videos: every video is drawn by Remotion on our worker from a Timeline our code builds (storylines per style, scene library, five looks, captions, cards, stickers, transitions, sound effects). The client's own videos are watched for usable moments and used in scenes. See `docs/technical.md` → Videos.
-- Files are in Cloudflare R2; the database is Supabase project `focaedtidoocuixiupxn`; migrations 0001–0022 are applied; 0023 (creative knowledge) is written and waits for the user to run it.
+- Files are in Cloudflare R2; the database is Supabase project `focaedtidoocuixiupxn`; migrations 0001–0022 are applied; 0023 (creative knowledge) and 0024 (reference video per post) are written and wait for the user to run them.
 - Not yet: a real end-to-end weekly run with paid calls, the publisher tested end to end, the worker update deployed to the VPS, email sending (`EMAIL_ENABLED` off), a custom domain for files (still `r2.dev`).
 
 ### Decisions worth knowing
@@ -88,7 +88,7 @@ No unit test suite yet; the offline checks above are the tests. Inngest dev serv
 - `src/prompts/agents/` — agent prompts with their zod schemas
 - `src/providers/` — the only place a vendor is named
 - `worker/` — the video worker; `worker/remotion/shared/` is the contract the app imports as `@video/*`
-- **Design kit: `src/components/kit/`**, used app-wide: `styles.ts` (`button` cva, `control`, `card`, `row`…), `Field`, `inputs` (TextInput, NumberInput, TextArea), `Select`, `MultiSelect`, `DatePicker`, `TimePicker`, `choices` (Pills, ChoiceCards, RankedChoiceCards), `controls` (Switch, Slider, Counter), `TagInput`, `Modal`, `ConfirmDialog`, `Card`, `PageHeader`, `SectionNav`, `SaveBar`, `Badge`, `Alert`, `EmptyState`, `Skeleton`, uploaders (`LogoUploader`, `MediaUploader`, `useUpload`), `PlatformIcon`, `Logo`. New UI uses only the kit.
+- **Design kit: `src/components/kit/`**, used app-wide: `styles.ts` (`button` cva, `control`, `card`, `row`…), `Field`, `inputs` (TextInput, NumberInput, TextArea), `Select`, `MultiSelect`, `DatePicker`, `TimePicker`, `choices` (Pills, ChoiceCards, RankedChoiceCards), `controls` (Switch, Slider, Counter), `TagInput`, `Modal`, `ConfirmDialog`, `Card`, `PageHeader`, `SectionNav`, `SaveBar`, `Badge`, `Alert`, `EmptyState`, `Skeleton`, uploaders (`LogoUploader`, `MediaUploader`, `useUpload`), `VideoPlayer` (our own controls: play, seek, sound, full screen, speed, download), `ImageLightbox`, `PlatformIcon`, `Logo`. New UI uses only the kit.
 - Theme: light by default, dark via `<html class="dark">` (`html.dark` in `globals.css` swaps every `ob-*` token). The choice lives in the account menu, is remembered per browser (`src/lib/theme.ts`) and applied before paint (`theme-script.ts`). Use `ob-*` tokens only, so both themes work.
 - Sidebar: tabs, then Notifications and Settings, then the account menu (theme, Settings, Log out). Shared navigation in `components/layout/NavContent.tsx`.
 
@@ -141,6 +141,8 @@ Layout: one folder per agent. `index.ts` reads top to bottom as the agent's step
 - **Creative knowledge base**: `prodo-creative-knowledge.md` is compressed into `src/prompts/knowledge.ts` and every creative agent prompt (Planner, Creative Director, QA gates, Performance Analyst, Brand Strategist) follows its shape: ROLE, KNOWLEDGE, PROCEDURE, OUTPUT, SELF-CHECK. Use its exact vocabulary (`core/creative/brief.ts`: hook types, frameworks, levers, desires, awareness levels, objectives). Facts never come from it, only from the brand's data. See `docs/technical.md` → Creative knowledge base.
 
 ### Videos
+
+**Now every video is a direct video** (`config/video-direct.ts`, `weekly/produce-video-direct.ts`): one OpenAI call writes one detailed prompt from the whole context, and Seedance 2.5 on Kie makes the finished video in one go (speech, lip sync, music, captions, logo), up to 30 seconds; no Remotion or worker. The scene pipeline below stays for `VIDEO_MODE = "scenes"`.
 
 The Creative Director fills a **storyline** for the slot's style (`src/core/creative/video.ts`) with scenes from the **scene library**, each with its picture (the client's video moment `[V…]`, their photo `[G…]` or AI). Code picks the sound and the **look** (`src/creative/video/preset.ts`). The Producer makes only the missing pictures, records voices and music, finds where the subject is in each picture, then `buildTimeline()` (`src/creative/video/timeline.ts`) decides every frame, position and sound from data, and the worker draws it (`worker/remotion/ad/`). Never let the renderer or a model decide timing or placement. Full flow in `docs/technical.md` → Videos.
 
@@ -196,7 +198,7 @@ npx supabase gen types typescript --project-id focaedtidoocuixiupxn --schema pub
 
 Never append `2>&1` to the types command — stderr noise breaks the generated file. In PowerShell, `>` writes UTF-16, which breaks lint and the build; use `npx supabase gen types typescript --project-id focaedtidoocuixiupxn --schema public | Out-File -Encoding utf8 src/types/database.ts`.
 
-**Migrations**: never edit an applied migration; always add a new one, and list it in `docs/database.md`. Migrations 0001–0022 were applied by pasting them into the Supabase SQL Editor (0023 is pending), so the CLI's history doesn't know them. Before the first `db push`, run `npx supabase migration repair --status applied 0001 0002 0003 0004 0005 0006 0007 0008 0009 0010 0011 0012 0013 0014 0015 0016 0017 0018 0019 0020 0021 0022`.
+**Migrations**: never edit an applied migration; always add a new one, and list it in `docs/database.md`. Migrations 0001–0022 were applied by pasting them into the Supabase SQL Editor (0023 and 0024 are pending), so the CLI's history doesn't know them. Before the first `db push`, run `npx supabase migration repair --status applied 0001 0002 0003 0004 0005 0006 0007 0008 0009 0010 0011 0012 0013 0014 0015 0016 0017 0018 0019 0020 0021 0022`.
 
 ### Schema rules
 

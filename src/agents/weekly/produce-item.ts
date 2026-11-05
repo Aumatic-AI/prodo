@@ -11,7 +11,11 @@ import { startMedia, syncCost } from "@/agents/producer/media";
 import { produceStatic } from "@/agents/producer/static";
 import { produceStaticFree } from "@/agents/producer/static-free";
 import { isDirectImageAd, isFreeImageAd } from "@/config/image-ads";
+import { videoQaEnabled } from "@/config/video-qa";
 import { produceDirect } from "./produce-direct";
+import { produceDirectVideo } from "./produce-video-direct";
+import { isDirectVideo } from "@/config/video-direct";
+import { studyReference } from "@/agents/creative-director/reference";
 import type { ProduceArgs, Produced } from "@/agents/producer/types";
 import { produceVideo, type VideoState } from "@/agents/producer/video";
 import { taskFor } from "./task";
@@ -61,11 +65,18 @@ export const produceItem = inngest.createFunction(
       return item.format;
     });
 
+    // Direct video: one written prompt, one Seedance video, final (config/video-direct.ts)
+    if (isDirectVideo(format)) return produceDirectVideo(step, db, { businessId, planId, itemId, oneOff }, settle);
+
     // The "direct" test mode: no Creative Director and no QA; the image model gets everything and its picture is final
     if (isDirectImageAd(format)) {
       const res = await produceDirect(step, db, { businessId, planId, itemId, oneOff }, settle);
       return res;
     }
+
+    // A reference video for this post is broken down scene by scene (once) before the brief
+    const referenceId = format === "video" ? await step.run("reference-video", async () => (await getItem(db(), itemId)).reference_video_id ?? null) : null;
+    if (referenceId) await studyReference(step, cd, db, businessId, referenceId);
 
     // ---------- Brief and Gate 1 ----------
     let brief: Brief | null = null;
@@ -81,7 +92,9 @@ export const produceItem = inngest.createFunction(
       feedback = g1.fixes;
       if (!passedGate1 && round < MAX_REDOS) await step.run(`count-redo-${round}`, () => updateItem(db(), itemId, { attempts: round + 1 }));
     }
-    if (!passedGate1 || !brief) {
+    // The brief never passed: it is still made (the client asked for a post), and the post waits for the client with the reason
+    const gate1Reason = passedGate1 ? null : `The brief scored ${lastScore}/10 after ${MAX_REDOS} rewrites (${feedback?.[0] ?? "below the bar"}). It was made anyway; look it over before approving.`;
+    if (!brief) {
       await settle("needs_review", { reason: `The brief scored ${lastScore}/10 after ${MAX_REDOS} rewrites. Main issue: ${feedback?.[0] ?? "below the bar"}. Nothing was spent on images or video.` });
       await step.sendEvent("settled", { name: "plan-item/settled", data: { businessId, itemId, planId, oneOff } });
       return { status: "needs_review" };
@@ -110,6 +123,8 @@ export const produceItem = inngest.createFunction(
     let fix: string | null = null;
     let redoScenes: number[] | null = null;
     let review: Gate2Result | null = null;
+    // For now a video is final once it is put together: no watching, no score, no remaking (config/video-qa.ts)
+    const checkAsset = brief.kind !== "video" || videoQaEnabled();
 
     for (let round = 0; round <= MAX_REDOS; round++) {
       const args: ProduceArgs = { step, businessId, task: producer, db, item, mediaId, round, fix };
@@ -121,6 +136,7 @@ export const produceItem = inngest.createFunction(
         produced = res.produced;
         videoState = res.state as VideoState;
       }
+      if (!checkAsset) break;
       // A check that keeps failing for technical reasons (after its retries) never fails the post
       review =
         (await optional(gate2(qa2, db, itemId, round, brief, produced), { anyError: true })) ??
@@ -134,7 +150,8 @@ export const produceItem = inngest.createFunction(
     }
 
     await step.run("sync-cost", () => syncCost(db(), mediaId));
-    if (review?.passed) await settle("ready");
+    if (gate1Reason) await settle("needs_review", { reason: gate1Reason });
+    else if (!checkAsset || review?.passed) await settle("ready");
     else if (review?.unavailable) {
       await settle("needs_review", { reason: `The finished ${brief.kind === "video" ? "video" : "design"} couldn't get its final quality check (${review.unavailable}). Look it over, or choose Try again.` });
     } else {
@@ -144,6 +161,6 @@ export const produceItem = inngest.createFunction(
       });
     }
     await step.sendEvent("settled", { name: "plan-item/settled", data: { businessId, itemId, planId, oneOff } });
-    return { status: review?.passed ? "ready" : "needs_review" };
+    return { status: !gate1Reason && (!checkAsset || review?.passed) ? "ready" : "needs_review" };
   }
 );

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { CalendarClock, Check, ExternalLink, RefreshCw, SkipForward } from "lucide-react";
+import { CalendarClock, Check, CircleStop, ExternalLink, RefreshCw, SkipForward } from "lucide-react";
 import { Modal } from "@/components/kit/Modal";
 import { TextArea } from "@/components/kit/inputs";
 import { button } from "@/components/kit/styles";
@@ -27,6 +27,13 @@ const TABS: { value: Tab; label: string }[] = [
 ];
 
 /** Everything about one planned post, and what the client can do with it. */
+/** A long idea (a whole video prompt) is cut to one line for the header; the Why tab keeps all of it */
+function shortTitle(text: string | null): string | null {
+  const t = text?.trim();
+  if (!t) return null;
+  return t.length <= 90 ? t : `${t.slice(0, 87).replace(/\s+\S*$/, "")}…`;
+}
+
 export function SlotDetail({ item, timezone, onClose }: { item: PlanItemView | null; timezone: string; onClose: () => void }) {
   const [tab, setTab] = useState<Tab>("why");
   const [captions, setCaptions] = useState<Record<string, string>>({});
@@ -48,7 +55,7 @@ export function SlotDetail({ item, timezone, onClose }: { item: PlanItemView | n
   const editable = !working && !["scheduled", "published"].includes(item.status);
   const canApprove = (item.status === "ready" || item.status === "needs_review") && !!item.selected_media_id;
   const canRedo = !working && !["scheduled", "published"].includes(item.status);
-  const run = (a: "approve" | "reject" | "regenerate" | "schedule", n?: string) =>
+  const run = (a: "approve" | "reject" | "regenerate" | "schedule" | "stop", n?: string) =>
     action.mutate({ id: item.id, action: a, note: n || null }, { onSuccess: () => (a === "approve" || a === "reject" ? onClose() : setMode("idle")) });
 
   const footer = (
@@ -81,9 +88,19 @@ export function SlotDetail({ item, timezone, onClose }: { item: PlanItemView | n
       {mode === "idle" && (
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap gap-2">
+            {working && (
+              <button type="button" className={button({ variant: "danger", size: "sm" })} disabled={action.isPending} onClick={() => run("stop")} title="Stop making this post">
+                <CircleStop size={14} /> {action.isPending ? "Stopping…" : "Stop"}
+              </button>
+            )}
             {canRedo && (
-              <button type="button" className={button({ variant: "secondary", size: "sm" })} onClick={() => setMode("redo")}>
-                <RefreshCw size={14} /> {item.status === "failed" ? "Try again" : "Make again"}
+              <button
+                type="button"
+                className={button({ variant: "secondary", size: "sm" })}
+                disabled={action.isPending}
+                onClick={() => (item.status === "failed" ? run("regenerate") : setMode("redo"))}
+              >
+                <RefreshCw size={14} /> {item.status === "failed" ? (action.isPending ? "Starting…" : "Try again") : "Make again"}
               </button>
             )}
             {canRedo && item.status !== "rejected" && (
@@ -119,7 +136,7 @@ export function SlotDetail({ item, timezone, onClose }: { item: PlanItemView | n
     <Modal
       open={!!item}
       onOpenChange={(open) => !open && onClose()}
-      title={item.hook_text ?? item.angle ?? "Planned post"}
+      title={item.hook_text ?? shortTitle(item.angle) ?? "Planned post"}
       description={[LABELS.format[item.format], styleName(item.style), slotWhen(item.slot_at, timezone)].filter(Boolean).join(" · ")}
       // A fixed height on tablets and up, so the preview can fit itself into exactly the space left
       className="w-[min(calc(100vw-32px),1080px)] md:h-[min(88vh,820px)]"

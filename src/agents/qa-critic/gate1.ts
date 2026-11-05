@@ -56,7 +56,6 @@ async function describeSlot(db: SupabaseClient, itemId: string, brief: Brief): P
   const c = profile.data?.compliance;
   const never = [...new Set([...(c?.avoid_words ?? []), ...rules.industryNeverSay])];
   if (never.length) lines.push(`Never say: ${never.join(", ")}`);
-  if (c?.disclaimers?.length) lines.push(`Required disclaimers: ${c.disclaimers.join(" | ")}`);
   return lines.join("\n");
 }
 

@@ -57,13 +57,21 @@ export interface PhotoSettings {
   people: PeopleChoice | null;
 }
 
-/** Image prompt with the brand's photo style, the people choice and the no-text rule. `fix` carries QA's notes on a redo. Video scenes use this one. */
-export function photoPrompt(prompt: string, settings: PhotoSettings, hasReference: boolean, fix?: string | null): string {
+/**
+ * Image prompt with the brand's photo style, the people choice and the no-text rule. `fix` carries QA's notes on a redo.
+ * Video scenes use this one. `reference` is what the reference photo is for (a product photo gives the product,
+ * never its model); "scene" is an earlier picture of the same video, kept exactly (a reveal's "after").
+ */
+export function photoPrompt(prompt: string, settings: PhotoSettings, reference: ReferenceUse | "scene" | null, fix?: string | null): string {
   return [
     pictureOnly(prompt).replace(/\s+$/, "").replace(/\.?$/, "."),
     settings.style ? `Photo style: ${settings.style}.` : "",
     peoplePromptLine(settings.people),
-    hasReference ? "The product, person or place in the reference image must appear exactly as it looks: same shape, colours, materials and details." : "",
+    reference === "scene"
+      ? "The product, person or place in the reference image must appear exactly as it looks: same shape, colours, materials and details."
+      : reference
+        ? REFERENCE_LINE[reference] + (reference === "product" ? " Do not copy the reference's pose, framing, camera angle or setting: the scene is new, exactly as described above." : "")
+        : "",
     "Professional advertising photography that looks like a real photo: a single natural light source, real materials, natural skin texture, clean composition with calm space for text added later.",
     "Absolutely no text, letters, numbers, logos, watermarks, signs, labels or captions anywhere in the image.",
     fix ? `Fix these problems from the last attempt: ${fix}` : "",

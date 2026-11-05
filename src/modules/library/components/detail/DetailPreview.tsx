@@ -3,6 +3,7 @@
 import { Loader2 } from "lucide-react";
 import { publicUrl } from "@/components/kit/MediaUploader";
 import { Skeleton } from "@/components/kit/Skeleton";
+import { VideoPlayer } from "@/components/kit/VideoPlayer";
 import type { MediaDetail, MediaListItem } from "../../types";
 import { SlideStrip } from "./SlideStrip";
 
@@ -35,7 +36,7 @@ export function DetailPreview({ media, detail, loading }: { media: MediaListItem
   return (
     <div className="grid place-items-center rounded-ob-lg bg-[repeating-conic-gradient(var(--color-ob-sunken)_0_25%,var(--color-ob-surface)_0_50%)] bg-[length:20px_20px] p-3">
       {media.type === "video" ? (
-        <video src={url} controls playsInline className="max-h-[62vh] max-w-full rounded-ob-md shadow-ob-md" />
+        <VideoPlayer src={url} className="max-w-full shadow-ob-md" videoClassName="max-h-[62vh] max-w-full" fileName={`prodo-video-${media.id.slice(0, 8)}`} />
       ) : (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={url} alt={media.idea || ""} className="max-h-[62vh] max-w-full rounded-ob-md object-contain shadow-ob-md" />

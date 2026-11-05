@@ -48,6 +48,32 @@ export function useGenerateMedia() {
   });
 }
 
+export interface MakeAdInput {
+  format: "static" | "video";
+  idea: string;
+  offeringId?: string | null;
+  /** A content style id; null = the client's top pick */
+  style?: string | null;
+  /** A video to copy with this product (videos only); everything else comes from it */
+  referenceVideoKey?: string | null;
+  /** Or a link to the video to copy */
+  referenceUrl?: string | null;
+}
+
+/**
+ * Images and videos from Media → Create go through the same chain as This week → Create an ad (Creative
+ * Director, QA, Producer, QA), so they are made exactly like the ones Prodo plans itself.
+ */
+export function useMakeAd() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: MakeAdInput) => apiFetch("/api/ads", { method: "POST", body: JSON.stringify({ ...input, platforms: ["instagram"] }) }),
+    onSuccess: () => {
+      for (const key of ["media", "plan", "activity", "notifications"]) qc.invalidateQueries({ queryKey: [key] });
+    },
+  });
+}
+
 /** Saves files already uploaded to storage as ready media items. */
 export function useSaveUploads() {
   const qc = useQueryClient();

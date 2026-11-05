@@ -127,7 +127,7 @@ const sc = (over: Record<string, unknown>) => ({ kind: "detail", source: "AI", v
 await check("assembleBrief (video): V/G labels become real footage and photos; showcase is music only", () => {
   const ctx = ctxFor("showcase");
   const out = assembleBrief(
-    rawVideo([sc({ kind: "hook", source: "V1", overlay: "Made by hand", keywords: ["hand"] }), sc({ source: "G1", voiceover: "dropped" }), sc({ kind: "product", price: true }), sc({ kind: "cta", seconds: 2 })]),
+    rawVideo([sc({ kind: "hook", source: "V1", overlay: "Made by hand", keywords: ["hand"] }), sc({ source: "AI", reference: "G1", voiceover: "dropped" }), sc({ kind: "product", price: true }), sc({ kind: "cta", seconds: 2 })]),
     "video",
     ctx,
     bookFor(ctx)
@@ -138,11 +138,14 @@ await check("assembleBrief (video): V/G labels become real footage and photos; s
   assert.equal(b.preset, "editorial");
   assert.equal(b.musicMood, "calm");
   assert.deepEqual(b.scenes[0].source, { kind: "clip", assetId: moment({}).assetId, start: 2, end: 8, keepAudio: false });
-  assert.deepEqual(b.scenes[1].source, { kind: "photo", assetId: "00000000-0000-4000-8000-000000000001" });
+  assert.deepEqual(b.scenes[1].source, { kind: "ai", referenceAssetId: "00000000-0000-4000-8000-000000000001" }, "an AI scene takes its product from the photo it names");
   assert.equal(b.scenes[1].voiceover, "", "music-only scenes have no voice-over");
   assert.equal(b.scenes[2].showPrice, true);
   assert.deepEqual(b.scenes[0].keywords, ["hand"]);
   assert.deepEqual(checkBrief(b, ctx), []);
+  // A real photo shown as it is belongs to the photo styles only
+  const shown = assembleBrief(rawVideo([sc({ kind: "hook", source: "V1" }), sc({ source: "G1" }), sc({ kind: "product" }), sc({ kind: "cta", seconds: 2 })]), "video", ctx, bookFor(ctx));
+  assert.match(checkBrief(shown.brief as VideoBrief, ctx).join(" "), /shows one of the client.s photos as it is/);
 });
 
 await check("assembleBrief (video): talking moments keep their sound; stats and reviews keep their facts", () => {
@@ -180,7 +183,6 @@ await check("checkBrief (video): storyline shape, short footage, numbers not in 
   const has = (text: string) => assert.ok(problems.some((p) => p.includes(text)), `expected "${text}" in: ${problems.join(" | ")}`);
   has('Scene 1 must be kind "hook"');
   has('The last scene must be kind "cta"');
-  has("doesn't use");
   has("needs about 5s");
   has("isn't in the fact it cites");
   has("hook scene needs its on-screen line");
@@ -282,6 +284,15 @@ await check("zonesFor / besideSubject: words avoid the subject and each other; s
   const top = zonesFor(scene({ layout: { subject: { x: 0.2, y: 0.5, w: 0.6, h: 0.4 }, zone: "top", light: null } }), true);
   assert.equal(top.title, "top");
   assert.notEqual(top.captions, "top");
+  // Captions stay in the lower place in every scene, wherever the calm band is
+  assert.equal(zonesFor(scene({ layout: { subject: { x: 0.2, y: 0.2, w: 0.6, h: 0.7 }, zone: "top", light: null } }), false).captions, "bottom");
+  assert.equal(zonesFor(scene({ layout: { subject: null, zone: "bottom", light: null } }), true).captions, "bottom");
+  // ...and the on-screen line never shares their band
+  assert.notEqual(zonesFor(scene({ layout: { subject: null, zone: "bottom", light: null } }), true).title, "bottom");
+  // Whatever is behind them, captions never move
+  assert.equal(zonesFor(scene({ layout: { subject: { x: 0.2, y: 0.4, w: 0.6, h: 0.4 }, zone: "top", light: null } }), true).captions, "bottom");
+  // No captions in the scene (music-only): the on-screen line sits where captions would
+  assert.equal(zonesFor(scene({ layout: { subject: { x: 0.2, y: 0.2, w: 0.6, h: 0.7 }, zone: "top", light: null } }), true, false).title, "bottom");
   const spot = besideSubject({ x: 0.05, y: 0.3, w: 0.5, h: 0.4 }, canvas, "top");
   assert.ok(spot.x > 0.55, "sticker goes on the side with more room");
   const edge = besideSubject({ x: 0.0, y: 0.0, w: 0.98, h: 0.1 }, canvas, "top");

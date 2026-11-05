@@ -17,5 +17,5 @@ export function buildImagePrompt(
 }
 
 export function withVideoReferenceInstruction(prompt: string): string {
-  return `${prompt} The subject shown in the reference image must appear in the generated image exactly as it looks — same appearance and details, consistent throughout.`;
+  return `${prompt} The reference image shows the real product: reproduce the product exactly (shape, colours, fabric, pattern and details), the same in every scene. Use it for the product only: any person in the picture is a different person from the one in the reference (a different face and hair), and the reference's headwear, jewellery, accessories, props and background are left out.`;
 }

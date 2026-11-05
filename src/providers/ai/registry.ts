@@ -21,6 +21,8 @@ export const ai = {
     create: Kie.createImageTask,
     status: Kie.checkTaskStatus,
   },
+  /** Seedance 2.5 on Kie: the whole video in one go (direct video mode) */
+  videoFull: Kie.createFullVideoTask,
   video: {
     create: Kie.createVideoTask,
     status: Kie.checkTaskStatus,
@@ -52,6 +54,8 @@ export const ai = {
     google: ScrapeCreators.googleAds,
     metaAdvertisers: ScrapeCreators.metaAdvertisers,
     meta: ScrapeCreators.metaAds,
+    /** One Meta Ad Library ad from its link (Copy a video) */
+    metaAd: ScrapeCreators.metaAd,
   },
   social: {
     profile: ScrapeCreators.profile,

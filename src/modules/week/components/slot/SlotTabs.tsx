@@ -65,11 +65,22 @@ export function BriefTab({ item }: { item: PlanItemView }) {
         ))}
         <Badge tone="dark">CTA: {b.cta.label}</Badge>
       </div>
-      {b.kind === "static" && (
+      {b.kind === "static" && item.format !== "video" && (
         <Row title="On the image">
           <strong>{b.headline}</strong>
           {b.subhead && <span className="block text-ob-muted">{b.subhead}</span>}
           {b.badge && <span className="mt-1 inline-block rounded-full bg-ob-warn-soft px-2 py-0.5 text-xs font-bold text-ob-warn">{b.badge.text}</span>}
+        </Row>
+      )}
+      {/* Direct videos keep the concept they chose and the whole prompt the video model got */}
+      {"videoConcept" in b && typeof b.videoConcept === "string" && b.videoConcept && (
+        <Row title="Concept">
+          <span className="block whitespace-pre-wrap">{b.videoConcept}</span>
+        </Row>
+      )}
+      {"videoPrompt" in b && typeof b.videoPrompt === "string" && (
+        <Row title="Prompt sent to the video model">
+          <span className="block whitespace-pre-wrap text-[13px] leading-relaxed text-ob-ink-soft">{b.videoPrompt}</span>
         </Row>
       )}
       {b.kind === "carousel" && (

@@ -124,6 +124,28 @@ export async function createVideoTask(
   };
 }
 
+/**
+ * Seedance 2.5 (docs.kie.ai/market/bytedance/seedance-2-5): a whole video from one prompt, 4–30 seconds, with
+ * its own sound (speech with lip sync, voice-over, music, effects). Reference images (up to 30: the real product
+ * and the logo) are named in the prompt by their order.
+ */
+export async function createFullVideoTask(
+  prompt: string,
+  o: { referenceImageUrls: string[]; referenceAudioUrls?: string[]; durationSec: number; aspectRatio: string; resolution: "480p" | "720p" | "1080p" }
+): Promise<Result<string>> {
+  const taskId = await createTask(MODELS.videoFull, {
+    prompt,
+    ...(o.referenceImageUrls.length ? { reference_image_urls: o.referenceImageUrls.slice(0, 30) } : {}),
+    // Music to use (2–30 s per clip); adds no billed seconds
+    ...(o.referenceAudioUrls?.length ? { reference_audio_urls: o.referenceAudioUrls.slice(0, 10) } : {}),
+    duration: o.durationSec,
+    aspect_ratio: o.aspectRatio,
+    resolution: o.resolution,
+    generate_audio: true,
+  });
+  return { data: taskId, usage: { provider: "kie", model: MODELS.videoFull, costUsd: PRICING.kie.seedance25PerSecond[o.resolution] * o.durationSec } };
+}
+
 export async function checkTaskStatus(taskId: string): Promise<TaskStatus> {
   const data = await call(`/recordInfo?taskId=${encodeURIComponent(taskId)}`, { headers: headers() }, `checking task ${taskId}`);
   return data ?? { state: "waiting", resultJson: "" };

@@ -20,6 +20,7 @@
 | `0021_content_styles.sql` | `plan_items.style` (the client's content style the Planner gave the slot); `learnings` dimension `style` |
 | `0022_video_footage.sql` | `brand_assets.analysis` (jsonb): what the client's own video shows, logged once by Twelve Labs (usable moments with times, shot, people, talking and their words, subject position, text area) |
 | `0023_creative_knowledge.sql` | `plan_items.ad_objective` (awareness, converting, retargeting), `desire` (six permanent desires) and `awareness_level` (five levels), set by the Planner; `learnings` dimensions `ad_objective`, `desire`, `awareness_level`, `style_modifier` |
+| `0024_reference_video.sql` | `plan_items.reference_video_id` → `brand_assets` (a video the owner wants made again for the post's product; SET NULL), and a unique index on `brand_assets (id, business_id)` for the business-scoped foreign key |
 
 ### Changes to the original schema
 
@@ -227,6 +228,7 @@ The core table: one row per slot with every creative decision.
 | `style` | text | The client's image or video style for the slot (`tips`, `showcase`…; `IMAGE_STYLES` / `VIDEO_STYLES` in `core/onboarding/options.ts`), picked by the Planner's code (0021). Null for text posts and older plans |
 | `pillar_id`, `persona_id`, `offering_id`, `offer_id` | uuid FKs | |
 | `funnel_stage`, `objective` | text | |
+| `reference_video_id` | uuid FK → `brand_assets` | A reference video for this post (0024): its scene-by-scene breakdown is saved on that asset's `analysis` and the video is made the same way for the product. Null for most posts |
 | `ad_objective`, `desire`, `awareness_level` | text | The Planner's strategy for the slot (0023): what it is for, the one desire it taps, the audience's awareness. Null on older plans |
 | `angle`, `framework`, `hook_type`, `hook_text` | text | Tags the learning loop scores |
 | `levers` | text[] | `social_proof`, `scarcity`, `authority`… |
@@ -314,6 +316,7 @@ Every one also includes `business_id` since 0017 (`(col, business_id) → parent
 | `plan_items.plan_id` | `content_plans` | CASCADE |
 | `plan_items.pillar_id` | `content_pillars` | SET NULL |
 | `plan_items.persona_id` | `personas` | SET NULL |
+| `plan_items.reference_video_id` | `brand_assets` | SET NULL |
 | `plan_items.offering_id` | `offerings` | SET NULL |
 | `plan_items.offer_id` | `offers` | SET NULL |
 | `plan_items.selected_media_id` | `media` | SET NULL |

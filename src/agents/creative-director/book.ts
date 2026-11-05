@@ -128,13 +128,14 @@ export function buildFactBook(ctx: CreativeContext): FactBook {
     const key = CTA_LINK_KEY[ctx.rules.cta];
     lines.push(`CUSTOMERS' NEXT STEP (the business owner's choice): ${ctaWords(ctx.rules.cta)}${ctx.ctaLinks[key] ? `; use link "${key}"` : ""}. Every call to action leads there.`);
   }
-  if (ctx.disclaimers.length) lines.push(`REQUIRED DISCLAIMERS (add to captions when the claim needs them): ${ctx.disclaimers.join(" | ")}`);
 
   if (ctx.assets.length) {
     lines.push(
       "",
       ctx.item.format === "video"
-        ? "REAL PHOTOS (a scene can use one directly with gentle motion, or as the reference image for an AI scene that keeps the real product/person)"
+        ? video?.storyline.prefer === "photos"
+          ? "REAL PHOTOS (this style shows them as they are, with gentle motion; for an AI scene a photo is the reference that gives the product)"
+          : "REAL PHOTOS (never shown as they are in this style: each is the reference image an AI scene takes its product from, and gives the product only, never its model, pose or place)"
         : "REAL PHOTOS (pick one as the reference image when it fits. A reference keeps the real product; only person and team photos keep their real person)"
     );
     ctx.assets.forEach((a, i) => {
