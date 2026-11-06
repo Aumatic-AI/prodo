@@ -6,6 +6,7 @@ import { ChoiceCards, Pills, RankedChoiceCards } from "@/components/kit/choices"
 import { MediaUploader, isVideoKey } from "@/components/kit/MediaUploader";
 import { TagInput } from "@/components/kit/TagInput";
 import { FromSiteBadge, OptionalBadge, Section } from "../../components/blocks";
+import { ScanFailed } from "../../components/ScanWait";
 import { Field } from "../../components/form/Field";
 import { StepLayout } from "../../components/shell/StepLayout";
 import { useOnboarding, useSlice } from "../../store/OnboardingStoreProvider";
@@ -34,6 +35,7 @@ export function ContentStep() {
 
   return (
     <StepLayout step="content" title={STEP_META.content.title} lead={STEP_META.content.lead}>
+      <ScanFailed />
       <Section
         title="What do you sell?"
         description="Decides the kinds of posts below and your next steps."

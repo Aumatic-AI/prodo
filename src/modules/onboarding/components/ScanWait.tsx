@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Loader2 } from "lucide-react";
 import { scanRunning } from "@/core/onboarding/scan";
 import { button, card } from "@/components/kit/styles";
+import { Alert } from "@/components/kit/Alert";
 import { useOnboarding } from "../store/OnboardingStoreProvider";
 
 /** True while the website is still being read and the client hasn't chosen to fill this step in themselves. */
@@ -11,6 +12,21 @@ export function useScanWait() {
   const running = useOnboarding((s) => scanRunning(s.draft.scan));
   const [skipped, setSkipped] = useState(false);
   return { waiting: running && !skipped, skip: () => setSkipped(true) };
+}
+
+/** Shown when the website couldn't be read (down, blocked or a wrong address): nothing was filled, and this says why. */
+export function ScanFailed() {
+  const scan = useOnboarding((s) => s.draft.scan);
+  if (scan?.state !== "failed") return null;
+  const site = scan.website.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "") || "your website";
+  return (
+    <Alert tone="warn">
+      <span>
+        <strong>We couldn&apos;t read {site}, so nothing was filled in for you.</strong> {scan.error} Fill in the details yourself, or go back to the
+        first screen to try the website again. Your setup and Brand Bible can still be finished without it.
+      </span>
+    </Alert>
+  );
 }
 
 /** Shown in place of a step that the website scan is about to fill. */

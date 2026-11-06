@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { TONE_AXES } from "@/core/onboarding/options";
 import { AiDraftBadge, FromSiteBadge, Section } from "../../components/blocks";
 import { Field } from "../../components/form/Field";
-import { ScanWait, useScanWait } from "../../components/ScanWait";
+import { ScanFailed, ScanWait, useScanWait } from "../../components/ScanWait";
 import { TextArea, TextInput } from "@/components/kit/inputs";
 import { Select } from "@/components/kit/Select";
 import { MultiSelect } from "@/components/kit/MultiSelect";
@@ -57,6 +57,7 @@ export function BasicsStep() {
         <ScanWait onSkip={skip} />
       ) : (
         <>
+          <ScanFailed />
           <Section title="Your business" badge={fromSite("name", "logoKey", "description")}>
             <Field label="Business name" htmlFor="name" path="name">
               <TextInput id="name" value={b.name} onValueChange={(name) => set({ name })} placeholder="e.g. your shop or company name" autoComplete="organization" />
