@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { apiHandler } from "@/lib/api-handler";
 import { currentBusiness } from "@/core/business";
-import { referenceVideoFolder } from "@/providers/storage/paths";
+import { referenceFolder } from "@/providers/storage/paths";
 import { referenceFromLink } from "@/core/brand/reference-link";
 import { AppError } from "@/core/errors";
 import { FORMATS, type Format } from "@/core/creative/brief";
@@ -33,6 +33,8 @@ const schema = z.object({
   referenceVideoKey: z.string().trim().min(1).nullish(),
   /** Or a link to it: a Meta Ad Library ad, an Instagram, TikTok or YouTube post, or a video file */
   referenceUrl: z.string().trim().min(5).max(2000).nullish(),
+  /** Image ads: an ad the owner likes (a storage key the browser uploaded); the new ad is made the same way */
+  referenceImageKey: z.string().trim().min(1).nullish(),
 });
 
 /**
@@ -97,7 +99,7 @@ export const POST = apiHandler(async (req: NextRequest) => {
     // A pasted link: the video is found and downloaded first
     const linked = input.referenceVideoKey ? null : await referenceFromLink(businessId, input.referenceUrl!);
     const referenceKey = input.referenceVideoKey ?? linked!.key;
-    if (!referenceKey.startsWith(referenceVideoFolder(businessId)) || referenceKey.includes("..")) {
+    if (!referenceKey.startsWith(referenceFolder(businessId)) || referenceKey.includes("..")) {
       throw new AppError("This reference video couldn't be found. Please upload it again.", "INVALID_INPUT", false);
     }
     const { data: reference, error: referenceError } = await db
@@ -116,6 +118,15 @@ export const POST = apiHandler(async (req: NextRequest) => {
     referenceVideoId = reference.id;
   }
 
+  // A reference image: only for an image ad, and only the business's own upload
+  const referenceImageKey = input.referenceImageKey ?? null;
+  if (referenceImageKey) {
+    if (input.format !== "static") throw new AppError("A reference image is only for image ads.", "INVALID_INPUT", false);
+    if (!referenceImageKey.startsWith(referenceFolder(businessId)) || referenceImageKey.includes("..")) {
+      throw new AppError("This reference image couldn't be found. Please upload it again.", "INVALID_INPUT", false);
+    }
+  }
+
   const clock = await weekClock(db);
   const slotAt = input.slotAt ? new Date(input.slotAt) : new Date(Date.now() + 24 * 3600_000);
   if (slotAt.getTime() < Date.now()) throw new AppError("Pick a time in the future.", "INVALID_INPUT", false);
@@ -131,7 +142,10 @@ export const POST = apiHandler(async (req: NextRequest) => {
       style,
       offering_id: input.offeringId ?? null,
       persona_id: copying ? null : (input.personaId ?? null),
-      angle: copying ? "The reference video, made again with this product" : input.idea,
+      // A copy keeps the owner's changes with it; the video writer makes them over the reference
+      angle: copying
+        ? `The reference video, made again with this product${input.idea ? `. The owner's changes: ${input.idea}` : ""}`
+        : input.idea,
       // What the ad should achieve. The Creative Director and QA read it, so it must never read like a
       // product fact ("Made on request" was printed on ads and judged as a promise)
       objective: input.offeringId ? "Sell this product" : "Make people want to discover the brand",
@@ -139,6 +153,7 @@ export const POST = apiHandler(async (req: NextRequest) => {
       rationale: "You asked for this ad.",
       status: "planned",
       ...(referenceVideoId ? { reference_video_id: referenceVideoId } : {}),
+      ...(referenceImageKey ? { reference_image_key: referenceImageKey } : {}),
     })
     .select("id")
     .single();

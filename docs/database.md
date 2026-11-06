@@ -21,6 +21,7 @@
 | `0022_video_footage.sql` | `brand_assets.analysis` (jsonb): what the client's own video shows, logged once by Twelve Labs (usable moments with times, shot, people, talking and their words, subject position, text area) |
 | `0023_creative_knowledge.sql` | `plan_items.ad_objective` (awareness, converting, retargeting), `desire` (six permanent desires) and `awareness_level` (five levels), set by the Planner; `learnings` dimensions `ad_objective`, `desire`, `awareness_level`, `style_modifier` |
 | `0024_reference_video.sql` | `plan_items.reference_video_id` → `brand_assets` (a video the owner wants made again for the post's product; SET NULL), and a unique index on `brand_assets (id, business_id)` for the business-scoped foreign key |
+| `0026_reference_image.sql` | `plan_items.reference_image_key`: an ad image the owner likes, given on "Create an ad" or Media → Create → Image; the image model makes the new ad the same way. The file waits in `tmp/` (deleted after 7 days) |
 | `0025_reference_videos.sql` | `reference_videos` table: every video the owner copied ("Copy a video"), with its link, its numbers there, the product, the video made from it and its breakdown, kept for good; the file itself is not kept. The `brand_assets` reference videos used for posts move there with the same ids, and `plan_items.reference_video_id` now points at `reference_videos` |
 
 ### Changes to the original schema
@@ -246,6 +247,7 @@ The core table: one row per slot with every creative decision.
 | `style` | text | The client's image or video style for the slot (`tips`, `showcase`…; `IMAGE_STYLES` / `VIDEO_STYLES` in `core/onboarding/options.ts`), picked by the Planner's code (0021). Null for text posts and older plans |
 | `pillar_id`, `persona_id`, `offering_id`, `offer_id` | uuid FKs | |
 | `funnel_stage`, `objective` | text | |
+| `reference_image_key` | text | Image ads (0026): an ad image the owner likes, `tmp/<business id>/reference/<id>.<ext>`; sent to the image model with the rest of the context (direct image ads). Gone after 7 days, then a redo is made without it |
 | `reference_video_id` | uuid FK → `reference_videos` | A reference video for this post (0024; points at `reference_videos` since 0025): its scene-by-scene breakdown is saved on that row's `analysis` and the video is made the same way for the product. Null for most posts |
 | `ad_objective`, `desire`, `awareness_level` | text | The Planner's strategy for the slot (0023): what it is for, the one desire it taps, the audience's awareness. Null on older plans |
 | `angle`, `framework`, `hook_type`, `hook_text` | text | Tags the learning loop scores |

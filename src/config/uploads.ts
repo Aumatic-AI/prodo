@@ -27,6 +27,8 @@ export const UPLOAD_RULES = {
   reference: { types: [...IMAGE_TYPES, ...VIDEO_TYPES], maxBytes: LIMITS.videoMaxBytes, folder: "references", hint: MEDIA_HINT },
   // A video to make again for one post: only its breakdown is kept (reference_videos), not the file
   referenceVideo: { types: VIDEO_TYPES, maxBytes: LIMITS.videoMaxBytes, folder: "references", hint: "MP4 or MOV, up to 100 MB", kept: false },
+  // An ad image to make the same way for one image ad: read once, not kept
+  referenceImage: { types: IMAGE_TYPES, maxBytes: LIMITS.imageMaxBytes, folder: "references", hint: "PNG, JPG or WebP, up to 10 MB", kept: false },
 } satisfies Record<string, UploadRule>;
 
 export type UploadPurpose = keyof typeof UPLOAD_RULES;

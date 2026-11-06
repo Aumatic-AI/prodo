@@ -112,6 +112,8 @@ export interface CreateAdInput {
   referenceVideoKey?: string | null;
   /** Or a link to the video to copy */
   referenceUrl?: string | null;
+  /** Image ads: an ad image to make the same way */
+  referenceImageKey?: string | null;
 }
 
 export type AutoKind = "static" | "carousel" | "video";

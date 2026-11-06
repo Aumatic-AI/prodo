@@ -3,7 +3,7 @@ import { LIMITS } from "@/config/limits";
 import { AppError } from "@/core/errors";
 import { ai } from "@/providers/ai/registry";
 import { request } from "@/providers/http";
-import { referenceVideoKey } from "@/providers/storage/paths";
+import { referenceKey } from "@/providers/storage/paths";
 import { upload } from "@/providers/storage/r2";
 
 // "Copy a video" from a link instead of an upload: a Meta Ad Library ad, an Instagram, TikTok or YouTube post,
@@ -49,7 +49,7 @@ export async function referenceFromLink(businessId: string, link: string): Promi
   if (type && !type.startsWith("video/") && type !== "application/octet-stream") throw new AppError("This link didn't give a video file. Upload the video instead.", "INVALID_INPUT", false);
   const bytes = Buffer.from(await res.arrayBuffer());
   if (bytes.length > LIMITS.videoMaxBytes) throw new AppError("This video is too big (over 100 MB). Upload a shorter one.", "INVALID_INPUT", false);
-  const key = referenceVideoKey(businessId, randomUUID(), type === "video/quicktime" ? "mov" : "mp4");
+  const key = referenceKey(businessId, randomUUID(), type === "video/quicktime" ? "mov" : "mp4");
   await upload(key, bytes, type.startsWith("video/") ? type : "video/mp4");
   return { key, platform, meta };
 }

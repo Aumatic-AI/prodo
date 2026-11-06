@@ -4,7 +4,7 @@ import { apiHandler } from "@/lib/api-handler";
 import { currentBusiness } from "@/core/business";
 import { AppError } from "@/core/errors";
 import { UPLOAD_RULES, extensionFor, keptUpload, uploadFolder, uploadProblem, type UploadPurpose } from "@/config/uploads";
-import { brandKey, referenceVideoKey } from "@/providers/storage/paths";
+import { brandKey, referenceKey } from "@/providers/storage/paths";
 import { signedUploadUrl } from "@/providers/storage/r2";
 
 const bodySchema = z.object({
@@ -24,6 +24,6 @@ export const POST = apiHandler(async (req: NextRequest) => {
   const id = crypto.randomUUID();
   const key = keptUpload(purpose)
     ? brandKey(businessId, uploadFolder(purpose, contentType), id, extensionFor(contentType))
-    : referenceVideoKey(businessId, id, extensionFor(contentType));
+    : referenceKey(businessId, id, extensionFor(contentType));
   return NextResponse.json({ id, key, url: await signedUploadUrl(key, contentType) });
 });

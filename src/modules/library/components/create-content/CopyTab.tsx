@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Field } from "@/components/kit/Field";
-import { TextInput } from "@/components/kit/inputs";
+import { TextArea, TextInput } from "@/components/kit/inputs";
 import { MediaUploader } from "@/components/kit/MediaUploader";
 import type { Upload } from "@/core/onboarding/schemas";
 import { useMakeAd } from "../../hooks/useMedia";
@@ -14,11 +14,12 @@ export function CopyTab({ onDone }: { onDone: () => void }) {
   const [reference, setReference] = useState<Upload[]>([]);
   const [link, setLink] = useState("");
   const [product, setProduct] = useState(NO_PRODUCT);
+  const [changes, setChanges] = useState("");
   const make = useMakeAd();
   const offeringId = productFields(product).offering_id;
 
   async function submit() {
-    await make.mutateAsync({ format: "video", idea: "", offeringId, referenceVideoKey: reference[0]?.key ?? null, referenceUrl: !reference.length && link.trim() ? link.trim() : null });
+    await make.mutateAsync({ format: "video", idea: changes.trim(), offeringId, referenceVideoKey: reference[0]?.key ?? null, referenceUrl: !reference.length && link.trim() ? link.trim() : null });
     onDone();
   }
 
@@ -35,6 +36,9 @@ export function CopyTab({ onDone }: { onDone: () => void }) {
         </Field>
       )}
       <ProductPicker value={product} onChange={setProduct} required />
+      <Field label="Changes you want" htmlFor="copy-changes" optional hint="Anything to do differently from the video, e.g. a different setting, a woman speaking, an offer at the end. The rest follows the video.">
+        <TextArea id="copy-changes" rows={3} value={changes} onValueChange={setChanges} placeholder="e.g. Shoot it in a modern kitchen and end on our 10% launch offer" />
+      </Field>
       <FormFooter
         note={missing ?? "About 10 minutes; it shows here and in This week."}
         label="Create video"

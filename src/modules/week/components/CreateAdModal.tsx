@@ -72,6 +72,8 @@ export function CreateAdModal({ open, onOpenChange, onCreated }: { open: boolean
   const [when, setWhen] = useState(tomorrow);
   const [reference, setReference] = useState<Upload[]>([]);
   const [refLink, setRefLink] = useState("");
+  // Image ads: an ad the owner likes, made the same way
+  const [liked, setLiked] = useState<Upload[]>([]);
 
   const usable = useMemo(() => platforms.filter((p) => fits(made, p)), [platforms, made]);
   const toggle = (p: string) => setPlatforms((list) => (list.includes(p) ? list.filter((x) => x !== p) : [...list, p]));
@@ -81,8 +83,8 @@ export function CreateAdModal({ open, onOpenChange, onCreated }: { open: boolean
     const item = await create.mutateAsync({
       format: made,
       platforms: usable,
-      // A copied video takes everything but the product from the reference
-      idea: copying ? "" : idea,
+      // A copied video takes everything but the product from the reference, except the changes asked for here
+      idea,
       offeringId: offeringId === NONE ? null : offeringId,
       personaId: copying || personaId === NONE ? null : personaId,
       slotAt,
@@ -90,12 +92,14 @@ export function CreateAdModal({ open, onOpenChange, onCreated }: { open: boolean
       style: !copying && style !== AUTO && styles.some((s) => s.value === style) ? style : null,
       referenceVideoKey: copying ? (reference[0]?.key ?? null) : null,
       referenceUrl: copying && !reference.length && refLink.trim() ? refLink.trim() : null,
+      referenceImageKey: made === "static" ? (liked[0]?.key ?? null) : null,
     });
     onCreated(item.id, item.slot_at);
     onOpenChange(false);
     setIdea("");
     setReference([]);
     setRefLink("");
+    setLiked([]);
   }
 
   return (
@@ -162,6 +166,9 @@ export function CreateAdModal({ open, onOpenChange, onCreated }: { open: boolean
                 options={(offerings ?? []).map((o) => ({ value: o.id, label: o.name }))}
               />
             </Field>
+            <Field label="Changes you want" htmlFor="copy-changes" optional hint="Anything to do differently from the video, e.g. a different setting, a woman speaking, an offer at the end. The rest follows the video.">
+              <TextArea id="copy-changes" rows={3} value={idea} onValueChange={setIdea} placeholder="e.g. Shoot it in a modern kitchen and end on our 10% launch offer" />
+            </Field>
           </>
         ) : (
           <>
@@ -187,6 +194,12 @@ export function CreateAdModal({ open, onOpenChange, onCreated }: { open: boolean
             </Field>
           </div>
           </>
+        )}
+
+        {made === "static" && (
+          <Field label="Reference image" optional hint="An ad you like. Yours is made the same way (layout, style, colours, mood) with your brand and product; its words and brand are never copied.">
+            <MediaUploader purpose="referenceImage" max={1} value={liked} onChange={setLiked} />
+          </Field>
         )}
 
         {styles.length > 0 && (

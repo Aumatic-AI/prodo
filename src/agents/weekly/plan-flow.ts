@@ -44,28 +44,6 @@ export const weeklyPlanCheck = inngest.createFunction(
   }
 );
 
-/** The first approved Brand Bible plans the first week straight away (later approvals don't). */
-export const firstPlan = inngest.createFunction(
-  { id: "first-plan-after-bible" },
-  { event: "brand/approved" },
-  async ({ event, step }) => {
-    const { businessId } = event.data;
-    const weekStart = await step.run("first-time", async () => {
-      const db = businessDb(businessId);
-      const [{ count }, { data: profile }, { data: settings }] = await Promise.all([
-        db.from("content_plans").select("id", { count: "exact", head: true }),
-        db.from("business_profile").select("timezone").single(),
-        db.from("app_settings").select("paused").single(),
-      ]);
-      if (count || settings?.paused) return null;
-      return nextWeekStart(zonedParts(new Date(), safeZone(profile?.timezone)).day);
-    });
-    if (!weekStart) return { planned: false };
-    await step.sendEvent("request-plan", { name: "plan/requested", id: `plan-${businessId}-${weekStart}`, data: { businessId, weekStart, source: "onboarding" } });
-    return { planned: true, weekStart };
-  }
-);
-
 /** After each slot settles: is the whole plan done? */
 export const onItemSettled = inngest.createFunction(
   { id: "plan-item-settled", concurrency: [{ limit: 1, key: "event.data.planId" }] },

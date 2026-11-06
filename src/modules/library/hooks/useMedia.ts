@@ -58,6 +58,8 @@ export interface MakeAdInput {
   referenceVideoKey?: string | null;
   /** Or a link to the video to copy */
   referenceUrl?: string | null;
+  /** Image ads: an ad image to make the same way */
+  referenceImageKey?: string | null;
 }
 
 /**

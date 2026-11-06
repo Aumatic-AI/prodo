@@ -47,7 +47,18 @@ export async function produceDirect(
       // and no people photos when the owner chose none.
       const own = ctx.offering ? ctx.assets.filter((a) => a.offeringId === ctx.offering!.id) : [];
       const photos = own.length ? own.slice(0, MAX_PHOTOS) : ctx.assets.slice(0, 2);
+      // An ad the owner likes, when they gave one and it's still in storage (it's deleted after 7 days)
+      const liked = ctx.item.reference_image_key ? publicUrl(ctx.item.reference_image_key) : null;
+      const likedReady = liked ? await fetch(liked, { method: "HEAD" }).then((r) => r.ok).catch(() => false) : false;
       const images: DirectImage[] = [
+        ...(liked && likedReady
+          ? [
+              {
+                url: liked,
+                what: "an ad the owner likes, from another brand: make this business's ad the same way (layout, composition, style, colours, type and mood). Its brand, logo, words, people and products are not this business's: never copy them",
+              },
+            ]
+          : []),
         ...photos.map((a) => ({
           url: publicUrl(a.storageKey),
           what: a.kind === "product_photo" && a.offeringName ? `real product photo of "${a.offeringName}"${a.description ? `: ${a.description}` : ""}` : `the business's own ${a.kind.replace("_", " ")} photo${a.description ? `: ${a.description}` : ""}`,

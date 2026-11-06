@@ -10,7 +10,7 @@ import { socialMarketAnalyst } from "@/agents/social-market";
 import { brandStrategist } from "@/agents/brand-strategist";
 import { planner } from "@/agents/planner";
 import { produceItem } from "@/agents/weekly/produce-item";
-import { autoApprove, firstPlan, onItemSettled, weeklyPlanCheck, weeklyPlanCron } from "@/agents/weekly/plan-flow";
+import { autoApprove, onItemSettled, weeklyPlanCheck, weeklyPlanCron } from "@/agents/weekly/plan-flow";
 import { publishItem, publishPlan } from "@/agents/publisher";
 import { metricsCron, metricsSync } from "@/agents/performance-analyst/sync";
 import { learningsCron, weeklyLearnings } from "@/agents/performance-analyst/learn";
@@ -36,7 +36,6 @@ export const functions = [
   // Weekly loop (agents 5–9)
   weeklyPlanCron,
   weeklyPlanCheck,
-  firstPlan,
   planner,
   produceItem,
   onItemSettled,
