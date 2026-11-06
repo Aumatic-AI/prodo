@@ -54,16 +54,17 @@ export const MIX_VIDEO_SHARE: Record<ContentMix, number> = {
   "mostly-videos": 0.7,
 };
 
+// Each line covers a product and a service (the screens name them "Product photo" or "Your work" and so on)
 const IMAGE_BRIEFS: Record<ImageStyle, string> = {
   product:
-    "Product photo: the product alone is the hero, on a clean, simple backdrop or styled flat, close enough to see its material and details. No person, or only hands or a cropped body when it's worn. Calm and premium; the words stay short.",
-  life: "Lifestyle: the product in the life it belongs to: a real place, moment and mood where the customer would use or wear it. The setting tells a small story; the product stays clearly visible.",
-  people: "In use: a person wearing, using or holding the product, natural and candid, the product clearly visible on them. The person fits the persona.",
-  promo: "Offer ad: the product clear and simple, with the price or the live deal as the loudest thing on the ad. Only with a real price or a live offer.",
+    "Product or work photo: the product, or a service's finished result, alone is the hero, on a clean, simple backdrop or styled flat, close enough to see its material and details. No person, or only hands. Calm and premium; the words stay short.",
+  life: "Lifestyle or service in action: the product in the life it belongs to, or the service being given to a client, in a real place, moment and mood. The setting tells a small story; what is sold stays clearly visible.",
+  people: "In use, or the team: a person using or holding the product, or the owner or staff at work, natural and candid. The person fits the persona.",
+  promo: "Offer ad: the product or service clear and simple, with the price or the live deal as the loudest thing on the ad. Only with a real price or a live offer.",
   tips: "Tips: useful tips, steps, myths vs facts or a list, one idea per slide.",
-  review: "Review: a real customer's words from a stored review are the hero, set big; the product photo supports them. Only with a stored review.",
+  review: "Review: a real customer's or client's words from a stored review are the hero, set big; a photo of the product or the work supports them. Only with a stored review.",
   ba: "Before and after: the difference the product or service makes, side by side or as a reveal.",
-  bts: "Behind the scenes: how it's made, packed or run: hands at work, tools, materials, the studio. Documentary and unposed.",
+  bts: "Behind the scenes: how it's made, packed or run, or a day at work: hands at work, tools, materials, the place. Documentary and unposed.",
 };
 
 /**
@@ -95,11 +96,11 @@ const VIDEO_BRIEFS: Record<VideoStyle, string> = {
   showcase: "Showcase: close-ups and details of the product or finished work, cut to music. No voice-over.",
   faceless: "Voice-over explainer: clips that illustrate a voice telling a short story or explaining the benefit.",
   talking: "Talking to camera: a real person from the client's own videos speaks to the viewer in their own voice, with cutaways of the product or work.",
-  ugc: "Customer video: a real customer's own words from the client's videos, the product in use, and a review card. Feels real and unpolished.",
+  ugc: "Customer video: a real customer's own words from the client's videos, the product or service in use, and a review card. Feels real and unpolished.",
   howto: "How-to: show how it works or how to use it, step by step, with a voice guiding each step.",
   bts: "Behind the scenes: the making, packing or work process, set to music. No voice-over.",
   ba: "Before and after: a quick transformation reveal, set to music. No voice-over.",
-  slides: "Photo slideshow: still pictures of the product made for the ad, with gentle motion, set to music. No voice-over.",
+  slides: "Photo slideshow: still pictures of the product or work made for the ad, with gentle motion, set to music. No voice-over.",
 };
 
 export function styleBrief(style: string, format: StyleFormat): string {

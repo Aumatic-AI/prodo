@@ -76,8 +76,8 @@ export function ctaWords(cta: CtaChoice): string {
 
 const PEOPLE_WORDS: Record<PeopleChoice, string> = {
   real: "Real people only: show the owner, team or customers using the REAL PHOTOS of people ([G] labels of kind person or team). Never invent staff or customers; when no real photo of a person fits, show the product, hands or the place instead.",
-  ai: "People are welcome: AI-made models may appear (using, wearing or holding the product).",
-  none: "NO PEOPLE: show only products, places and details. No person, face or body in any picture or scene (hands only when unavoidable).",
+  ai: "People are welcome: AI-made people may appear.",
+  none: "NO PEOPLE: show only products, work, places and details. No person, face or body in any picture or scene (hands only when unavoidable).",
 };
 
 export function peopleRule(people: PeopleChoice | null): string | null {

@@ -56,7 +56,7 @@ export async function produceDirectVideo(
       const images: DirectImage[] = [
         ...photos.map((a) => ({
           url: publicUrl(a.storageKey),
-          what: a.kind === "product_photo" && a.offeringName ? `real product photo of "${a.offeringName}"${a.description ? `: ${a.description}` : ""}` : `${a.kind.replace("_", " ")} photo${a.description ? `: ${a.description}` : ""}`,
+          what: a.kind === "product_photo" && a.offeringName ? `real product photo of "${a.offeringName}"${a.description ? `: ${a.description}` : ""}` : `the business's own ${a.kind.replace("_", " ")} photo${a.description ? `: ${a.description}` : ""}`,
         })),
         ...(logo ? [{ url: logo, what: "the brand's logo" }] : []),
       ];

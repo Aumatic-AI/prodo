@@ -18,7 +18,7 @@ import type { Usage } from "@/providers/usage";
 export interface CreativeContext {
   item: PlanItem;
   weekStart: string;
-  business: { name: string; language: string; description: string; tone: string; goals: string[] };
+  business: { name: string; language: string; description: string; tone: string; goals: string[]; yearsInBusiness?: number | null };
   /** The client's onboarding choices */
   rules: ContentRules;
   ctaLinks: Record<string, string>;
@@ -26,7 +26,7 @@ export interface CreativeContext {
   bible: { positioning: string; valueProp: string; tone: string; traits: string[]; examples: string[]; dos: string[]; donts: string[]; neverSay: string[]; visualRules: string[]; strategy: BibleStrategy | null };
   persona: { id: string; name: string; summary: string | null; pains: string[]; desires: string[]; objections: string[]; triggers: string[]; phrases: string[] } | null;
   pillar: { name: string; description: string | null } | null;
-  offering: { id: string; name: string; kind: string; description: string | null; price: number | null; currency: string | null; priceModel: string | null; benefits: string[]; objections: string[]; audience: string | null; url: string | null } | null;
+  offering: { id: string; name: string; kind: string; description: string | null; price: number | null; currency: string | null; priceModel: string | null; benefits: string[]; objections: string[]; audience: string | null; url: string | null; attributes?: Record<string, unknown> } | null;
   offer: { id: string; title: string; details: string | null; code: string | null; endsAt: string | null } | null;
   proof: { id: string; kind: string; content: string; author: string | null; rating: number | null }[];
   /** The client's own photos; `offeringName` says which product a product photo shows */
@@ -145,7 +145,15 @@ export async function loadCreativeContext(db: SupabaseClient, itemId: string): P
     ctx: {
       item,
       weekStart: plan.week_start,
-      business: { name: p.name, language: p.language || "en", description: p.description ?? "", tone: toneLine(p.tone), goals: rules.goals },
+      business: {
+        name: p.name,
+        language: p.language || "en",
+        description: p.description ?? "",
+        tone: toneLine(p.tone),
+        goals: rules.goals,
+        // Services step: how long the business has been going, a fact ads may use
+        yearsInBusiness: typeof p.onboarding?.yearsInBusiness === "number" ? p.onboarding.yearsInBusiness : null,
+      },
       rules,
       ctaLinks: Object.fromEntries(Object.entries({ website: p.website, ...(p.cta_links ?? {}) }).filter(([, v]) => typeof v === "string" && v)) as Record<string, string>,
       // The client's list, plus the claims their industry may never make in ads
@@ -188,6 +196,8 @@ export async function loadCreativeContext(db: SupabaseClient, itemId: string): P
             objections: offering.data.objections ?? [],
             audience: offering.data.audience,
             url: offering.data.url,
+            // A service's details: what's included, turnaround, how it works, where it's offered
+            attributes: offering.data.attributes ?? {},
           }
         : null,
       // An offer the client hasn't confirmed is never used
