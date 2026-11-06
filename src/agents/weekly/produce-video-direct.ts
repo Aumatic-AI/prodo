@@ -174,6 +174,11 @@ export async function produceDirectVideo(
       const key = mediaKey(businessId, mediaId, finalName(ratioName(DIRECT_VIDEO.aspectRatio), 0, "mp4"));
       await copyToStorage(videoUrl, key);
       await markMediaReady(db(), mediaId, key);
+      // The reference remembers the video made from it
+      if (referenceId) {
+        const { error } = await db().from("reference_videos").update({ media_id: mediaId }).eq("id", referenceId);
+        if (error) throw error;
+      }
       return key;
     },
     () => "Saved the finished video"
@@ -208,7 +213,8 @@ async function waitForVideo(step: Step, planId: string, prefix: string, taskId: 
 async function referenceAudio(step: Step, db: () => SupabaseClient, businessId: string, assetId: string): Promise<string | null> {
   const job = await step.run("direct-video-audio", async () => {
     if (renderBackend().id !== "worker") return null;
-    const { data } = await db().from("brand_assets").select("storage_key, analysis").eq("id", assetId).maybeSingle();
+    // After 7 days the file is gone and the job fails: the video then gets new music instead
+    const { data } = await db().from("reference_videos").select("storage_key, analysis").eq("id", assetId).maybeSingle();
     const duration = Number((data?.analysis as { duration?: number } | null)?.duration ?? 0);
     if (!data?.storage_key || duration < 2) return null;
     const key = tmpKey(`${businessId}/reference/${assetId}/audio.wav`);

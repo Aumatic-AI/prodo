@@ -1,8 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { apiHandler } from "@/lib/api-handler";
-import { assertOwnKey, currentBusiness } from "@/core/business";
-import { brandFolder } from "@/providers/storage/paths";
+import { currentBusiness } from "@/core/business";
+import { referenceVideoFolder } from "@/providers/storage/paths";
 import { referenceFromLink } from "@/core/brand/reference-link";
 import { AppError } from "@/core/errors";
 import { FORMATS, type Format } from "@/core/creative/brief";
@@ -89,21 +89,31 @@ export const POST = apiHandler(async (req: NextRequest) => {
   const style = copying ? null : await styleFor(db, input.format, input.style);
   await assertStyleHasFacts(db, style, input.offeringId ?? null);
 
-  // A reference video: kept with the brand's references ("Video we like") and linked to this post
+  // A reference video: a reference_videos row linked to this post. Its breakdown is kept for good; the file
+  // only waits in tmp/ while it's read
   let referenceVideoId: string | null = null;
   if (copying) {
     if (input.format !== "video") throw new AppError("A reference video is only for video posts.", "INVALID_INPUT", false);
-    // A pasted link: the video is found, downloaded and kept in the brand's references first
-    const referenceKey = input.referenceVideoKey ?? (await referenceFromLink(businessId, input.referenceUrl!));
-    assertOwnKey(businessId, referenceKey);
-    if (!referenceKey.startsWith(brandFolder(businessId, "references"))) throw new AppError("This reference video couldn't be found. Please upload it again.", "INVALID_INPUT", false);
-    const { data: asset, error: assetError } = await db
-      .from("brand_assets")
-      .insert({ kind: "reference_video", storage_key: referenceKey, offering_id: input.offeringId ?? null })
+    // A pasted link: the video is found and downloaded first
+    const linked = input.referenceVideoKey ? null : await referenceFromLink(businessId, input.referenceUrl!);
+    const referenceKey = input.referenceVideoKey ?? linked!.key;
+    if (!referenceKey.startsWith(referenceVideoFolder(businessId)) || referenceKey.includes("..")) {
+      throw new AppError("This reference video couldn't be found. Please upload it again.", "INVALID_INPUT", false);
+    }
+    const { data: reference, error: referenceError } = await db
+      .from("reference_videos")
+      .insert({
+        source: linked ? "link" : "upload",
+        source_url: linked ? input.referenceUrl!.trim() : null,
+        platform: linked?.platform ?? null,
+        source_meta: linked?.meta ?? {},
+        storage_key: referenceKey,
+        offering_id: input.offeringId ?? null,
+      })
       .select("id")
       .single();
-    if (assetError) throw assetError;
-    referenceVideoId = asset.id;
+    if (referenceError) throw referenceError;
+    referenceVideoId = reference.id;
   }
 
   const clock = await weekClock(db);

@@ -23,7 +23,8 @@ import {
 } from "@/prompts/agents/reference-video";
 
 // A reference video the owner gave for one post ("make this video for my product"), read once and kept on its
-// brand_assets row, so "Make again" reuses it. Two readings, each trusted for what it does best: Twelve Labs
+// reference_videos row, so "Make again" reuses it and the breakdown stays after the file is gone (storage deletes
+// it after 7 days). Two readings, each trusted for what it does best: Twelve Labs
 // watches and listens (the summary, pacing and all the sound: voice, every spoken line, music, effects); our
 // worker takes timed frames and one vision call writes the exact cut list, words on screen and look. Code merges
 // them into one breakdown (mergeReference), so the prompt writer never sees two versions of the same thing.
@@ -36,7 +37,7 @@ const PER_SHEET = 16;
 
 /** The saved breakdown of a reference video, or null when it hasn't been read yet. */
 export async function loadReference(db: SupabaseClient, assetId: string): Promise<ReferenceVideo | null> {
-  const { data, error } = await db.from("brand_assets").select("analysis").eq("id", assetId).maybeSingle();
+  const { data, error } = await db.from("reference_videos").select("analysis").eq("id", assetId).maybeSingle();
   if (error) throw error;
   const parsed = referenceVideoSchema.safeParse(data?.analysis);
   return parsed.success && parsed.data.scenes.length ? parsed.data : null;
@@ -50,8 +51,9 @@ export async function studyReference(step: Step, task: Task, db: () => SupabaseC
     async (track) => {
       const known = await loadReference(db(), assetId);
       if (known) return { known: true, key: "", breakdown: known };
-      const { data, error } = await db().from("brand_assets").select("storage_key").eq("id", assetId).single();
+      const { data, error } = await db().from("reference_videos").select("storage_key").eq("id", assetId).single();
       if (error) throw error;
+      if (!data.storage_key) throw new AppError("The reference video's file is gone. Add the video again.", "INVALID_INPUT", false);
       const res = await ai.analyzeVideo(publicUrl(data.storage_key), referenceVideoPrompt(), REFERENCE_VIDEO_JSON_SCHEMA);
       track(res.usage);
       const breakdown = referenceVideoSchema.parse(res.data);
@@ -111,7 +113,10 @@ export async function studyReference(step: Step, task: Task, db: () => SupabaseC
       }
       const breakdown = mergeReference(heard.breakdown, seen);
       if (!breakdown.scenes.length) throw new AppError("The reference video couldn't be split into scenes. Try another video.", "INVALID_INPUT", false);
-      const { error } = await db().from("brand_assets").update({ analysis: breakdown, ai_description: breakdown.summary || null }).eq("id", assetId);
+      const { error } = await db()
+        .from("reference_videos")
+        .update({ analysis: breakdown, summary: breakdown.summary || null, duration_sec: breakdown.duration || null, analyzed_at: new Date().toISOString() })
+        .eq("id", assetId);
       if (error) throw error;
       return { scenes: breakdown.scenes.length, fromFrames: !!seen };
     },

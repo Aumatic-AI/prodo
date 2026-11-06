@@ -4,6 +4,7 @@ import { MIX_VIDEO_SHARE, stylesFor, type StyleFormat } from "@/core/content/sty
 import type { ContentMix, ImageStyle, PeopleChoice, VideoStyle } from "@/core/onboarding/options";
 import type { FunnelStage } from "@/core/plans/types";
 import { addDays, zonedToUtc } from "@/lib/zoned-time";
+import type { ExistingPost } from "./existing";
 
 // The Planner's rule-based half (code, no AI): how many slots, on which days, platforms and
 // times, in which format and content style, for which pillar and goal, and which are experiments.
@@ -84,6 +85,8 @@ export interface SlotInput {
    * platform getting all of them and the others their share.
    */
   batch?: { counts: BatchCounts; days: string[] };
+  /** Posts already set for these days (scheduled by hand or planned before): the week plans around them */
+  existing?: ExistingPost[];
 }
 
 /** Local posting times that work on average, used until there are 10+ own posts to learn from. */
@@ -145,6 +148,28 @@ function spread(count: number, total: number): number[] {
   if (count >= total) return Array.from({ length: total }, (_, i) => i);
   return Array.from({ length: count }, (_, k) => Math.floor((k * total) / count + total / (2 * count)));
 }
+
+/**
+ * The day of each new post, in order: each goes to the emptiest day (counting the posts already
+ * there), and among equally empty days to the one furthest from the busier ones, so posts spread out.
+ */
+export function spreadDays(days: string[], taken: Map<string, number>, count: number): string[] {
+  const load = days.map((d) => taken.get(d) ?? 0);
+  const added = days.map(() => 0);
+  for (let k = 0; k < count; k++) {
+    const min = Math.min(...load);
+    const busier = days.map((_, i) => i).filter((i) => load[i] > min);
+    const gap = (i: number) => (busier.length ? Math.min(...busier.map((b) => Math.abs(b - i))) : 0);
+    let pick = -1;
+    for (let i = 0; i < days.length; i++) if (load[i] === min && (pick < 0 || gap(i) > gap(pick))) pick = i;
+    load[pick]++;
+    added[pick]++;
+  }
+  return days.flatMap((d, i) => Array<string>(added[i]).fill(d));
+}
+
+/** Videos, images (single or carousel) and text posts, for spreading each kind over the days. */
+const kindOf = (f: Format) => (f === "video" || f === "text" ? f : "image");
 
 /** Largest-remainder split of `total` slots by share. */
 export function allocate(total: number, shares: { id: string; share: number }[]): Map<string, number> {
@@ -259,8 +284,13 @@ export function planSlots(input: SlotInput): SlotPlan[] {
   const formatsOfBatch = batchFormatList?.filter((f) => weekly.some(([platform]) => allowedFormats([platform], videoAllowed).includes(f))) ?? null;
   const busiest = Math.max(1, ...weekly.map(([, n]) => n));
   const batchTotal = formatsOfBatch?.length ?? 0;
+  const existing = [...(input.existing ?? [])].sort((a, b) => a.day.localeCompare(b.day));
+  // A week's posts already set take their places: each platform plans only what's still missing
+  const setOn = (platform: string) => existing.filter((e) => e.platforms.includes(platform)).length;
   const counts = weekly.map(([platform, n]) =>
-    batch ? ([platform, Math.max(1, Math.round((n * batchTotal) / busiest))] as [string, number]) : ([platform, days.length < 7 ? Math.ceil((n * days.length) / 7) : n] as [string, number])
+    batch
+      ? ([platform, Math.max(1, Math.round((n * batchTotal) / busiest))] as [string, number])
+      : ([platform, Math.max(0, (days.length < 7 ? Math.ceil((n * days.length) / 7) : n) - setOn(platform))] as [string, number])
   );
   const total = Math.min(MAX_SLOTS, batch ? (counts.length ? batchTotal : 0) : Math.max(0, ...counts.map(([, n]) => n)));
   if (!total) return [];
@@ -290,30 +320,42 @@ export function planSlots(input: SlotInput): SlotPlan[] {
     objectiveSequence(mine.map((i) => pillars[i]), g).forEach((o, k) => (objectives[mine[k]] = o));
   }
   const experiments = new Set(spread(Math.round(total * EXPERIMENT_SHARE), total).map((i) => (i + 1) % total));
-  const perDay = new Map<string, number>();
+  // The posts already set count towards the week's format mix and fill their days first
+  const dayFormats = new Map<string, Format[]>();
+  for (const e of existing) {
+    used[e.format]++;
+    dayFormats.set(e.day, [...(dayFormats.get(e.day) ?? []), e.format]);
+  }
+  const slotDays = spreadDays(days, new Map([...dayFormats].map(([d, f]) => [d, f.length])), total);
   const lastFormat = new Map<string, Format>();
+  let seen = 0;
 
   return platformsBySlot.map((platforms, index) => {
-    const day = days[Math.floor((index * days.length) / total)];
+    const day = slotDays[index];
+    // The posts already set up to this day are the last ones on their platforms
+    for (; seen < existing.length && existing[seen].day <= day; seen++) existing[seen].platforms.forEach((p) => lastFormat.set(p, existing[seen].format));
     const lead = [...platforms].sort((a, b) => (input.postsPerWeek[b] ?? 0) - (input.postsPerWeek[a] ?? 0))[0];
     const base = input.bestTimes?.[lead] ?? DEFAULT_TIMES[lead] ?? "12:00";
-    // A second slot on the same day goes three hours later (an hour and a half when all the posts share one day)
-    const nth = perDay.get(day) ?? 0;
-    perDay.set(day, nth + 1);
+    // A second post on the same day goes three hours later (an hour and a half when all the posts share one day)
+    const sameDay = dayFormats.get(day) ?? [];
+    const nth = sameDay.length;
     const [h, m] = base.split(":").map(Number);
     const minutes = Math.min(22 * 60 + 30, h * 60 + m + nth * (days.length === 1 ? 90 : 180));
     const time = `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
 
     // Format: the most under-used one (by weight) the platforms take, never the same as the last
-    // post on any of these platforms when there's a choice
+    // post on any of these platforms when there's a choice. A kind the day already has counts as one
+    // more use, so videos (and images) spread over the week instead of bunching on one day.
     const allowed = allowedFormats(platforms, videoAllowed).filter((f) => (formatsOfBatch ? f === formatsOfBatch[index] && f !== "text" && styles[f].length > 0 : f === "text" || (weights[f] > 0 && styles[f].length)));
-    const ranked = [...allowed].sort((a, b) => used[a] / weights[a] - used[b] / weights[b]);
+    const behind = (f: Format) => (used[f] + (sameDay.some((g) => kindOf(g) === kindOf(f)) ? 1 : 0)) / weights[f];
+    const ranked = [...allowed].sort((a, b) => behind(a) - behind(b));
     // A format meant for more than half the posts (e.g. "mostly videos") may repeat
     const weightSum = allowed.reduce((sum, f) => sum + weights[f], 0) || 1;
     const dominant = ranked[0] && weights[ranked[0]] / weightSum > 0.5;
     const format = (dominant ? ranked[0] : ranked.find((f) => platforms.every((p) => lastFormat.get(p) !== f))) ?? ranked[0] ?? "static";
     used[format]++;
     platforms.forEach((p) => lastFormat.set(p, format));
+    dayFormats.set(day, [...sameDay, format]);
 
     const pillar = pillars[index];
     const goal = goals[secondGoal.has(index) ? 1 : 0] ?? null;

@@ -4,7 +4,7 @@ import { apiHandler } from "@/lib/api-handler";
 import { currentBusiness } from "@/core/business";
 import { AppError } from "@/core/errors";
 import { UPLOAD_RULES, extensionFor, uploadFolder, uploadProblem, type UploadPurpose } from "@/config/uploads";
-import { brandKey } from "@/providers/storage/paths";
+import { brandKey, referenceVideoKey } from "@/providers/storage/paths";
 import { signedUploadUrl } from "@/providers/storage/r2";
 
 const bodySchema = z.object({
@@ -22,6 +22,10 @@ export const POST = apiHandler(async (req: NextRequest) => {
   const { businessId } = await currentBusiness();
   // The file is named by the id its database row will get
   const id = crypto.randomUUID();
-  const key = brandKey(businessId, uploadFolder(purpose, contentType), id, extensionFor(contentType));
+  const rule: { kept?: false } = UPLOAD_RULES[purpose];
+  const key =
+    rule.kept === false
+      ? referenceVideoKey(businessId, id, extensionFor(contentType))
+      : brandKey(businessId, uploadFolder(purpose, contentType), id, extensionFor(contentType));
   return NextResponse.json({ id, key, url: await signedUploadUrl(key, contentType) });
 });

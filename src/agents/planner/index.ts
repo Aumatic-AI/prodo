@@ -12,6 +12,7 @@ import { PLANNER_BATCH_NOTE, PLANNER_SYSTEM, plannerSchema } from "@/prompts/age
 import { bestTimes, formatScores, loadPlannerContext, styleScores } from "./context";
 import { mergePlan, pillarMix } from "./merge";
 import { buildPlannerPrompt } from "./prompt";
+import { loadExisting } from "./existing";
 import { openPlan, saveBatch, savePlan } from "./save";
 import { openDays, planSlots } from "./slots";
 import { videoReady } from "@/providers/ffmpeg/client";
@@ -82,6 +83,10 @@ export const planner = inngest.createFunction(
         }
         // No video slots while the video renderer isn't set up (nothing would be spent on them)
         const video = await videoReady();
+        // A chosen day takes every post; otherwise the next 7 days (a batch) or the days left in the week
+        const days = batch ? (batch.date ? [firstDay] : Array.from({ length: 7 }, (_, i) => addDays(firstDay, i))) : openDays(weekStart, firstDay);
+        // Posts already set for these days (scheduled by hand, or made by Auto-create) are planned around
+        const existing = await loadExisting(db(), days, ctx.timezone);
         const result = planSlots({
           weekStart,
           firstDay,
@@ -97,9 +102,8 @@ export const planner = inngest.createFunction(
           styleScores: styleScores(ctx),
           formatScores: formatScores(ctx),
           bestTimes: bestTimes(ctx),
-          // The next 7 days, starting tomorrow
-          // A chosen day takes every post; otherwise the next 7 days
-          batch: batch ? { counts: batch, days: batch.date ? [firstDay] : Array.from({ length: 7 }, (_, i) => addDays(firstDay, i)) } : undefined,
+          batch: batch ? { counts: batch, days } : undefined,
+          existing,
         });
         // Every kind asked for needs a platform that takes it
         const missing = batch ? (["static", "carousel", "video"] as const).filter((f) => batch[f] > 0 && !result.some((r) => r.format === f)) : [];
@@ -119,15 +123,17 @@ export const planner = inngest.createFunction(
               ? "The only platforms set take video, and videos aren't set up yet. Connect the video renderer first."
               : ctx.rules.mix === "images"
                 ? "The only platforms set take video, and your content is set to images only. Change it in Settings, then plan again."
-                : "Nothing to plan for the days left this week.",
+                : existing.length
+                  ? `The days left this week already have their posts: ${existing.length} ${existing.length === 1 ? "is" : "are"} already scheduled or planned.`
+                  : "Nothing to plan for the days left this week.",
             "INVALID_INPUT",
             false
           );
         }
-        return { slots: result, firstDay, videoNote: video.ok ? null : video.reason };
+        return { slots: result, firstDay, existing: existing.length, videoNote: video.ok ? null : video.reason };
       },
       (r) =>
-        `Planned ${r.slots.length} slots from ${r.firstDay}: ${r.slots.filter((s) => s.isExperiment).length} experiments, ${[...new Set(r.slots.map((s) => s.format))].join(", ")}; styles ${[...new Set(r.slots.map((s) => s.style).filter(Boolean))].join(", ")}${r.videoNote ? " (no videos: the video renderer isn't set up)" : ""}`
+        `Planned ${r.slots.length} slots from ${r.firstDay}${r.existing ? ` around ${r.existing} posts already set` : ""}:${r.slots.filter((s) => s.isExperiment).length} experiments, ${[...new Set(r.slots.map((s) => s.format))].join(", ")}; styles ${[...new Set(r.slots.map((s) => s.style).filter(Boolean))].join(", ")}${r.videoNote ? " (no videos: the video renderer isn't set up)" : ""}`
     );
 
     const slots = planned.slots;

@@ -12,6 +12,8 @@ interface UploadRule {
   /** Brand folder the file goes in; null = photos or videos by its type */
   folder: BrandFolder | null;
   hint: string;
+  /** False: the file is only read, then storage deletes it (tmp/, 7 days) */
+  kept?: false;
 }
 
 // What each kind of upload accepts. Checked in the browser and again on the server.
@@ -23,8 +25,8 @@ export const UPLOAD_RULES = {
   media: { types: [...IMAGE_TYPES, ...VIDEO_TYPES], maxBytes: LIMITS.videoMaxBytes, folder: null, hint: MEDIA_HINT },
   // Posts and ads the client likes
   reference: { types: [...IMAGE_TYPES, ...VIDEO_TYPES], maxBytes: LIMITS.videoMaxBytes, folder: "references", hint: MEDIA_HINT },
-  // A video to make again for one post
-  referenceVideo: { types: VIDEO_TYPES, maxBytes: LIMITS.videoMaxBytes, folder: "references", hint: "MP4 or MOV, up to 100 MB" },
+  // A video to make again for one post: only its breakdown is kept (reference_videos), not the file
+  referenceVideo: { types: VIDEO_TYPES, maxBytes: LIMITS.videoMaxBytes, folder: "references", hint: "MP4 or MOV, up to 100 MB", kept: false },
 } satisfies Record<string, UploadRule>;
 
 export type UploadPurpose = keyof typeof UPLOAD_RULES;

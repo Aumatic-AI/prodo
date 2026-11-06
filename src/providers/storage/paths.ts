@@ -56,6 +56,15 @@ export function tmpKey(path: string): string {
   return `tmp/${path.replace(/^\/+/, "")}`;
 }
 
+/** Where a video to copy waits while it's read ("Copy a video"): only its breakdown is kept, the file goes after 7 days */
+export function referenceVideoFolder(businessId: string): string {
+  return tmpKey(`${safe(businessId, businessId)}/reference/`);
+}
+
+export function referenceVideoKey(businessId: string, id: string, ext: string): string {
+  return `${referenceVideoFolder(businessId)}${safe(businessId, id)}.${ext}`;
+}
+
 export function fontKey(file: string): string {
   return `shared/fonts/${safe("shared", file)}`;
 }

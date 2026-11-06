@@ -1,6 +1,6 @@
 # Database Schema
 
-28 tables + `businesses` in Supabase Postgres; files are in Cloudflare R2 (see File storage). This file is the current truth for the schema: every migration is listed here and every change explained. Migrations live in `supabase/migrations/` and are applied in order:
+29 tables + `businesses` in Supabase Postgres; files are in Cloudflare R2 (see File storage). This file is the current truth for the schema: every migration is listed here and every change explained. Migrations live in `supabase/migrations/` and are applied in order:
 
 | Migration | What |
 |---|---|
@@ -21,6 +21,7 @@
 | `0022_video_footage.sql` | `brand_assets.analysis` (jsonb): what the client's own video shows, logged once by Twelve Labs (usable moments with times, shot, people, talking and their words, subject position, text area) |
 | `0023_creative_knowledge.sql` | `plan_items.ad_objective` (awareness, converting, retargeting), `desire` (six permanent desires) and `awareness_level` (five levels), set by the Planner; `learnings` dimensions `ad_objective`, `desire`, `awareness_level`, `style_modifier` |
 | `0024_reference_video.sql` | `plan_items.reference_video_id` → `brand_assets` (a video the owner wants made again for the post's product; SET NULL), and a unique index on `brand_assets (id, business_id)` for the business-scoped foreign key |
+| `0025_reference_videos.sql` | `reference_videos` table: every video the owner copied ("Copy a video"), with its link, its numbers there, the product, the video made from it and its breakdown, kept for good; the file itself is not kept. The `brand_assets` reference videos used for posts move there with the same ids, and `plan_items.reference_video_id` now points at `reference_videos` |
 
 ### Changes to the original schema
 
@@ -186,8 +187,25 @@ Products and services in one table (replaces `business_profile.products`).
 `id`, `offering_id`, `source_id` (the website page a found photo came from, 0019), `kind` (`product_photo`\|`team`\|`location`\|`work`\|`reference_video`\|`doc`\|`person`\|`reference_image`\|`general`), `storage_key`, `ai_description` (one line about a photo, or a video's summary), `tags`, `analysis` (0022).
 
 - The client's own: `product_photo`, `team`, `location`, `work`, `person` (people who appear in posts), `general` (other own photos and videos). Ads use them directly or as reference images.
-- Other brands' posts the client likes: `reference_image`, `reference_video`. Studied for style and pacing, never used as the client's own.
+- Other brands' posts the client likes (onboarding's "Reference posts and ads"): `reference_image`, `reference_video`. Studied for style and pacing, never used as the client's own. A video to copy for one post is a `reference_videos` row instead (0025).
 - `analysis` (own videos only): `{duration, summary, orientation, moments: [{start, end, shows, shot, people, talking, product, quality, use, subject {x, y}, textArea, lines [{start, end, text}]}]}` from one Twelve Labs read; `{error}` when the video couldn't be read; null for photos and videos not watched yet. Partial index `idx_brand_assets_unwatched` finds the unwatched ones.
+
+### `reference_videos` — new (0025)
+Every video the owner gave to copy ("Copy a video"). A video someone liked enough to copy says something about what works, so its breakdown is kept for good, for later learning. The file is not kept.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | uuid PK | `plan_items.reference_video_id` points here (the post it was copied for) |
+| `source` | text | `upload` \| `link` |
+| `source_url` | text | The pasted link; null for uploads |
+| `platform` | text | `meta_ad` \| `instagram` \| `tiktok` \| `youtube` \| `facebook` \| `other` (a direct video file); null for uploads |
+| `source_meta` | jsonb | What the link's page said: Meta ads `{pageName, text}`; posts `{caption, publishedAt, views, likes, comments, shares, saves}`; `{}` for uploads |
+| `offering_id` | uuid FK → `offerings` | The product it was copied for |
+| `media_id` | uuid FK → `media` | The latest video made from it (set when the video is saved) |
+| `storage_key` | text | The file while it's read: `tmp/<business id>/reference/<id>.<ext>`, deleted by R2 after 7 days. Rows moved from `brand_assets` keep their old key |
+| `analysis` | jsonb | The scene-by-scene breakdown (`prompts/agents/reference-video.ts`: duration, summary, pacing, scenes, speech, sound, look, ending); null until read |
+| `summary`, `duration_sec`, `analyzed_at` | text, numeric, timestamptz | From the breakdown, for lists and searches |
+| `created_at` | timestamptz | |
 
 ### `competitors` — new
 `id`, `name`, `website`, `social_urls`, `analysis` (`{positioning, angles, offers, formats, hooks, gaps, followers, activeAds}`), `analyzed_at`, `source` (`client` \| `discovered` by the Social & Market Analyst; the wizard only shows and edits `client` rows), `relation` (`competitor` \| `inspiration`, 0019: brands the client admires are studied for style but never treated as rivals).
@@ -228,7 +246,7 @@ The core table: one row per slot with every creative decision.
 | `style` | text | The client's image or video style for the slot (`tips`, `showcase`…; `IMAGE_STYLES` / `VIDEO_STYLES` in `core/onboarding/options.ts`), picked by the Planner's code (0021). Null for text posts and older plans |
 | `pillar_id`, `persona_id`, `offering_id`, `offer_id` | uuid FKs | |
 | `funnel_stage`, `objective` | text | |
-| `reference_video_id` | uuid FK → `brand_assets` | A reference video for this post (0024): its scene-by-scene breakdown is saved on that asset's `analysis` and the video is made the same way for the product. Null for most posts |
+| `reference_video_id` | uuid FK → `reference_videos` | A reference video for this post (0024; points at `reference_videos` since 0025): its scene-by-scene breakdown is saved on that row's `analysis` and the video is made the same way for the product. Null for most posts |
 | `ad_objective`, `desire`, `awareness_level` | text | The Planner's strategy for the slot (0023): what it is for, the one desire it taps, the audience's awareness. Null on older plans |
 | `angle`, `framework`, `hook_type`, `hook_text` | text | Tags the learning loop scores |
 | `levers` | text[] | `social_proof`, `scarcity`, `authority`… |
@@ -316,7 +334,9 @@ Every one also includes `business_id` since 0017 (`(col, business_id) → parent
 | `plan_items.plan_id` | `content_plans` | CASCADE |
 | `plan_items.pillar_id` | `content_pillars` | SET NULL |
 | `plan_items.persona_id` | `personas` | SET NULL |
-| `plan_items.reference_video_id` | `brand_assets` | SET NULL |
+| `plan_items.reference_video_id` | `reference_videos` | SET NULL |
+| `reference_videos.offering_id` | `offerings` | SET NULL |
+| `reference_videos.media_id` | `media` | SET NULL |
 | `plan_items.offering_id` | `offerings` | SET NULL |
 | `plan_items.offer_id` | `offers` | SET NULL |
 | `plan_items.selected_media_id` | `media` | SET NULL |
