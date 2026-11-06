@@ -49,6 +49,12 @@ export function uploadFolder(purpose: UploadPurpose, type: string): BrandFolder 
   return rule.folder ?? (VIDEO_TYPES.includes(type) ? "videos" : "photos");
 }
 
+/** False when the file is only read and storage deletes it (a video to copy). */
+export function keptUpload(purpose: UploadPurpose): boolean {
+  const rule: UploadRule = UPLOAD_RULES[purpose];
+  return rule.kept !== false;
+}
+
 /** Plain reason a file can't be uploaded, or null when it's fine. */
 export function uploadProblem(purpose: UploadPurpose, type: string, size: number): string | null {
   const rule: UploadRule = UPLOAD_RULES[purpose];

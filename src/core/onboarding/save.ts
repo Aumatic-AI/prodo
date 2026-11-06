@@ -29,7 +29,7 @@ export type StepSlice = "content" | "basics" | "products" | "services" | null;
 
 async function businessSlice(db: SupabaseClient): Promise<"products" | "services"> {
   const { data } = await db.from("business_profile").select("business_type").single();
-  if (!data?.business_type) throw new AppError("Finish the basics first.", "INVALID_INPUT", false);
+  if (!data?.business_type) throw new AppError("Pick what you sell in Your content first.", "INVALID_INPUT", false);
   return data.business_type === "service" ? "services" : "products";
 }
 

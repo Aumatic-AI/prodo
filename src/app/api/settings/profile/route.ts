@@ -17,7 +17,7 @@ function pick({ basics: b, content }: OnboardingDraft): BusinessProfileDraft {
     description: b.description,
     website: b.website,
     socials: b.socials,
-    businessType: b.businessType,
+    businessType: content.businessType,
     countries: b.countries,
     cities: b.cities,
     language: b.language,

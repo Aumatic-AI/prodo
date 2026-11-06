@@ -130,6 +130,7 @@ export async function loadOnboarding(db: SupabaseClient): Promise<OnboardingDraf
     status: p.onboarding_status,
     scan: raw.scan ?? null,
     content: {
+      businessType: p.business_type,
       goals: prefs.goals ?? (p.primary_goal ? [p.primary_goal] : []),
       mix: prefs.mix ?? null,
       postsPerWeek: Object.fromEntries(POSTING_PLATFORMS.map((pl) => [pl, posting[pl] ?? 0])) as Record<PostingPlatform, number>,
@@ -157,7 +158,6 @@ export async function loadOnboarding(db: SupabaseClient): Promise<OnboardingDraf
       description: p.description ?? "",
       website: p.website ?? "",
       socials: p.social_urls ?? {},
-      businessType: p.business_type,
       countries,
       cities: (p.cities ?? []).join(", "),
       language: p.language ?? "en",

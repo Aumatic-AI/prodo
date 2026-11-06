@@ -2,14 +2,14 @@
 
 import { POSTING_PLATFORMS, VIDEO_ONLY_PLATFORMS, soundNeeds, type ImageStyle, type VideoStyle } from "@/core/onboarding/options";
 import { useOnboarding } from "../../store/OnboardingStoreProvider";
-import { GOAL_OPTIONS, MUSIC_OPTIONS, POSTING_LABELS } from "../../config";
+import { BUSINESS_TYPE_OPTIONS, GOAL_OPTIONS, MUSIC_OPTIONS, POSTING_LABELS } from "../../config";
 import { LOGO_OPTIONS, MIX_OPTIONS, PEOPLE_OPTIONS, RELATION_OPTIONS, imageStyleWords, videoStyleWords } from "../content/labels";
 import { Badge, Chips, ExternalLink, Group, ReviewCard, Row, Rows, Thumbs } from "./ReviewCard";
 import { labelOf } from "./format";
 
 export function ContentReview() {
   const c = useOnboarding((s) => s.draft.content);
-  const service = useOnboarding((s) => s.draft.basics.businessType === "service");
+  const service = c.businessType === "service";
   const videos = c.mix !== "images";
   const counted = POSTING_PLATFORMS.filter((p) => !(!videos && (VIDEO_ONLY_PLATFORMS as readonly string[]).includes(p)));
   const plan = counted.filter((p) => (c.postsPerWeek[p] ?? 0) > 0);
@@ -22,6 +22,7 @@ export function ContentReview() {
     <ReviewCard title="Your content" step="content">
       <Group title="Goals and formats">
         <Rows>
+          <Row label="What you sell">{labelOf(BUSINESS_TYPE_OPTIONS, c.businessType)}</Row>
           <Row label="Goals (in order)">
             <Chips numbered items={c.goals.map((g) => labelOf(GOAL_OPTIONS, g))} />
           </Row>

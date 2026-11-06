@@ -64,6 +64,8 @@ export const websiteSchema = z.object({ website: link });
 // ---------- Step 1 · Your content ----------
 
 export const contentSchema = z.object({
+  // Asked first: the style names and the "Your business" step follow it (the website scan fills it when it can)
+  businessType: choice(BUSINESS_TYPES, "Pick what you sell"),
   // In order: the first goal drives most posts
   goals: ranked(GOALS, MAX_GOALS).refine((v) => v.length > 0, "Pick your main goal"),
   mix: choice(CONTENT_MIXES, "Pick images, videos or a mix"),
@@ -144,7 +146,9 @@ export const contentSettingsSchema = contentSchema
   .extend(ctaShape)
   .superRefine(ctaHasLink);
 
+// What the business sells is asked in "Your content", so Basics leaves it out
 export const basicsSchema = profileSchema
+  .omit({ businessType: true })
   .extend({
     colors: z.object({ primary: hex.nullable(), secondary: hex.nullable(), accent: hex.nullable(), bg: hex, text: hex }),
     fonts: z.object({ heading: z.string().trim().max(80).nullable(), body: z.string().trim().max(80).nullable() }),

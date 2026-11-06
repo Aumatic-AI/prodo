@@ -4,7 +4,7 @@ import { TONE_AXES } from "@/core/onboarding/options";
 import { countryName } from "@/config/countries";
 import { BRAND_COLORS } from "@/components/kit/ColorTile";
 import { useOnboarding } from "../../store/OnboardingStoreProvider";
-import { BUSINESS_TYPE_OPTIONS, CTA_OPTIONS, INDUSTRY_OPTIONS, LANGUAGE_OPTIONS, SOCIAL_LABELS, TONE_LABELS } from "../../config";
+import { CTA_OPTIONS, INDUSTRY_OPTIONS, LANGUAGE_OPTIONS, SOCIAL_LABELS, TONE_LABELS } from "../../config";
 import { BulletList, Chips, ExternalLink, Group, ReviewCard, Row, Rows, Thumbs } from "./ReviewCard";
 import { labelOf } from "./format";
 
@@ -34,7 +34,6 @@ export function BasicsReview() {
           <Row label="Business name">{b.name}</Row>
           <Row label="Logo">{b.logoKey && <Thumbs items={[{ key: b.logoKey }]} />}</Row>
           <Row label="About the business">{b.description && <span className="whitespace-pre-line font-normal">{b.description}</span>}</Row>
-          <Row label="What you sell">{labelOf(BUSINESS_TYPE_OPTIONS, b.businessType)}</Row>
         </Rows>
       </Group>
 

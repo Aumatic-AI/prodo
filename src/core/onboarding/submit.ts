@@ -12,7 +12,7 @@ export async function firstIncompleteStep(db: SupabaseClient): Promise<StepKey |
   const draft = await loadOnboarding(db);
   if (!STEP_SCHEMAS.content.safeParse(draft.content).success) return "content";
   if (!STEP_SCHEMAS.basics.safeParse(draft.basics).success) return "basics";
-  const business = draft.basics.businessType === "service" ? STEP_SCHEMAS.services.safeParse(draft.services) : STEP_SCHEMAS.products.safeParse(draft.products);
+  const business = draft.content.businessType === "service" ? STEP_SCHEMAS.services.safeParse(draft.services) : STEP_SCHEMAS.products.safeParse(draft.products);
   if (!business.success) return "business";
   return null;
 }

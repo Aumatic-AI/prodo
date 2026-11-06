@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Basics, BusinessProfile } from "./schemas";
+import type { BusinessType } from "./options";
 import type { ContentPrefs } from "./load";
 import { saveProgress } from "./sync";
 import { getKit, saveKit } from "@/core/brand/kit";
@@ -13,7 +14,7 @@ const cityList = (cities: string) =>
     .filter(Boolean);
 
 /** Profile columns from the shared profile fields. */
-function profileColumns(b: Omit<Basics, "colors" | "fonts" | "cta" | "ctaLinks" | "tone" | "avoidWords" | "disclaimers">) {
+function profileColumns(b: Omit<Basics, "colors" | "fonts" | "cta" | "ctaLinks" | "tone" | "avoidWords" | "disclaimers"> & { businessType?: BusinessType }) {
   return {
     name: b.name,
     logo_key: b.logoKey,
@@ -21,7 +22,8 @@ function profileColumns(b: Omit<Basics, "colors" | "fonts" | "cta" | "ctaLinks" 
     website: b.website || null,
     // Only keep socials that were filled in
     social_urls: Object.fromEntries(Object.entries(b.socials).filter(([, url]) => url)),
-    business_type: b.businessType,
+    // Settings → Business profile edits it; onboarding saves it with "Your content"
+    ...(b.businessType ? { business_type: b.businessType } : {}),
     countries: b.countries,
     cities: cityList(b.cities),
     language: b.language,

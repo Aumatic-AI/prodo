@@ -26,7 +26,7 @@ function useSteps() {
 export function Stepper() {
   const router = useRouter();
   const prefetch = usePrefetchStep();
-  const businessType = useOnboarding((s) => s.draft.basics.businessType);
+  const businessType = useOnboarding((s) => s.draft.content.businessType);
   const { current, currentIndex, reached } = useSteps();
 
   const label = (step: StepKey) => {

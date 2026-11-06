@@ -68,6 +68,7 @@ export async function saveContent(db: SupabaseClient, v: Content) {
     db,
     "basics",
     {
+      business_type: v.businessType,
       content_prefs: prefs,
       // The first goal is the main one; older code reads this column
       primary_goal: v.goals[0],

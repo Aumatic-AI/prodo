@@ -130,8 +130,11 @@ export function createOnboardingStore(initial: OnboardingDraft) {
         const slices: Slice[] = ["content", "basics", "products", "services"];
         const clean = slices.filter((k) => !s.dirty[k]);
         const pick = (from: OnboardingDraft) => Object.fromEntries(clean.map((k) => [k, from[k]]));
+        // "What do you sell?" still open on an edited step: the scan's answer fills it anyway
+        const content =
+          s.dirty.content && !s.draft.content.businessType && fresh.content.businessType ? { content: { ...s.draft.content, businessType: fresh.content.businessType } } : {};
         return {
-          draft: { ...s.draft, ...pick(fresh), step: fresh.step, status: fresh.status, scan: fresh.scan },
+          draft: { ...s.draft, ...pick(fresh), ...content, step: fresh.step, status: fresh.status, scan: fresh.scan },
           saved: { ...s.saved, ...pick(fresh), step: fresh.step, status: fresh.status, scan: fresh.scan },
         };
       }),

@@ -30,7 +30,7 @@ export function OnboardingStepPage({ step }: { step: StepRoute }) {
   const router = useRouter();
   const furthest = useOnboarding((s) => s.draft.step);
   const status = useOnboarding((s) => s.draft.status);
-  const isService = useOnboarding((s) => s.draft.basics.businessType === "service");
+  const isService = useOnboarding((s) => s.draft.content.businessType === "service");
   const target = redirectFor(step, furthest, status);
 
   useEffect(() => {

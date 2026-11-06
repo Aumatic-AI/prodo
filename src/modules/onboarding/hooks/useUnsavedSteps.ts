@@ -11,7 +11,7 @@ export function useUnsavedSteps(): { step: StepKey; label: string }[] {
   // Only plain values come out of the store (a new list each time would re-render forever)
   const { isService, content, basics, products, services } = useOnboarding(
     useShallow((s) => ({
-      isService: s.draft.basics.businessType === "service",
+      isService: s.draft.content.businessType === "service",
       content: s.dirty.content,
       basics: s.dirty.basics,
       products: s.dirty.products,

@@ -5,11 +5,11 @@ import type { MediaUpload } from "@/core/onboarding/schemas";
 import { ChoiceCards, Pills, RankedChoiceCards } from "@/components/kit/choices";
 import { MediaUploader, isVideoKey } from "@/components/kit/MediaUploader";
 import { TagInput } from "@/components/kit/TagInput";
-import { OptionalBadge, Section } from "../../components/blocks";
+import { FromSiteBadge, OptionalBadge, Section } from "../../components/blocks";
 import { Field } from "../../components/form/Field";
 import { StepLayout } from "../../components/shell/StepLayout";
 import { useOnboarding, useSlice } from "../../store/OnboardingStoreProvider";
-import { GOAL_OPTIONS, MUSIC_OPTIONS, STEP_META } from "../../config";
+import { BUSINESS_TYPE_OPTIONS, GOAL_OPTIONS, MUSIC_OPTIONS, STEP_META } from "../../config";
 import { LOGO_OPTIONS, MIX_OPTIONS, PEOPLE_OPTIONS } from "./labels";
 import { PostingPlan } from "./PostingPlan";
 import { StylePicker } from "./StylePicker";
@@ -23,7 +23,8 @@ const asMedia = (upload: { id: string; key: string }): MediaUpload => ({ ...uplo
 // Later sections hide when an earlier answer makes them pointless (images only → no video questions).
 export function ContentStep() {
   const { value: v, update } = useSlice("content");
-  const service = useOnboarding((s) => s.draft.basics.businessType === "service");
+  const service = v.businessType === "service";
+  const typeFromSite = useOnboarding((s) => s.draft.scan?.filled?.includes("businessType") ?? false);
   const language = useOnboarding((s) => s.draft.basics.language);
   const set = (patch: Partial<typeof v>) => update("content", patch);
   const videos = v.mix !== "images";
@@ -33,6 +34,16 @@ export function ContentStep() {
 
   return (
     <StepLayout step="content" title={STEP_META.content.title} lead={STEP_META.content.lead}>
+      <Section
+        title="What do you sell?"
+        description="Decides the kinds of posts below and your next steps."
+        badge={typeFromSite && v.businessType ? <FromSiteBadge /> : undefined}
+      >
+        <Field path="businessType">
+          <ChoiceCards label="What do you sell?" options={BUSINESS_TYPE_OPTIONS} value={v.businessType} onChange={(businessType) => set({ businessType })} />
+        </Field>
+      </Section>
+
       <Section title="What are your main goals?" description={`Pick up to ${MAX_GOALS}, most important first. The first is your main goal and drives most posts.`}>
         <Field path="goals">
           <RankedChoiceCards label="Main goals" options={GOAL_OPTIONS} value={v.goals as Goal[]} max={MAX_GOALS} onChange={(goals) => set({ goals })} />

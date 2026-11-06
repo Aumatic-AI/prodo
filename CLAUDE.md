@@ -104,7 +104,7 @@ No unit test suite yet; the offline checks above are the tests. Inngest dev serv
 
 ### Onboarding module (`src/modules/onboarding/`)
 
-- Steps `website` (start screen; starts the website scan, `src/jobs/onboarding-scan.ts`) `→ content → basics → business (products or services) → connect → review`, then `progress` (live research) and `bible` (review and approve the Brand Bible). Order and helpers in `src/core/onboarding/steps.ts`. Rows the scan found load with `found: true`; saving the step confirms them. See `docs/technical.md` → Onboarding flow.
+- Steps `website` (start screen; starts the website scan, `src/jobs/onboarding-scan.ts`) `→ content (asks "What do you sell?" first) → basics → business (products or services) → connect → review`, then `progress` (live research) and `bible` (review and approve the Brand Bible). Order and helpers in `src/core/onboarding/steps.ts`. Rows the scan found load with `found: true`; saving the step confirms them. See `docs/technical.md` → Onboarding flow.
 - One zod schema per step in `src/core/onboarding/schemas.ts`, shared by the browser (field errors) and the server (checks). Error paths are keys like `products.0.name`.
 - Server: `load.ts` builds the whole draft from the tables; `save-*.ts` save one step each (rows are upserted by client-made UUIDs, removed ones archived or deleted); `save.ts` dispatches; `submit.ts` locks it. Settings reuse them: `saveProfile` (Business profile) and `core/content/settings.ts` (Content).
 - Client: `store/` (Zustand draft, errors, dirty flags), `hooks/useStepSave` (clean → validate → PUT → merge), `components/form/*`, `steps/<step>/*`. `StylePicker` and `VoicePicker` take their values as props, so Settings → Content reuses them.

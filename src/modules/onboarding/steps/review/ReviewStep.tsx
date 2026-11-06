@@ -18,7 +18,7 @@ import { button, sectionTitle } from "@/components/kit/styles";
 import { cn } from "@/lib/utils";
 
 export function ReviewStep() {
-  const isService = useOnboarding((s) => s.draft.basics.businessType === "service");
+  const isService = useOnboarding((s) => s.draft.content.businessType === "service");
   const scanned = useOnboarding((s) => s.draft.scan?.state === "done" && s.draft.scan.website === s.draft.basics.website);
   const unsaved = useUnsavedSteps();
   const dirty = unsaved.length > 0;

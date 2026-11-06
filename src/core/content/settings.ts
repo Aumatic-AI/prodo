@@ -19,7 +19,7 @@ export interface ContentSettingsView {
 
 function pick({ content: c, basics: b }: OnboardingDraft): ContentSettingsView {
   return {
-    service: b.businessType === "service",
+    service: c.businessType === "service",
     language: b.language,
     values: {
       mix: c.mix,

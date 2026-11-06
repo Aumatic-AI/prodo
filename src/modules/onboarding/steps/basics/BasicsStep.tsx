@@ -17,7 +17,6 @@ import { FontSelect } from "@/components/kit/FontSelect";
 import { StepLayout } from "../../components/shell/StepLayout";
 import { useOnboarding, useSlice } from "../../store/OnboardingStoreProvider";
 import {
-  BUSINESS_TYPE_OPTIONS,
   CTA_OPTIONS,
   CURRENCY_OPTIONS,
   INDUSTRY_OPTIONS,
@@ -82,12 +81,6 @@ export function BasicsStep() {
                 maxLength={LIMITS.descriptionMaxChars}
                 placeholder="What you sell, who it's for, and what makes you different."
               />
-            </Field>
-          </Section>
-
-          <Section title="What do you sell?" description="This decides the next step and which ad formats fit you best." badge={fromSite("businessType")}>
-            <Field path="businessType">
-              <ChoiceCards label="What do you sell?" options={BUSINESS_TYPE_OPTIONS} value={b.businessType} onChange={(businessType) => set({ businessType })} />
             </Field>
           </Section>
 
