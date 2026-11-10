@@ -4,7 +4,7 @@ import { AppError, notConfigured } from "@/core/errors";
 import { cleanReason } from "@/core/error-text";
 import { replyError, request, type KnownErrors } from "@/providers/http";
 import type { Result, Usage } from "@/providers/usage";
-import type { AdCreative, AdvertiserMatch, ReadablePlatform, SocialPost, SocialProfile, WebResult } from "./types";
+import type { AdCreative, AdvertiserMatch, LibraryAd, LibraryPage, ReadablePlatform, SocialPost, SocialProfile, WebResult } from "./types";
 
 // Public social profiles, posts, ad libraries and Google search. 1 credit per call for the
 // endpoints used here; the response says what it charged.
@@ -156,6 +156,49 @@ export async function metaAds(pageId: string, country?: string): Promise<Result<
   });
   return { data: ads, usage };
 }
+
+/** A library result as a video ad, or null when it has no video (only video ads are asked for, but carousels slip in). */
+function libraryAd(a: any): LibraryAd | null {
+  const snap = a?.snapshot ?? {};
+  const video = snap.videos?.find((v: any) => v.video_hd_url || v.video_sd_url) ?? snap.cards?.find((c: any) => c.video_hd_url || c.video_sd_url);
+  const videoUrl = video?.video_hd_url || video?.video_sd_url;
+  if (!videoUrl || !a?.ad_archive_id) return null;
+  const text = typeof snap.body === "string" ? snap.body : (snap.body?.text ?? video?.body);
+  return {
+    id: String(a.ad_archive_id),
+    brand: a.page_name ?? snap.page_name ?? "",
+    brandImage: snap.page_profile_picture_url || undefined,
+    // Dynamic ads keep their template markers ({{product.name}}); they say nothing to a person
+    text: typeof text === "string" && !/^\{\{.*\}\}$/.test(text.trim()) ? text : undefined,
+    videoUrl,
+    previewUrl: video?.video_preview_image_url || undefined,
+    startedAt: isoFromSeconds(a.start_date),
+    platforms: (Array.isArray(a.publisher_platform) ? a.publisher_platform : []).map((p: unknown) => String(p).toLowerCase()),
+    link: `https://www.facebook.com/ads/library/?id=${a.ad_archive_id}`,
+  };
+}
+
+/** The video ads on one results page; versions of one ad (same collation id) show once. */
+function libraryPage(results: any[], cursor: unknown): LibraryPage {
+  const seen = new Set<string>();
+  const ads: LibraryAd[] = [];
+  for (const a of results) {
+    const group = String(a?.collation_id ?? a?.ad_archive_id ?? "");
+    if (group && seen.has(group)) continue;
+    const ad = libraryAd(a);
+    if (!ad) continue;
+    seen.add(group);
+    ads.push(ad);
+  }
+  return { ads, cursor: typeof cursor === "string" && cursor ? cursor : null };
+}
+
+/** Active video ads whose words match a keyword ("hair transplant"), most seen first. 1 credit a page. */
+export async function metaLibrarySearch(query: string, country: string, cursor?: string): Promise<Result<LibraryPage>> {
+  const { body, usage } = await get("/v1/facebook/adLibrary/search/ads", { query, country, status: "ACTIVE", media_type: "VIDEO", cursor });
+  return { data: libraryPage(body?.searchResults ?? [], body?.cursor), usage };
+}
+
 
 // ---------- Profiles ----------
 

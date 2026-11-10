@@ -56,6 +56,10 @@ export const ai = {
     meta: ScrapeCreators.metaAds,
     /** One Meta Ad Library ad from its link (Copy a video) */
     metaAd: ScrapeCreators.metaAd,
+    /** The Ad library screen: active video ads whose words match a search, a page at a time */
+    library: {
+      search: ScrapeCreators.metaLibrarySearch,
+    },
   },
   social: {
     profile: ScrapeCreators.profile,
@@ -66,4 +70,4 @@ export const ai = {
 
 export type { KieAspectRatio, TaskStatus } from "./kie";
 export type { Speech, Voice, VoiceFilters, VoicePage } from "./elevenlabs";
-export type { AdCreative, SocialPost, SocialProfile, WebResult } from "@/providers/social/types";
+export type { AdCreative, LibraryAd, LibraryPage, SocialPost, SocialProfile, WebResult } from "@/providers/social/types";

@@ -7,7 +7,7 @@ import { ChoiceCards } from "@/components/kit/choices";
 import { DatePicker } from "@/components/kit/DatePicker";
 import { Field } from "@/components/kit/Field";
 import { MediaUploader } from "@/components/kit/MediaUploader";
-import { TextArea, TextInput } from "@/components/kit/inputs";
+import { TextArea } from "@/components/kit/inputs";
 import { Modal } from "@/components/kit/Modal";
 import { Select } from "@/components/kit/Select";
 import { TimePicker } from "@/components/kit/TimePicker";
@@ -20,6 +20,7 @@ import { styleChoices } from "@/core/content/styles";
 import { apiFetch } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { useResource } from "@/modules/brand/hooks/useResource";
+import { EMPTY_VIDEO_TO_COPY, VideoToCopy, videoToCopyInput, videoToCopyMissing } from "@/modules/library/components/ad-library/VideoToCopy";
 import { useCreateAd } from "../hooks/usePlan";
 
 /** The formats, plus copying a video the owner likes */
@@ -70,8 +71,7 @@ export function CreateAdModal({ open, onOpenChange, onCreated }: { open: boolean
   const [style, setStyle] = useState(AUTO);
   const styles = useMemo(() => (copying ? [] : styleOptions(made)), [copying, made]);
   const [when, setWhen] = useState(tomorrow);
-  const [reference, setReference] = useState<Upload[]>([]);
-  const [refLink, setRefLink] = useState("");
+  const [video, setVideo] = useState(EMPTY_VIDEO_TO_COPY);
   // Image ads: an ad the owner likes, made the same way
   const [liked, setLiked] = useState<Upload[]>([]);
 
@@ -90,15 +90,13 @@ export function CreateAdModal({ open, onOpenChange, onCreated }: { open: boolean
       slotAt,
       // A style that doesn't fit the format (after switching formats) falls back to the top pick
       style: !copying && style !== AUTO && styles.some((s) => s.value === style) ? style : null,
-      referenceVideoKey: copying ? (reference[0]?.key ?? null) : null,
-      referenceUrl: copying && !reference.length && refLink.trim() ? refLink.trim() : null,
+      ...(copying ? videoToCopyInput(video) : { referenceVideoKey: null, referenceUrl: null }),
       referenceImageKey: made === "static" ? (liked[0]?.key ?? null) : null,
     });
     onCreated(item.id, item.slot_at);
     onOpenChange(false);
     setIdea("");
-    setReference([]);
-    setRefLink("");
+    setVideo(EMPTY_VIDEO_TO_COPY);
     setLiked([]);
   }
 
@@ -112,7 +110,7 @@ export function CreateAdModal({ open, onOpenChange, onCreated }: { open: boolean
       footer={
         <div className="flex flex-wrap items-center justify-between gap-3">
           <span className="text-[13px] text-ob-muted">Usually ready in 2–4 minutes for images, about 10 for videos.</span>
-          <button type="button" className={button()} disabled={create.isPending || !usable.length || (copying ? (!reference.length && refLink.trim().length < 5) || offeringId === NONE : idea.trim().length < 3)} onClick={submit}>
+          <button type="button" className={button()} disabled={create.isPending || !usable.length || (copying ? !!videoToCopyMissing(video) || offeringId === NONE : idea.trim().length < 3)} onClick={submit}>
             <Sparkles size={16} /> {create.isPending ? "Starting…" : "Create ad"}
           </button>
         </div>
@@ -149,14 +147,7 @@ export function CreateAdModal({ open, onOpenChange, onCreated }: { open: boolean
 
         {copying ? (
           <>
-            <Field label="Video to copy" hint="Everything comes from this video: its scenes, timing, shots, pace, text and sound. Only the product is yours.">
-              <MediaUploader purpose="referenceVideo" max={1} value={reference} onChange={setReference} />
-            </Field>
-            {!reference.length && (
-              <Field label="Or paste a link" htmlFor="ref-link" optional hint="A Meta Ad Library ad, an Instagram, TikTok or YouTube video, or a link to a video file.">
-                <TextInput id="ref-link" value={refLink} onValueChange={setRefLink} placeholder="https://www.facebook.com/ads/library/?id=…" />
-              </Field>
-            )}
+            <VideoToCopy id="ref-link" value={video} onChange={setVideo} />
             <Field label="Product">
               <Select
                 value={offeringId === NONE ? null : offeringId}

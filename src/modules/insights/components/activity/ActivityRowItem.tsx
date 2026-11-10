@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Activity, ArrowUpRight, BadgeCheck, BookOpen, CalendarRange, Clapperboard, Globe, LineChart, Loader2, Palette, PenTool, Send, Share2, TriangleAlert, type LucideIcon } from "lucide-react";
+import { Activity, ArrowUpRight, BadgeCheck, BookOpen, CalendarRange, Clapperboard, Globe, Library, LineChart, Loader2, Palette, PenTool, Send, Share2, TriangleAlert, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AGENT_NAMES } from "@/modules/week/lib/status";
 import type { ActivityItem } from "../../hooks/useInsights";
@@ -16,6 +16,7 @@ export const AGENT_ICON: Record<string, LucideIcon> = {
   qa_critic: BadgeCheck,
   publisher: Send,
   performance_analyst: LineChart,
+  ad_library: Library,
 };
 
 const time = (iso: string) => new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit" }).format(new Date(iso));

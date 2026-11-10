@@ -17,4 +17,8 @@ export const LIMITS = {
   /** A written answer from the language model: a full video brief takes over a minute */
   modelTimeoutMs: 4 * 60_000,
   downloadTimeoutMs: 5 * 60_000,
+  /** Ad library pages are kept this long: ads change slowly, and Meta's video links last a few days */
+  adLibraryCacheHours: 48,
+  /** Live Ad library calls (1 ScrapeCreators credit each) a business can make in a day (UTC) */
+  adLibraryCallsPerDay: 30,
 } as const;

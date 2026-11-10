@@ -48,6 +48,33 @@ export interface AdCreative {
   imageUrl?: string;
 }
 
+/** One video ad from the Meta Ad Library, as the Ad library screen shows it. */
+export interface LibraryAd {
+  /** The library's ad id */
+  id: string;
+  /** The advertiser's page name */
+  brand: string;
+  /** The advertiser's profile picture */
+  brandImage?: string;
+  text?: string;
+  /** The video file (links expire after a few days) */
+  videoUrl: string;
+  /** The video's first frame */
+  previewUrl?: string;
+  /** When it started running (ISO) */
+  startedAt?: string;
+  /** Where it runs: facebook, instagram, messenger, audience_network… */
+  platforms: string[];
+  /** The ad's page in the Meta Ad Library */
+  link: string;
+}
+
+/** One page of library results, and where the next page starts (null on the last one). */
+export interface LibraryPage {
+  ads: LibraryAd[];
+  cursor: string | null;
+}
+
 export interface WebResult {
   url: string;
   title: string;

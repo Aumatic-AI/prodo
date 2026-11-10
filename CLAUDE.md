@@ -30,7 +30,7 @@ Older planning pages (the Blueprint, Data Model and Sprint plans on claude.ai) a
 
 - Built: onboarding v2 (website scan first) → brand research (agents 1–4) → Brand Bible approval → weekly loop (agents 5–9) → learning loop (agent 10). Manual Media, Posts and Calendar screens. Performance, Activity and Costs screens. Settings: Business profile, Content, Automation, Connected accounts.
 - Videos: every video is drawn by Remotion on our worker from a Timeline our code builds (storylines per style, scene library, five looks, captions, cards, stickers, transitions, sound effects). The client's own videos are watched for usable moments and used in scenes. See `docs/technical.md` → Videos.
-- Files are in Cloudflare R2; the database is Supabase project `focaedtidoocuixiupxn`; migrations 0001–0022 are applied; 0023 (creative knowledge), 0024 (reference video per post), 0025 (reference videos table) and 0026 (reference image per image ad) are written and wait for the user to run them, in order.
+- Files are in Cloudflare R2; the database is Supabase project `focaedtidoocuixiupxn`; migrations 0001–0025 and 0027 (Ad library searches) are applied; 0026 (reference image per image ad) is written and waits for the user to run it.
 - Not yet: a real end-to-end weekly run with paid calls, the publisher tested end to end, the worker update deployed to the VPS, email sending (`EMAIL_ENABLED` off), a custom domain for files (still `r2.dev`).
 
 ### Decisions worth knowing
@@ -198,11 +198,11 @@ npx supabase gen types typescript --project-id focaedtidoocuixiupxn --schema pub
 
 Never append `2>&1` to the types command — stderr noise breaks the generated file. In PowerShell, `>` writes UTF-16, which breaks lint and the build; use `npx supabase gen types typescript --project-id focaedtidoocuixiupxn --schema public | Out-File -Encoding utf8 src/types/database.ts`.
 
-**Migrations**: never edit an applied migration; always add a new one, and list it in `docs/database.md`. Migrations 0001–0022 were applied by pasting them into the Supabase SQL Editor (0023–0026 are pending), so the CLI's history doesn't know them. Before the first `db push`, run `npx supabase migration repair --status applied 0001 0002 0003 0004 0005 0006 0007 0008 0009 0010 0011 0012 0013 0014 0015 0016 0017 0018 0019 0020 0021 0022`.
+**Migrations**: never edit an applied migration; always add a new one, and list it in `docs/database.md`. Migrations 0001–0025 and 0027 were applied by pasting them into the Supabase SQL Editor (0026 is pending), so the CLI's history doesn't know them. Before the first `db push`, run `npx supabase migration repair --status applied 0001 0002 0003 0004 0005 0006 0007 0008 0009 0010 0011 0012 0013 0014 0015 0016 0017 0018 0019 0020 0021 0022 0023 0024 0025 0027`.
 
 ### Schema rules
 
-- 29 tables plus `businesses`, all in `docs/database.md` (that file is the current truth). Every table has `business_id`. Settings tables (`business_profile`, `app_settings`, `brand_kit`) have one row per business (primary key `business_id`), made when the business is created.
+- 30 tables plus `businesses`, all in `docs/database.md` (that file is the current truth). Every table has `business_id`. Settings tables (`business_profile`, `app_settings`, `brand_kit`) have one row per business (primary key `business_id`), made when the business is created.
 - Products and services are one table, `offerings`, with `kind`. Type-specific details go in `attributes`.
 - Brand rows (`offerings`, `personas`, `content_pillars`, `offers`) are archived with `active = false`, never hard-deleted.
 - `brand_bible` is versioned; only one row per business can be `approved` (partial unique index).

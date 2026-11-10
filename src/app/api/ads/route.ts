@@ -3,7 +3,7 @@ import { z } from "zod";
 import { apiHandler } from "@/lib/api-handler";
 import { currentBusiness } from "@/core/business";
 import { referenceFolder } from "@/providers/storage/paths";
-import { referenceFromLink } from "@/core/brand/reference-link";
+import { earlierBreakdown, referenceFromLink } from "@/core/brand/reference-link";
 import { AppError } from "@/core/errors";
 import { FORMATS, type Format } from "@/core/creative/brief";
 import { loadContentRules } from "@/core/content/prefs";
@@ -96,21 +96,24 @@ export const POST = apiHandler(async (req: NextRequest) => {
   let referenceVideoId: string | null = null;
   if (copying) {
     if (input.format !== "video") throw new AppError("A reference video is only for video posts.", "INVALID_INPUT", false);
-    // A pasted link: the video is found and downloaded first
-    const linked = input.referenceVideoKey ? null : await referenceFromLink(businessId, input.referenceUrl!);
+    // A pasted or picked link: the video is found and downloaded first
+    const linked = input.referenceVideoKey ? null : await referenceFromLink(db, businessId, input.referenceUrl!);
     const referenceKey = input.referenceVideoKey ?? linked!.key;
     if (!referenceKey.startsWith(referenceFolder(businessId)) || referenceKey.includes("..")) {
       throw new AppError("This reference video couldn't be found. Please upload it again.", "INVALID_INPUT", false);
     }
+    // Copied before from the same link: its breakdown comes along, so the video isn't watched (and paid for) again
+    const earlier = linked ? await earlierBreakdown(db, linked.sourceUrl) : null;
     const { data: reference, error: referenceError } = await db
       .from("reference_videos")
       .insert({
         source: linked ? "link" : "upload",
-        source_url: linked ? input.referenceUrl!.trim() : null,
+        source_url: linked?.sourceUrl ?? null,
         platform: linked?.platform ?? null,
         source_meta: linked?.meta ?? {},
         storage_key: referenceKey,
         offering_id: input.offeringId ?? null,
+        ...(earlier ?? {}),
       })
       .select("id")
       .single();

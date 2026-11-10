@@ -52,6 +52,8 @@ export const AGENT_NAMES: Record<string, string> = {
   qa_critic: "QA Critic",
   publisher: "Publisher",
   performance_analyst: "Performance Analyst",
+  // Not an agent: searches in Copy a video → Ad library, logged for their cost
+  ad_library: "Ad library",
 };
 
 export const PENDING_ICON = CircleDashed;

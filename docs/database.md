@@ -1,6 +1,6 @@
 # Database Schema
 
-29 tables + `businesses` in Supabase Postgres; files are in Cloudflare R2 (see File storage). This file is the current truth for the schema: every migration is listed here and every change explained. Migrations live in `supabase/migrations/` and are applied in order:
+30 tables + `businesses` in Supabase Postgres; files are in Cloudflare R2 (see File storage). This file is the current truth for the schema: every migration is listed here and every change explained. Migrations live in `supabase/migrations/` and are applied in order:
 
 | Migration | What |
 |---|---|
@@ -22,6 +22,7 @@
 | `0023_creative_knowledge.sql` | `plan_items.ad_objective` (awareness, converting, retargeting), `desire` (six permanent desires) and `awareness_level` (five levels), set by the Planner; `learnings` dimensions `ad_objective`, `desire`, `awareness_level`, `style_modifier` |
 | `0024_reference_video.sql` | `plan_items.reference_video_id` → `brand_assets` (a video the owner wants made again for the post's product; SET NULL), and a unique index on `brand_assets (id, business_id)` for the business-scoped foreign key |
 | `0026_reference_image.sql` | `plan_items.reference_image_key`: an ad image the owner likes, given on "Create an ad" or Media → Create → Image; the image model makes the new ad the same way. The file waits in `tmp/` (deleted after 7 days) |
+| `0027_ad_library_searches.sql` | `ad_library_searches` table: each page of Meta Ad Library results a business fetched in Copy a video → Ad library, kept 48 hours so the same search costs nothing; the day's rows count its live calls for the daily limit |
 | `0025_reference_videos.sql` | `reference_videos` table: every video the owner copied ("Copy a video"), with its link, its numbers there, the product, the video made from it and its breakdown, kept for good; the file itself is not kept. The `brand_assets` reference videos used for posts move there with the same ids, and `plan_items.reference_video_id` now points at `reference_videos` |
 
 ### Changes to the original schema
@@ -310,6 +311,21 @@ One row per target per day for the first 30 days: `post_target_id`, `captured_on
 `plan_item_id`, `media_id`, `action` (`approve`\|`reject`\|`edit`\|`regenerate`), `note`.
 
 ## System
+
+### `ad_library_searches` — new (0027)
+Each page of Meta Ad Library results the business fetched (Copy a video → Ad library). Every live call costs a ScrapeCreators credit, so a page is read from here for 48 hours (`LIMITS.adLibraryCacheHours`); rows older than that are deleted by the app when it saves a new page. Today's rows (UTC) count the live calls against `LIMITS.adLibraryCallsPerDay`.
+
+| Column | Type | Notes |
+|---|---|---|
+| `kind` | text | `keyword` (ads whose words match: the only kind the screen uses) or `brand` (one advertiser's ads, allowed but unused) |
+| `query` | text | What was searched, lower-cased and trimmed |
+| `country` | text | ISO 3166-1 code, or `ALL` |
+| `page` | integer | 1, 2… (unique per business, kind, query and country) |
+| `ads` | jsonb | The page's video ads: `id`, `brand`, `brandImage`, `text`, `videoUrl`, `previewUrl`, `startedAt`, `platforms`, `link` (Meta's video links expire after a few days) |
+| `next_cursor` | text | Where the next page starts; null on the last page |
+| `fetched_at` | timestamptz | When the live call was made |
+
+No foreign keys. An ad picked from here is copied through its Ad Library link: `reference_videos.source_url` is always `https://www.facebook.com/ads/library/?id=<id>` for a Meta ad, so a video copied again reuses its breakdown.
 
 ### `agent_runs` — new
 One row per agent step: `agent`, `run_id` (groups one workflow run, e.g. one onboarding research), `plan_id`, `plan_item_id`, `media_id`, `inngest_run_id`, `status` (`running`\|`done`\|`failed`), `summary` (shown in the activity feed), `input`, `output`, `model`, `tokens_in`, `tokens_out`, `cost_usd`, `duration_ms`, `error`, `created_at`. Powers the activity feed, cost per ad and the monthly budget stop.
