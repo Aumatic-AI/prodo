@@ -23,6 +23,7 @@ const toForm = (k: BrandKit): KitInput => ({
   fonts: { heading: k.fonts.heading, body: k.fonts.body },
   photo_style: k.photo_style,
   layout_style: k.layout_style,
+  design_language: k.design_language,
   template_ids: k.template_ids ?? [],
 });
 
@@ -131,6 +132,9 @@ export function KitTab() {
           </Field>
           <Field label="Layout style" htmlFor="layout-style">
             <TextArea id="layout-style" rows={5} value={form.layout_style ?? ""} onValueChange={(v) => setForm({ ...form, layout_style: v || null })} />
+          </Field>
+          <Field label="Design language" htmlFor="design-language" hint="Your website's signature look and motion: components, recurring shapes, how it animates. Image and video prompts follow it." className="md:col-span-2">
+            <TextArea id="design-language" rows={5} value={form.design_language ?? ""} onValueChange={(v) => setForm({ ...form, design_language: v || null })} />
           </Field>
         </div>
       </Card>

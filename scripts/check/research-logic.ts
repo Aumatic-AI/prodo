@@ -6,6 +6,7 @@ import { chunkText } from "@/agents/research/brain";
 import { nameKey, sameName } from "@/agents/research/text";
 import { contrast, parseColor } from "@/lib/color";
 import { readDesign } from "@/agents/visual-identity/css";
+import { keyPages, readMotion } from "@/agents/visual-identity/design";
 import { pickColors } from "@/agents/visual-identity/palette";
 import { analyzeLogo } from "@/agents/visual-identity/logo";
 import { scorePosts, splitTopBottom, median } from "@/agents/social-market/baseline";
@@ -181,6 +182,25 @@ await check("readDesign + pickColors: a UI kit's unused defaults and rarely used
   const k = pickColors([], d.colors);
   assert.equal(k.primary, "#cd1717");
   assert.notEqual(k.secondary, "#00d294", "a colour used once next to one used 40 times is left out");
+});
+
+await check("keyPages + readMotion: the telling pages, and how the site moves from its code", () => {
+  const html =
+    '<a href="/">Home</a><a href="/privacy">Privacy</a><a href="https://other.com/work">Other site</a><a href="/careers">Careers</a>' +
+    '<a href="/case-studies">Work</a><a href="/case-studies/acme">Acme</a><a href="/services/ai">AI</a><a href="/about">About</a>' +
+    '<script src="/js/gsap.min.js"></script>' +
+    Array.from({ length: 4 }, () => '<div style="opacity:0;transform:translateY(24px)">x</div>').join("");
+  assert.deepEqual(keyPages(html, "https://www.brand.com/"), ["https://www.brand.com/case-studies", "https://www.brand.com/services/ai"]);
+  const css =
+    "@keyframes spin{to{transform:rotate(360deg)}} @keyframes radar-sweep{to{opacity:0}} .a{transition:all .4s ease-out} .b{transition:opacity 400ms ease-out}" +
+    " .c{animation:radar-sweep 2s linear infinite} .d:hover{transform:scale(1.05)} .e:hover{transform:rotate(2deg)} .f:hover{transform:translateY(-2px)}";
+  const motion = readMotion(html, css)!;
+  assert.match(motion, /GSAP/);
+  assert.match(motion, /2 keyframe animations \(radar-sweep\)/, "the framework's own spinner isn't the brand's motion");
+  assert.match(motion, /typically 400 ms/);
+  assert.match(motion, /4 elements start hidden/);
+  assert.match(motion, /3 hover effects/);
+  assert.equal(readMotion("<p>static</p>", "p{color:red}"), null);
 });
 
 await check("sameName: wording differences match, different things don't", () => {

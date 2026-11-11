@@ -22,6 +22,7 @@
 | `0023_creative_knowledge.sql` | `plan_items.ad_objective` (awareness, converting, retargeting), `desire` (six permanent desires) and `awareness_level` (five levels), set by the Planner; `learnings` dimensions `ad_objective`, `desire`, `awareness_level`, `style_modifier` |
 | `0024_reference_video.sql` | `plan_items.reference_video_id` → `brand_assets` (a video the owner wants made again for the post's product; SET NULL), and a unique index on `brand_assets (id, business_id)` for the business-scoped foreign key |
 | `0026_reference_image.sql` | `plan_items.reference_image_key`: an ad image the owner likes, given on "Create an ad" or Media → Create → Image; the image model makes the new ad the same way. The file waits in `tmp/` (deleted after 7 days) |
+| `0029_design_language.sql` | `brand_kit.design_language`: the website's signature look and motion, for image and video prompts |
 | `0028_auto_plan.sql` | `app_settings.auto_plan` (the weekly plan runs by itself only when the owner turns it on; off by default, also for existing businesses) and `autopilot_mode` defaulting to `approve_each` |
 | `0027_ad_library_searches.sql` | `ad_library_searches` table: each page of Meta Ad Library results a business fetched in Copy a video → Ad library, kept 48 hours so the same search costs nothing; the day's rows count its live calls for the daily limit |
 | `0025_reference_videos.sql` | `reference_videos` table: every video the owner copied ("Copy a video"), with its link, its numbers there, the product, the video made from it and its breakdown, kept for good; the file itself is not kept. The `brand_assets` reference videos used for posts move there with the same ids, and `plan_items.reference_video_id` now points at `reference_videos` |
@@ -142,6 +143,7 @@ Visual identity as exact values, so code draws on-brand ads.
 | `fonts` | jsonb | `{heading, body}` |
 | `logo_variants` | jsonb | Storage keys: `{full, mark, light, dark}` |
 | `photo_style`, `layout_style` | text | Described by AI vision |
+| `design_language` | text | The website's signature look and motion (0029): components, recurring motifs, how images and screens are shown, how it animates. Written by AI vision from screenshots of the homepage and two key pages, with the motion our code reads from the site's code. Image and video prompts use it; editable in Brand → Brand kit |
 | `template_ids` | text[] | Ad layouts this brand uses |
 
 ## Brand knowledge

@@ -16,6 +16,8 @@ export const kitSchema = z.object({
   fonts: z.object({ heading: z.string().trim().max(80).nullable(), body: z.string().trim().max(80).nullable() }),
   photo_style: z.string().trim().max(1000).nullable(),
   layout_style: z.string().trim().max(1000).nullable(),
+  /** The website's signature look and motion (components, motifs, animation feel) */
+  design_language: z.string().trim().max(2000).nullable().default(null),
   /** Ad layouts this brand uses; empty = all of them */
   template_ids: z.array(z.enum(TEMPLATE_IDS)).max(TEMPLATE_IDS.length).default([]),
 });
@@ -37,6 +39,7 @@ export async function getKit(db: SupabaseClient): Promise<BrandKit> {
     logo_variants: data.logo_variants ?? {},
     photo_style: data.photo_style,
     layout_style: data.layout_style,
+    design_language: data.design_language ?? null,
     template_ids: (data.template_ids ?? []).filter((t: string) => (TEMPLATE_IDS as readonly string[]).includes(t)),
     updated_at: data.updated_at,
   };
@@ -66,6 +69,7 @@ export async function saveKit(db: SupabaseClient, input: KitInput): Promise<Bran
       fonts: { ...current.fonts, ...input.fonts, ...(sameFonts ? {} : { manual: true }) },
       photo_style: input.photo_style,
       layout_style: input.layout_style,
+      design_language: input.design_language,
       template_ids: input.template_ids,
     }));
   if (error) throw error;

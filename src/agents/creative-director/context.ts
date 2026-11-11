@@ -34,6 +34,9 @@ export interface CreativeContext {
   passages: { id: string; text: string }[];
   recentHooks: string[];
   photoStyle: string | null;
+  /** How the brand's layouts look, and its website's signature look and motion (brand kit) */
+  layoutStyle: string | null;
+  designLanguage: string | null;
   /** Ad layouts this slot may use: its style's, narrowed to the brand kit's picks when they fit */
   layouts: TemplateId[];
   /** The business's last image ads' designs, newest first, so the next one looks different */
@@ -87,7 +90,7 @@ export async function loadCreativeContext(db: SupabaseClient, itemId: string): P
       .select("id, kind, ai_description, offering_id, storage_key, tags, offerings(name)")
       .in("kind", ["product_photo", "person", "general", "team", "location", "work"])
       .limit(60),
-    db.from("brand_kit").select("photo_style, template_ids, logo_variants").single(),
+    db.from("brand_kit").select("photo_style, layout_style, design_language, template_ids, logo_variants").single(),
     db.from("hook_library").select("text").order("created_at", { ascending: false }).limit(25),
   ]);
   for (const r of [profile, persona, pillar, offering, offer, proof, assets, kit, hooks]) if (r.error) throw r.error;
@@ -214,6 +217,8 @@ export async function loadCreativeContext(db: SupabaseClient, itemId: string): P
       passages,
       recentHooks: (hooks.data ?? []).map((h) => h.text),
       photoStyle: kit.data?.photo_style ?? null,
+      layoutStyle: kit.data?.layout_style ?? null,
+      designLanguage: kit.data?.design_language ?? null,
       moments,
       lessons,
       reference,

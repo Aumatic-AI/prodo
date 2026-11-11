@@ -150,6 +150,7 @@ export function buildFactBook(ctx: CreativeContext): FactBook {
     });
   }
   if (ctx.photoStyle) lines.push("", `PHOTO STYLE: ${ctx.photoStyle}`);
+  if (ctx.designLanguage) lines.push("", `DESIGN LANGUAGE (the brand's website, to echo in look and motion): ${ctx.designLanguage}`);
   if (isFreeImageAd(ctx.item.format)) {
     if (ctx.logoTone) {
       lines.push(

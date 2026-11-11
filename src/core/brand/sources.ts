@@ -37,7 +37,7 @@ export async function resolveSources(db: SupabaseClient, refs: SourceRef[]): Pro
     ids("offering").length ? db.from("offerings").select("id, name, description, benefits, url").in("id", ids("offering")) : null,
     ids("proof").length ? db.from("proof_items").select("id, kind, content, author, brand_sources(url)").in("id", ids("proof")) : null,
     ids("answer").length ? db.from("business_profile").select("*").single() : null,
-    refs.includes("kit") ? db.from("brand_kit").select("colors, fonts, photo_style, layout_style").single() : null,
+    refs.includes("kit") ? db.from("brand_kit").select("colors, fonts, photo_style, layout_style, design_language").single() : null,
     ids("answer").includes("liked_brands") ? db.from("competitors").select("name").eq("relation", "inspiration").eq("source", "client") : null,
   ]);
 
@@ -89,6 +89,7 @@ export async function resolveSources(db: SupabaseClient, refs: SourceRef[]): Pro
         k.fonts?.heading && `Fonts: ${k.fonts.heading} / ${k.fonts.body}`,
         k.photo_style && `Photo style: ${k.photo_style}`,
         k.layout_style && `Layout: ${k.layout_style}`,
+        k.design_language && `Design language: ${k.design_language}`,
       ]
         .filter(Boolean)
         .join("\n"),

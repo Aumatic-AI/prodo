@@ -94,6 +94,7 @@ export async function loadStrategistInput(db: SupabaseClient): Promise<Strategis
     k.fonts?.heading && `Fonts: ${k.fonts.heading} (headings), ${k.fonts.body} (body)`,
     k.photo_style && `Photo style: ${k.photo_style}`,
     k.layout_style && `Layout style: ${k.layout_style}`,
+    k.design_language && `Design language: ${k.design_language}`,
   ]
     .filter(Boolean)
     .join("\n");

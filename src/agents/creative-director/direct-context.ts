@@ -55,6 +55,8 @@ export function directContext(ctx: CreativeContext, colours: DirectColours | nul
   lines.push("", "BRAND LOOK");
   if (colours) lines.push(`Colours: primary ${colours.primary}, accent ${colours.accent}`, `Fonts: ${colours.heading} (headings), ${colours.body} (text)`);
   if (ctx.photoStyle) lines.push(`Photo style: ${ctx.photoStyle}`);
+  if (ctx.layoutStyle) lines.push(`Layout style: ${ctx.layoutStyle}`);
+  if (ctx.designLanguage) lines.push(`Design language (the brand's website: its signature look and how it moves): ${ctx.designLanguage}`);
   lines.push(...list("Visual rules", b.visualRules));
 
   lines.push("", "THIS POST", `Platforms: ${it.platforms.map((p) => platformMeta(p).label).join(", ")}`, `Angle: ${it.angle ?? "brand post"}`);

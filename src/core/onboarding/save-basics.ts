@@ -84,6 +84,7 @@ export async function saveBasics(db: SupabaseClient, b: Basics) {
     fonts: b.fonts,
     photo_style: kit.photo_style,
     layout_style: kit.layout_style,
+    design_language: kit.design_language,
     template_ids: kit.template_ids,
   });
 }
