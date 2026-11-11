@@ -518,6 +518,7 @@ Raw vendor error messages never reach the browser. Every `AppError` has a plain,
 6. Concurrency: per business 5 images, 2 videos, 3 plan slots, 1 plan, 1 research, 1 footage watch; 1 run per post
 7. `onFailure` writes status + message to the DB row
 8. `step.sleep` for polling — no server runs while waiting
+- A step's result must be valid text: an agent step's result has every half emoji (a lone UTF-16 surrogate, left when a caption or page is cut at a fixed length) removed before it's saved (`lib/well-formed.ts`, in `agents/run.ts`); otherwise Inngest refuses it ("error transforming request with JCS: Missing surrogate") and so does Postgres jsonb
 9. Large files go to storage first; steps pass only the key (Inngest caps step output size)
 10. Every event carries `businessId`; functions open the database with `businessDb(businessId)`
 11. Reads that decide what a run does (which videos to watch, which photos to describe) happen inside a step, so a replay sees the same list

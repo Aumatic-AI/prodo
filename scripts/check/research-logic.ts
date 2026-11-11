@@ -7,6 +7,7 @@ import { nameKey, sameName } from "@/agents/research/text";
 import { contrast, parseColor } from "@/lib/color";
 import { readDesign } from "@/agents/visual-identity/css";
 import { keyPages, readMotion } from "@/agents/visual-identity/design";
+import { wellFormed } from "@/lib/well-formed";
 import { pickColors } from "@/agents/visual-identity/palette";
 import { analyzeLogo } from "@/agents/visual-identity/logo";
 import { scorePosts, splitTopBottom, median } from "@/agents/social-market/baseline";
@@ -201,6 +202,16 @@ await check("keyPages + readMotion: the telling pages, and how the site moves fr
   assert.match(motion, /4 elements start hidden/);
   assert.match(motion, /3 hover effects/);
   assert.equal(readMotion("<p>static</p>", "p{color:red}"), null);
+});
+
+await check("wellFormed: text cut through an emoji can still be saved by Inngest and Postgres", () => {
+  const cut = "Smile 😀 now".slice(0, 7); // "Smile " + the first half of the emoji
+  assert.throws(() => encodeURIComponent(cut), "the cut really leaves half an emoji");
+  const clean = wellFormed({ homepage: cut, posts: [{ caption: cut }], count: 3, when: null });
+  assert.equal(clean.homepage, "Smile ");
+  assert.equal(clean.posts[0].caption, "Smile ");
+  assert.equal(clean.count, 3);
+  assert.equal(wellFormed("Smile 😀 now"), "Smile 😀 now", "whole emojis stay");
 });
 
 await check("sameName: wording differences match, different things don't", () => {

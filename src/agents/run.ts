@@ -5,6 +5,7 @@ import { toInngestError } from "@/jobs/to-inngest-error";
 import { sumUsage, type Usage } from "@/providers/usage";
 import { assertBudget } from "./budget";
 import { preview, trace } from "@/lib/trace";
+import { wellFormed } from "@/lib/well-formed";
 
 export type AgentName =
   | "website_analyst"
@@ -115,7 +116,8 @@ async function runStep<T>(opts: AgentStepOptions<T>, fn: (track: Track) => Promi
   };
 
   try {
-    const result = await fn(track);
+    // Cut text can end on half an emoji, which Inngest and the database can't save
+    const result = wellFormed(await fn(track));
     await finish(
       {
         status: "done",
