@@ -19,7 +19,10 @@ export function canvasesFor(format: Format, platforms: string[]): Canvas[] {
   return (ratios.length ? ratios : ["4:5" as const]).map((r) => CANVAS[r]);
 }
 
-/** Kie has no 4:5; ask for the closest portrait and let the layout crop. */
-export function kieRatio(ratio: CanvasRatio): "1:1" | "2:3" | "9:16" | "16:9" {
-  return ratio === "4:5" ? "2:3" : ratio;
+/**
+ * The image model's size for a canvas: the canvas's own. Nano Banana 2 on Kie takes 4:5; asking for 2:3 and
+ * filling the 4:5 canvas cut about 8% off the top and bottom, often through the headline the model painted there.
+ */
+export function kieRatio(ratio: CanvasRatio): "1:1" | "4:5" | "9:16" | "16:9" {
+  return ratio;
 }

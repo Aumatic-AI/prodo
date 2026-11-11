@@ -9,7 +9,7 @@ import type { Result } from "@/providers/usage";
 const SERVICE = "Kie.ai";
 const API_BASE = "https://api.kie.ai/api/v1/jobs";
 
-export type KieAspectRatio = "1:1" | "2:3" | "3:2" | "9:16" | "16:9" | "21:9" | "auto";
+export type KieAspectRatio = "1:1" | "4:5" | "2:3" | "3:2" | "9:16" | "16:9" | "21:9" | "auto";
 
 export interface TaskStatus {
   state: "waiting" | "queuing" | "generating" | "success" | "fail";
