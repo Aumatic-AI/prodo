@@ -12,7 +12,7 @@ const SANS = [
   "Be Vietnam Pro", "Epilogue", "Albert Sans", "Onest", "Instrument Sans", "Schibsted Grotesk", "Hanken Grotesk", "Jost",
   "Questrial", "Varela Round", "Comfortaa", "Maven Pro", "Asap", "Catamaran", "Overpass", "Signika", "Dosis",
   "Encode Sans", "Libre Franklin", "Chivo", "Saira", "Arimo", "Tenor Sans", "Didact Gothic", "Lexend Deca", "Readex Pro",
-  "Rethink Sans",
+  "Rethink Sans", "Geist",
 ];
 
 const SERIF = [
@@ -36,7 +36,7 @@ const HANDWRITING = [
   "Permanent Marker", "Homemade Apple", "Yellowtail", "Pinyon Script", "Tangerine", "Gloria Hallelujah", "Marck Script",
 ];
 
-const MONO = ["Space Mono", "JetBrains Mono", "IBM Plex Mono", "Roboto Mono", "Courier Prime"];
+const MONO = ["Space Mono", "JetBrains Mono", "IBM Plex Mono", "Roboto Mono", "Courier Prime", "Geist Mono"];
 
 export const GOOGLE_FONTS: { family: string; category: FontCategory }[] = [
   ...SANS.map((family) => ({ family, category: "Sans serif" as const })),

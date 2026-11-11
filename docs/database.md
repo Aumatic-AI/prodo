@@ -22,6 +22,7 @@
 | `0023_creative_knowledge.sql` | `plan_items.ad_objective` (awareness, converting, retargeting), `desire` (six permanent desires) and `awareness_level` (five levels), set by the Planner; `learnings` dimensions `ad_objective`, `desire`, `awareness_level`, `style_modifier` |
 | `0024_reference_video.sql` | `plan_items.reference_video_id` → `brand_assets` (a video the owner wants made again for the post's product; SET NULL), and a unique index on `brand_assets (id, business_id)` for the business-scoped foreign key |
 | `0026_reference_image.sql` | `plan_items.reference_image_key`: an ad image the owner likes, given on "Create an ad" or Media → Create → Image; the image model makes the new ad the same way. The file waits in `tmp/` (deleted after 7 days) |
+| `0028_auto_plan.sql` | `app_settings.auto_plan` (the weekly plan runs by itself only when the owner turns it on; off by default, also for existing businesses) and `autopilot_mode` defaulting to `approve_each` |
 | `0027_ad_library_searches.sql` | `ad_library_searches` table: each page of Meta Ad Library results a business fetched in Copy a video → Ad library, kept 48 hours so the same search costs nothing; the day's rows count its live calls for the daily limit |
 | `0025_reference_videos.sql` | `reference_videos` table: every video the owner copied ("Copy a video"), with its link, its numbers there, the product, the video made from it and its breakdown, kept for good; the file itself is not kept. The `brand_assets` reference videos used for posts move there with the same ids, and `plan_items.reference_video_id` now points at `reference_videos` |
 
@@ -122,9 +123,10 @@ How the system behaves, kept apart from brand facts so agents never see it in pr
 | Column | Type | Notes |
 |---|---|---|
 | `business_id` | uuid PK | The business (0017; was `id`, always 1) |
-| `autopilot_mode` | text | `full` \| `approve_plan` (default) \| `approve_each` |
+| `autopilot_mode` | text | `full` \| `approve_plan` \| `approve_each` (default since 0028; was `approve_plan`) |
 | `paused` | boolean | Kill switch: stops all agent work |
-| `plan_weekday`, `plan_time` | smallint (0 = Sunday), time | When the weekly plan runs. Default Sunday 09:00 |
+| `auto_plan` | boolean | "Plan my week automatically" (0028): the weekly cron plans and makes next week's posts only when on. Default off |
+| `plan_weekday`, `plan_time` | smallint (0 = Sunday), time | When the weekly plan runs (with `auto_plan` on). Default Sunday 09:00 |
 | `approval_timeout_hours` | int | Auto-approve after this, full mode only. Default 24 |
 | `monthly_budget_usd` | numeric | Agents stop when this month's `agent_runs.cost_usd` reaches it. Default 50 |
 | `notify_email` | text | Plan-ready and failure emails |

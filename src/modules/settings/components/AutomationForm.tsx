@@ -26,6 +26,7 @@ const KEY = ["settings", "automation"];
 const fromView = (v: AutomationView): Automation => ({
   autopilot_mode: v.autopilot_mode,
   paused: v.paused,
+  auto_plan: v.auto_plan,
   plan_weekday: v.plan_weekday,
   plan_time: v.plan_time,
   approval_timeout_hours: v.approval_timeout_hours,
@@ -98,15 +99,18 @@ export function AutomationForm() {
         )}
       </Card>
 
-      <Card title="Weekly plan" description="When the Planner prepares next week's posts for you.">
-        <div className={row}>
-          <Field label="Day" htmlFor="plan-day">
-            <Select id="plan-day" options={WEEKDAY_OPTIONS} value={String(form.plan_weekday)} onValueChange={(v) => set({ plan_weekday: Number(v) })} />
-          </Field>
-          <Field label="Time" htmlFor="plan-time">
-            <TimePicker id="plan-time" value={form.plan_time} onChange={(plan_time) => set({ plan_time })} />
-          </Field>
-        </div>
+      <Card title="Weekly plan" description="The Planner can plan and make next week's posts by itself, every week. Off, you plan from This week (Auto-create or Create an ad).">
+        <Switch checked={form.auto_plan} onChange={(auto_plan) => set({ auto_plan })} label="Plan my week automatically" />
+        {form.auto_plan && (
+          <div className={cn(row, "mt-5")}>
+            <Field label="Day" htmlFor="plan-day">
+              <Select id="plan-day" options={WEEKDAY_OPTIONS} value={String(form.plan_weekday)} onValueChange={(v) => set({ plan_weekday: Number(v) })} />
+            </Field>
+            <Field label="Time" htmlFor="plan-time">
+              <TimePicker id="plan-time" value={form.plan_time} onChange={(plan_time) => set({ plan_time })} />
+            </Field>
+          </div>
+        )}
       </Card>
 
       <Card title="Posts per week" description={`The Planner makes this many slots each week (${Object.values(form.posts_per_week).reduce((a, b) => a + b, 0)} in total).`}>

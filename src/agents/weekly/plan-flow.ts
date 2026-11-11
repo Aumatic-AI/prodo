@@ -24,11 +24,12 @@ export const weeklyPlanCheck = inngest.createFunction(
     const due = await step.run("is-it-plan-time", async () => {
       const db = businessDb(businessId);
       const [{ data: settings }, { data: profile }, { data: bible }] = await Promise.all([
-        db.from("app_settings").select("paused, plan_weekday, plan_time").single(),
+        db.from("app_settings").select("paused, auto_plan, plan_weekday, plan_time").single(),
         db.from("business_profile").select("timezone, onboarding_status").single(),
         db.from("brand_bible").select("id").eq("status", "approved").maybeSingle(),
       ]);
-      if (!settings || settings.paused || profile?.onboarding_status !== "done" || !bible) return null;
+      // Only when the owner turned on "Plan my week automatically" (Settings → Automation; off by default)
+      if (!settings || settings.paused || !settings.auto_plan || profile?.onboarding_status !== "done" || !bible) return null;
       const now = zonedParts(new Date(), safeZone(profile.timezone));
       const planHour = Number(String(settings.plan_time).slice(0, 2));
       if (now.weekday !== settings.plan_weekday || now.hour !== planHour) return null;

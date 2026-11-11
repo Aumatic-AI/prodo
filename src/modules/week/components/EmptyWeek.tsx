@@ -46,7 +46,7 @@ export function EmptyWeek({
             ? "It picks days, formats and ideas from your Brand Bible, then the Creative Director, Producer and QA make every post. This page fills in as they work."
             : lastDay
               ? "This week ends today, and posts are only planned from tomorrow on. Plan next week instead."
-              : automation
+              : automation?.auto_plan
               ? `Prodo plans the next week every ${DAYS[automation.plan_weekday]} at ${automation.plan_time}${automation.paused ? " (paused right now)" : ""}. You can also plan it now, or make a single ad.`
               : "Plan the week now, or make a single ad."}
         </p>

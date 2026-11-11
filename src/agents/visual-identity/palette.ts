@@ -40,7 +40,10 @@ const WIDGET_COLOURS = new Set([
 
 export function pickColors(logoPalette: string[], css: CssColor[]): BrandColors {
   const brandVars = css.filter((c) => c.brand).map((c) => c.hex);
-  const siteColours = css.filter((c) => !c.brand && !WIDGET_COLOURS.has(c.hex.toLowerCase())).map((c) => c.hex);
+  // A colour the site barely uses (a status dot, one icon) isn't the brand's: under 3% of its main colour's uses
+  const siteAll = css.filter((c) => !c.brand && !WIDGET_COLOURS.has(c.hex.toLowerCase()) && isColourful(c.hex));
+  const most = Math.max(0, ...siteAll.map((c) => c.count));
+  const siteColours = siteAll.filter((c) => c.count >= most * 0.03).map((c) => c.hex);
   const colourful = distinct([...brandVars, ...logoPalette, ...siteColours].filter(isColourful));
   const [primary = null, secondary = null, accent = null] = colourful;
 

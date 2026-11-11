@@ -168,6 +168,21 @@ await check("readDesign: CSS variables (Next.js / Tailwind), fallback and code f
   assert.ok(!d.fonts.all.some((f) => /fallback|emoji/i.test(f)));
 });
 
+await check("readDesign + pickColors: a UI kit's unused defaults and rarely used colours aren't the brand's", () => {
+  // shadcn on Tailwind: a blue --sidebar-primary nothing uses, a red used everywhere, a green status dot used once
+  const css =
+    ":root{--primary:#e5e5e5;--sidebar-primary:#1447e6;--destructive:#ff6568;--color-primary:var(--primary);--color-destructive:var(--destructive)}" +
+    " .bg-primary{background-color:var(--color-primary)} .text-destructive{color:var(--color-destructive)}" +
+    " .ring-red{--tw-ring-color:#cd1717} .shadow-ring{box-shadow:var(--tw-ring-shadow)} .dot{background-color:#00d294}" +
+    Array.from({ length: 40 }, (_, i) => ` .r${i}{background-color:#cd1717}`).join("");
+  const d = readDesign(css, []);
+  assert.ok(!d.colors.some((c) => c.hex === "#1447e6"), "an unused --sidebar-primary is dropped");
+  assert.ok(!d.colors.some((c) => c.hex === "#ff6568"), "an error colour is never the brand's");
+  const k = pickColors([], d.colors);
+  assert.equal(k.primary, "#cd1717");
+  assert.notEqual(k.secondary, "#00d294", "a colour used once next to one used 40 times is left out");
+});
+
 await check("sameName: wording differences match, different things don't", () => {
   assert.ok(sameName("Lead gen & outreach", "Lead Gen & Outreach Automation"));
   assert.ok(sameName("SPC floors", "SPC Flooring"));

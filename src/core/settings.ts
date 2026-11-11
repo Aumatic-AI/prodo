@@ -11,6 +11,8 @@ export const AUTOPILOT_MODES = ["approve_each", "approve_plan", "full"] as const
 export const automationSchema = z.object({
   autopilot_mode: z.enum(AUTOPILOT_MODES),
   paused: z.boolean(),
+  /** The Planner plans and makes next week's posts by itself on the plan day (off by default) */
+  auto_plan: z.boolean(),
   plan_weekday: z.number().int().min(0).max(6),
   plan_time: z.string().regex(/^\d{2}:\d{2}$/, "Pick a time"),
   approval_timeout_hours: z.number().int().min(1, "At least 1 hour").max(168, "At most a week"),
@@ -45,6 +47,7 @@ export async function getAutomation(db: SupabaseClient): Promise<AutomationView>
   return {
     autopilot_mode: data.autopilot_mode,
     paused: data.paused,
+    auto_plan: data.auto_plan === true,
     plan_weekday: data.plan_weekday,
     plan_time: String(data.plan_time).slice(0, 5),
     approval_timeout_hours: data.approval_timeout_hours,

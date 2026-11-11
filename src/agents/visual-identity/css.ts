@@ -106,21 +106,71 @@ function linkedFamilies(fontLinks: string[]): string[] {
   );
 }
 
+/** Variable names that sound like a brand colour */
+const BRAND_NAME = /primary|brand|accent|secondary|main|theme/i;
+/** Parts of a UI kit's theme that only sound like one (shadcn's --sidebar-primary, --primary-foreground…) */
+const KIT_PART = /foreground|sidebar|chart|popover|muted|card|ring|border|input|shadow|^tw-/i;
+/** Error, warning and success colours: never the brand's */
+const STATUS_NAME = /destructive|danger|error|warning|success|info/i;
+
+/**
+ * How many places use each CSS variable: in a property, or through a theme alias that is itself used
+ * (Tailwind's --color-primary: var(--primary)). UI kits define dozens of default colours that nothing uses
+ * (a blue --sidebar-primary on a red site): those count 0. Tailwind's own --tw-* variables are set inside each
+ * utility rule and chain into one another, so a reference there counts once, like a property.
+ */
+function variableUses(css: string): (name: string) => number {
+  const direct = new Map<string, number>();
+  const aliases = new Map<string, Set<string>>();
+  for (const m of css.matchAll(/([\w-]+)\s*:\s*([^;{}]+)/g)) {
+    const alias = m[1].startsWith("--") && !m[1].startsWith("--tw-");
+    for (const ref of m[2].matchAll(/var\(\s*--([\w-]+)/g)) {
+      if (alias) aliases.set(ref[1], (aliases.get(ref[1]) ?? new Set()).add(m[1].slice(2)));
+      else direct.set(ref[1], (direct.get(ref[1]) ?? 0) + 1);
+    }
+  }
+  const memo = new Map<string, number>();
+  const seen = new Set<string>();
+  const uses = (name: string): number => {
+    if (memo.has(name)) return memo.get(name)!;
+    if (seen.has(name)) return 0;
+    seen.add(name);
+    let n = direct.get(name) ?? 0;
+    for (const parent of aliases.get(name) ?? []) n += uses(parent);
+    memo.set(name, n);
+    return n;
+  };
+  return uses;
+}
+
 export function readDesign(css: string, fontLinks: string[]): SiteDesign {
-  // Colours: every value, counted; brand-named variables flagged
+  // Colours: every value, counted by how often it's used. A variable counts once for each place that uses it;
+  // one nothing uses adds nothing. Brand-named variables are flagged, unless they're a UI kit's own parts
   const counts = new Map<string, CssColor>();
-  const add = (hex: string | null, brand = false) => {
+  const add = (hex: string | null, times = 1, brand = false) => {
     if (!hex) return;
     const entry = counts.get(hex) ?? { hex, count: 0, brand: false };
-    entry.count++;
+    entry.count += times;
     entry.brand ||= brand;
     counts.set(hex, entry);
   };
+  const uses = variableUses(css);
+  // A brand-named variable nothing uses still names the brand's colour when the page uses that colour itself
+  const namedOnly = new Set<string>();
   for (const m of css.matchAll(/--([\w-]+)\s*:\s*(#[0-9a-fA-F]{3,8}\b|rgba?\([^)]*\))/g)) {
-    add(parseColor(m[2]), /primary|brand|accent|secondary|main|theme/i.test(m[1]));
+    if (STATUS_NAME.test(m[1])) continue;
+    const hex = parseColor(m[2]);
+    const brand = BRAND_NAME.test(m[1]) && !KIT_PART.test(m[1]);
+    const times = uses(m[1]);
+    if (times) add(hex, times, brand);
+    else if (brand && hex) namedOnly.add(hex);
   }
   for (const m of css.matchAll(/(?:^|[;{\s])(?:color|background(?:-color)?|border(?:-color)?|fill|stroke)\s*:\s*([^;}]+)/gi)) {
     for (const value of m[1].match(/#[0-9a-fA-F]{3,8}\b|rgba?\([^)]*\)/g) ?? []) add(parseColor(value));
+  }
+  for (const hex of namedOnly) {
+    const entry = counts.get(hex);
+    if (entry) entry.brand = true;
   }
 
   // Fonts: by selector when possible, otherwise by how often they appear. Sites built with
