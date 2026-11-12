@@ -12,7 +12,7 @@ import { canvasesFor, kieRatio } from "./canvases";
 import { startJob, waitForJobs } from "./kie";
 import { keepPhoto, markMediaReady, saveFile } from "./media";
 import { cornerIsLight } from "./photo-look";
-import { REFERENCE_LINE, photoSettings, referencePhoto, type PhotoSettings, type ReferenceUse } from "./photos";
+import { LIKED_AD_LINE, REFERENCE_LINE, likedAd, photoSettings, referencePhoto, type PhotoSettings, type ReferenceUse } from "./photos";
 import { photoWords } from "./picture-only";
 import type { ProduceArgs, Produced } from "./types";
 
@@ -31,13 +31,16 @@ export function freeAdPrompt(
   reference: ReferenceUse | null,
   fix: string | null | undefined,
   corner: LogoCorner,
-  severalSizes: boolean
+  severalSizes: boolean,
+  liked = false
 ): string {
   return [
     photoWords(prompt).trim(),
     settings.style ? `Photo style: ${settings.style}.` : "",
     peoplePromptLine(settings.people),
-    reference ? REFERENCE_LINE[reference] : "",
+    // The liked ad goes first, so the product photo becomes reference image 2
+    liked ? LIKED_AD_LINE : "",
+    reference ? (liked ? REFERENCE_LINE[reference].replace("The reference image", "Reference image 2") : REFERENCE_LINE[reference]) : "",
     `Leave the ${corner} corner plain and calm (a soft, even background with no words, faces or main subject): the brand's logo is added there afterwards. Do not paint any logo, brand mark or watermark anywhere.`,
     severalSizes ? "Keep every word and the main subject well inside the picture, away from the edges: it is also cropped to other sizes." : "",
     fix ? `Fix these problems from the last attempt: ${fix}` : "",
@@ -54,8 +57,11 @@ export async function produceStaticFree(a: ProduceArgs, brief: StaticBrief): Pro
     `photo-start-${a.round}`,
     async (track) => {
       const reference = await referencePhoto(a.db(), brief, a.item);
-      const prompt = freeAdPrompt(brief.imagePrompt, await photoSettings(a.db()), reference?.use ?? null, a.fix, corner, canvases.length > 1);
-      const res = await startJob({ key: "photo", kind: "image", prompt, aspect: kieRatio(canvases[0].ratio), refs: reference ? [reference.url] : [] });
+      // An ad the owner likes goes first: the picture is made the same way, with the real product from the photo
+      const liked = await likedAd(a.item);
+      const prompt = freeAdPrompt(brief.imagePrompt, await photoSettings(a.db()), reference?.use ?? null, a.fix, corner, canvases.length > 1, !!liked);
+      const refs = [...(liked ? [liked] : []), ...(reference ? [reference.url] : [])];
+      const res = await startJob({ key: "photo", kind: "image", prompt, aspect: kieRatio(canvases[0].ratio), refs });
       track(res.usage);
       return { job: res.job, reference: reference?.url ?? null };
     },

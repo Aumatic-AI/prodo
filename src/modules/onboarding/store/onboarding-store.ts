@@ -33,7 +33,7 @@ export interface OnboardingState {
   setStatus: (status: OnboardingDraft["status"]) => void;
   /**
    * Takes a fresh copy from the server (e.g. after the website scan filled Basics and the products).
-   * Slices the client has edited and not saved keep their edits.
+   * Fields the client has edited and not saved keep their edits; every other field takes the fresh copy.
    */
   refresh: (fresh: OnboardingDraft) => void;
 }
@@ -128,14 +128,24 @@ export function createOnboardingStore(initial: OnboardingDraft) {
     refresh: (fresh) =>
       set((s) => {
         const slices: Slice[] = ["content", "basics", "products", "services"];
-        const clean = slices.filter((k) => !s.dirty[k]);
-        const pick = (from: OnboardingDraft) => Object.fromEntries(clean.map((k) => [k, from[k]]));
-        // "What do you sell?" still open on an edited step: the scan's answer fills it anyway
-        const content =
-          s.dirty.content && !s.draft.content.businessType && fresh.content.businessType ? { content: { ...s.draft.content, businessType: fresh.content.businessType } } : {};
+        // Field by field: what the client changed and hasn't saved stays theirs, every other field takes the fresh
+        // copy. A whole step can't be kept back for one change: opening Basics sets the browser's time zone, and
+        // that alone used to keep everything the scan found out of the form
+        const merged = Object.fromEntries(
+          slices.map((k) => {
+            if (!s.dirty[k]) return [k, fresh[k]];
+            const draft = s.draft[k] as unknown as Record<string, unknown>;
+            const saved = s.saved[k] as unknown as Record<string, unknown>;
+            const next = fresh[k] as unknown as Record<string, unknown>;
+            const fields = new Set([...Object.keys(next), ...Object.keys(draft)]);
+            return [k, Object.fromEntries([...fields].map((f) => [f, same(draft[f], saved[f]) ? next[f] : draft[f]]))];
+          })
+        ) as Pick<OnboardingDraft, Slice>;
+        const server = Object.fromEntries(slices.map((k) => [k, fresh[k]])) as Pick<OnboardingDraft, Slice>;
         return {
-          draft: { ...s.draft, ...pick(fresh), ...content, step: fresh.step, status: fresh.status, scan: fresh.scan },
-          saved: { ...s.saved, ...pick(fresh), step: fresh.step, status: fresh.status, scan: fresh.scan },
+          draft: { ...s.draft, ...merged, step: fresh.step, status: fresh.status, scan: fresh.scan },
+          saved: { ...s.saved, ...server, step: fresh.step, status: fresh.status, scan: fresh.scan },
+          dirty: Object.fromEntries(slices.map((k) => [k, !same(merged[k], server[k])])) as Partial<Record<Slice, boolean>>,
         };
       }),
   }));

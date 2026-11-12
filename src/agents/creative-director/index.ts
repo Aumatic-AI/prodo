@@ -11,6 +11,11 @@ import { buildFactBook } from "./book";
 import { checkBrief } from "./checks";
 import { loadCreativeContext } from "./context";
 import { pickFreshHook, saveHook } from "./hooks";
+import { isFreeImageAd } from "@/config/image-ads";
+import { likedAd } from "@/agents/producer/photos";
+
+/** Added to the fact book when the owner gave an ad they like (the attached image). */
+const LIKED_AD_BRIEF = `REFERENCE AD (the attached image): an ad the owner likes, from another brand. Write this ad so its picture is made the same way: the same composition and layout (where the product, any person and the words sit, and their scale, e.g. an oversized product beside a person), camera angle, background and light, colour treatment, where and how the words sit, and the mood, with this business's own product, facts and words. Never copy its brand, logo, words, people or products.`;
 
 // Agent 6 · Creative Director
 // One slot → a production-ready brief: read the facts → write the brief (AI) → map labels and check
@@ -39,14 +44,18 @@ export async function writeBrief(
       if (usage) track(usage);
       const book = buildFactBook(ctx);
       const format = ctx.item.format;
+      // An ad the owner likes: the director sees it, so the picture it describes is made the same way
+      const liked = isFreeImageAd(format) ? await likedAd(ctx.item) : null;
+      const text = liked ? `${book.text}\n\n${LIKED_AD_BRIEF}` : book.text;
 
       let lastProblems: string[] = feedback ?? [];
       let result = null as ReturnType<typeof assembleBrief> | null;
       // One rewrite inside the step when our own checks find something
       for (let pass = 0; pass < 2; pass++) {
-        const res = await ai.structured(rawBriefSchema, creativePrompt(book.text, ctx.item.platforms, pass === 0 ? feedback : lastProblems, note), {
+        const res = await ai.structured(rawBriefSchema, creativePrompt(text, ctx.item.platforms, pass === 0 ? feedback : lastProblems, note), {
           system: creativeSystem(format),
           model: MODELS.creative,
+          ...(liked ? { images: [liked] } : {}),
         });
         track(res.usage);
         result = assembleBrief(res.data, format, ctx, book);

@@ -80,6 +80,20 @@ export function photoPrompt(prompt: string, settings: PhotoSettings, reference: 
     .join(" ");
 }
 
+/**
+ * The ad the owner likes (Create an ad, Media → Create → Image), while storage still has it: it waits in tmp/,
+ * which is emptied after 7 days, and a redo after that is made without it.
+ */
+export async function likedAd(item: Pick<PlanItem, "reference_image_key">): Promise<string | null> {
+  if (!item.reference_image_key) return null;
+  const url = publicUrl(item.reference_image_key);
+  return (await fetch(url, { method: "HEAD" }).then((r) => r.ok).catch(() => false)) ? url : null;
+}
+
+/** For the image model, when the liked ad goes first: what to take from it, and what never to take. */
+export const LIKED_AD_LINE =
+  "Reference image 1 is an ad the owner likes, from another brand: make this picture the same way: the same composition and layout (where the product, any person and the words sit, and their scale), camera angle, background, light, colour treatment and mood, with this business's own product and words. Never copy its brand, logo, words, people or products.";
+
 export const REFERENCE_LINE: Record<ReferenceUse, string> = {
   product:
     "The reference image shows the real product: reproduce the product exactly (shape, colours, fabric, pattern, embroidery and details). Use it for the product only: any person in the picture is a different person from the one in the reference (a different face and hair), and the reference's headwear, jewellery, accessories, props and background are left out.",

@@ -10,7 +10,7 @@ const POLL_MS = 4000;
 
 /**
  * While the website scan runs, checks on it every few seconds. When it finishes, its findings
- * (Basics, products or services) replace the draft's untouched steps; edited steps keep the edits.
+ * (Basics, products or services) fill every field the client hasn't changed; changed fields keep the edits.
  */
 export function useWebsiteScan() {
   const store = useOnboardingApi();
