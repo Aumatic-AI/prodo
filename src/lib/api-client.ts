@@ -1,3 +1,5 @@
+import { TAB_BUSINESS_HEADER } from "@/lib/active-business";
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -11,6 +13,14 @@ export class ApiError extends Error {
   }
 }
 
+// The business this tab shows (set by SessionStoreProvider in the browser). Every call says so, so a tab that
+// was opened on one business never reads or changes another, even after another tab switched
+let tabBusiness: string | null = null;
+
+export function setTabBusiness(id: string | null): void {
+  tabBusiness = id;
+}
+
 export async function apiFetch<T = any>(
   url: string,
   options?: RequestInit
@@ -22,6 +32,7 @@ export async function apiFetch<T = any>(
       ...options,
       headers: {
         ...(isFormData ? {} : { "Content-Type": "application/json" }),
+        ...(tabBusiness ? { [TAB_BUSINESS_HEADER]: tabBusiness } : {}),
         ...options?.headers,
       },
     });

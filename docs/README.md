@@ -1,6 +1,6 @@
 # Prodo
 
-Autonomous AI ad and content system for many businesses, one login each. Onboarding teaches Prodo a business's brand: agents read its website, visuals, videos, socials and competitors, and write a Brand Bible the client approves. After that, agents plan, produce, publish and learn from posts every week. Clients can still create media and posts by hand.
+Autonomous AI ad and content system for many businesses, each with its own login (a login can also add other businesses and switch between them). Onboarding teaches Prodo a business's brand: agents read its website, visuals, videos, socials and competitors, and write a Brand Bible the client approves. After that, agents plan, produce, publish and learn from posts every week. Clients can still create media and posts by hand.
 
 | Doc | What it covers |
 |---|---|
@@ -70,7 +70,7 @@ Every vendor sits behind an adapter in `src/providers/`; nothing else names a ve
 
 ## How it works
 
-One repo, one deploy for every business (multi-tenant). **One login = one business**: each login has its own brand, plans, media, posts, connected accounts (its own Zernio profile), budget and files, and never sees another's. Every table has `business_id`; RLS keeps logged-in users to their own business, and agents and jobs use `businessDb(businessId)`.
+One repo, one deploy for every business (multi-tenant). **Every business is separate**: its own brand, plans, media, posts, connected accounts (its own Zernio profile), budget and files, and its own login. A login can add other businesses ("Add account": one with its own login, after signing in with it once, or a new one) and switch between them on any device; it never sees a business it wasn't given. Every table has `business_id`; RLS keeps logged-in users to their own business, and agents and jobs use `businessDb(businessId)`.
 
 1. **Onboarding**: the client gives their website (a background scan reads it), then their content choices, basics, products or services, accounts. Agents 1–4 research the brand; the client approves the Brand Bible.
 2. **Weekly loop**: Planner → Creative Director → QA Gate 1 → Producer → QA Gate 2 → client approval (or full autopilot) → Publisher.

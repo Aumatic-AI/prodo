@@ -13,6 +13,9 @@ import { useSession } from "@/stores/SessionStoreProvider";
 import { floating, focusRing } from "@/components/kit/styles";
 import { publicUrl } from "@/components/kit/MediaUploader";
 import { useNotifications } from "@/modules/notifications/hooks/useNotifications";
+import type { AccountView } from "@/core/accounts";
+import { AccountsSection } from "./accounts/AccountsSection";
+import { AddAccountModal, RemoveAccountDialog } from "./accounts/AccountDialogs";
 
 // The navigation shared by the desktop sidebar and the mobile drawer.
 
@@ -174,11 +177,16 @@ function Avatar() {
   );
 }
 
-/** The business at the bottom: opens a small menu with the theme, Settings and Log out. */
+/** The business at the bottom: opens a small menu with the login's accounts, the theme, Settings and Log out. */
 export function AccountMenu({ collapsed = false, onNavigate }: { collapsed?: boolean; onNavigate?: () => void }) {
   const userEmail = useSession((s) => s.user.email);
   const business = useSession((s) => s.business);
+  // The open business's own login email; after switching it differs from the login being used
+  const businessEmail = business.loginEmail || userEmail;
   const { choice, setTheme } = useTheme();
+  const [open, setOpen] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [removing, setRemoving] = useState<AccountView | null>(null);
 
   async function logout() {
     await createClient().auth.signOut();
@@ -190,7 +198,7 @@ export function AccountMenu({ collapsed = false, onNavigate }: { collapsed?: boo
 
   return (
     <div className={cn("border-t border-ob-line p-2", collapsed && "flex justify-center")}>
-      <Popover.Root>
+      <Popover.Root open={open} onOpenChange={setOpen}>
         <Popover.Trigger
           title={collapsed ? (business.name || "Account") : undefined}
           className={cn(
@@ -204,7 +212,7 @@ export function AccountMenu({ collapsed = false, onNavigate }: { collapsed?: boo
             <>
               <span className="flex min-w-0 flex-1 flex-col">
                 <span className="truncate text-sm font-bold">{business.name || "Your business"}</span>
-                <span className="truncate text-xs text-ob-muted">{userEmail}</span>
+                <span className="truncate text-xs text-ob-muted">{businessEmail}</span>
               </span>
               <ChevronsUpDown size={15} className="shrink-0 text-ob-faint" />
             </>
@@ -217,9 +225,23 @@ export function AccountMenu({ collapsed = false, onNavigate }: { collapsed?: boo
                 <Avatar />
                 <span className="flex min-w-0 flex-col">
                   <span className="truncate text-sm font-bold">{business.name || "Your business"}</span>
-                  <span className="truncate text-xs text-ob-muted">{userEmail}</span>
+                  <span className="truncate text-xs text-ob-muted">{businessEmail}</span>
+                  {businessEmail !== userEmail && <span className="truncate text-[11px] text-ob-faint">Logged in as {userEmail}</span>}
                 </span>
               </div>
+
+              <div className="mx-1 border-t border-ob-line" />
+
+              <AccountsSection
+                onAdd={() => {
+                  setOpen(false);
+                  setAdding(true);
+                }}
+                onRemove={(account) => {
+                  setOpen(false);
+                  setRemoving(account);
+                }}
+              />
 
               <div className="mx-1 border-t border-ob-line" />
 
@@ -262,6 +284,8 @@ export function AccountMenu({ collapsed = false, onNavigate }: { collapsed?: boo
           </Popover.Positioner>
         </Popover.Portal>
       </Popover.Root>
+      <AddAccountModal open={adding} onOpenChange={setAdding} />
+      <RemoveAccountDialog account={removing} onClose={() => setRemoving(null)} />
     </div>
   );
 }

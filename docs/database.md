@@ -1,6 +1,6 @@
 # Database Schema
 
-30 tables + `businesses` in Supabase Postgres; files are in Cloudflare R2 (see File storage). This file is the current truth for the schema: every migration is listed here and every change explained. Migrations live in `supabase/migrations/` and are applied in order:
+31 tables + `businesses` in Supabase Postgres; files are in Cloudflare R2 (see File storage). This file is the current truth for the schema: every migration is listed here and every change explained. Migrations live in `supabase/migrations/` and are applied in order:
 
 | Migration | What |
 |---|---|
@@ -22,6 +22,8 @@
 | `0023_creative_knowledge.sql` | `plan_items.ad_objective` (awareness, converting, retargeting), `desire` (six permanent desires) and `awareness_level` (five levels), set by the Planner; `learnings` dimensions `ad_objective`, `desire`, `awareness_level`, `style_modifier` |
 | `0024_reference_video.sql` | `plan_items.reference_video_id` → `brand_assets` (a video the owner wants made again for the post's product; SET NULL), and a unique index on `brand_assets (id, business_id)` for the business-scoped foreign key |
 | `0026_reference_image.sql` | `plan_items.reference_image_key`: an ad image the owner likes, given on "Create an ad" or Media → Create → Image; the image model makes the new ad the same way. The file waits in `tmp/` (deleted after 7 days) |
+| `0031_business_login_email.sql` | `business_login_email()`: the login email of the business a request is for (its owner's), shown in the account menu after switching |
+| `0030_business_accounts.sql` | Several businesses per login: `business_members`, `current_business_id()` follows the tab's or device's choice (always checked against the login's memberships), `businesses.owner_id` no longer unique, `member_reads` on `businesses`, `my_businesses()`, `create_business()` |
 | `0029_design_language.sql` | `brand_kit.design_language`: the website's signature look and motion, for image and video prompts |
 | `0028_auto_plan.sql` | `app_settings.auto_plan` (the weekly plan runs by itself only when the owner turns it on; off by default, also for existing businesses) and `autopilot_mode` defaulting to `approve_each` |
 | `0027_ad_library_searches.sql` | `ad_library_searches` table: each page of Meta Ad Library results a business fetched in Copy a video → Ad library, kept 48 hours so the same search costs nothing; the day's rows count its live calls for the daily limit |
@@ -78,10 +80,15 @@ Never edit an applied migration; add a new one.
 ## Multi-tenant (0017)
 
 ### `businesses` — new
-One row per business: `id` uuid PK, `owner_id` → `auth.users` (unique; `on delete set null`, so deleting a login keeps its data), `owns_unfoldered_files` (true for the first business: only it may delete files from before 0017, which have no business folder), `created_at`. Logged-in users can read only their own row.
+One row per business: `id` uuid PK, `owner_id` → `auth.users` (the login that made it; no longer unique since 0030; `on delete set null`, so deleting a login keeps its data), `owns_unfoldered_files` (true for the first business: only it may delete files from before 0017, which have no business folder), `created_at`. Logged-in users can read the businesses they belong to (`member_reads`, 0030).
 
-- `current_business_id()`: the logged-in user's business id (security definer). Column default of every `business_id`, used by every RLS policy.
-- Trigger `prodo_create_business` on `auth.users`: every new login gets a business. Trigger `seed_business` on `businesses`: creates its `business_profile`, `app_settings` (notification email = the owner's email) and `brand_kit` rows.
+### `business_members` — new (0030)
+Which logins can open which business: `user_id` → `auth.users` (cascade), `business_id` → `businesses` (cascade), `role` (`owner`: made with or by this login; `member`: linked by signing in once with that business's own login), `created_at`; primary key (`user_id`, `business_id`). A login reads only its own rows; only the server writes them. Every owner before 0030 became an `owner` row.
+
+- `current_business_id()`: the business this request is for (security definer). Column default of every `business_id`, used by every RLS policy. Since 0030: the `x-prodo-business` request header (the browser tab's business) when the login belongs to it, else none; or the `x-prodo-pick` header (the business picked on this device) when the login belongs to it; else the login's own first business.
+- `business_login_email()` (0031): the open business's own login email (its owner's), for the account menu.
+- `my_businesses()` (0030): the login's businesses with name, logo, onboarding status and role, for the account menu. `create_business()` (0030): "Add account" → a new business the login owns (its unfinished setup when it has one; at most 25 per login).
+- Trigger `prodo_create_business` on `auth.users`: every new login gets a business and is its owner (`business_members`, 0030). Trigger `seed_business` on `businesses`: creates its `business_profile`, `app_settings` (notification email = the owner's email) and `brand_kit` rows.
 - Trigger `keep_business_id` on every table: a row can never move to another business.
 - Trigger `guard_server_columns`: only the server may set `app_settings.zernio_profile_id`, `post_targets.provider_ref` and `post_targets.provider_post_id`; logged-in users may only clear them.
 - On a database that already had data, 0017 gave it to the first business (the oldest login). A new project starts empty: every business comes from a login.

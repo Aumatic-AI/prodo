@@ -2,7 +2,7 @@
 
 Autonomous AI ad and content system. Onboarding builds each business's brand knowledge (Brand Bible, Brand Brain); ten agents then plan, produce, publish and learn from posts on a weekly loop. Manual create-and-post still works alongside the agents.
 
-One deploy serves many businesses (multi-tenant): **one login = one business**. A new login gets its own empty business and goes through onboarding. Every table has `business_id`; see "Multi-tenant" below.
+One deploy serves many businesses (multi-tenant). Each business has its own login, and a login can add other businesses and switch between them (account menu, the same on every device). A new login gets its own empty business and goes through onboarding. Every table has `business_id`; see "Multi-tenant" below.
 
 ## Source of truth
 
@@ -30,12 +30,12 @@ Older planning pages (the Blueprint, Data Model and Sprint plans on claude.ai) a
 
 - Built: onboarding v2 (website scan first) → brand research (agents 1–4) → Brand Bible approval → weekly loop (agents 5–9) → learning loop (agent 10). Manual Media, Posts and Calendar screens. Performance, Activity and Costs screens. Settings: Business profile, Content, Automation, Connected accounts.
 - Videos: every video is drawn by Remotion on our worker from a Timeline our code builds (storylines per style, scene library, five looks, captions, cards, stickers, transitions, sound effects). The client's own videos are watched for usable moments and used in scenes. See `docs/technical.md` → Videos.
-- Files are in Cloudflare R2; the database is Supabase project `focaedtidoocuixiupxn`; migrations 0001–0025 and 0027–0029 are applied (0027 Ad library searches, 0028 "Plan my week automatically" off by default and autopilot approve each post, 0029 the website's design language); 0026 (reference image per image ad) is written and waits for the user to run it.
+- Files are in Cloudflare R2; the database is Supabase project `focaedtidoocuixiupxn`; migrations 0001–0031 are applied (0027 Ad library searches, 0028 "Plan my week automatically" off by default and autopilot approve each post, 0029 the website's design language, 0030 several businesses per login, 0031 the open business's login email for the account menu).
 - Not yet: a real end-to-end weekly run with paid calls, the publisher tested end to end, the worker update deployed to the VPS, email sending (`EMAIL_ENABLED` off), a custom domain for files (still `r2.dev`).
 
 ### Decisions worth knowing
 
-- **Multi-tenant**: one deploy (Vercel + Supabase + Inngest) for every business, one login per business, every row tagged with `business_id`.
+- **Multi-tenant**: one deploy (Vercel + Supabase + Inngest) for every business, every row tagged with `business_id`. Each business has its own login; a login can add others and switch (`business_members`, 0030).
 - **ScrapeCreators instead of SerpAPI** for search, ad libraries and public social data (no Google Trends or Maps reviews).
 - **This week (`/week`) is home**; there is no Dashboard tab.
 - **Email** notifications are built (Resend) but only logged until `EMAIL_ENABLED=1`.
@@ -160,10 +160,12 @@ Read live from the publishing provider (cached 60s in TanStack Query). No `conne
 
 ### Multi-tenant
 
-One login owns one business (`businesses.owner_id`). Creating a login in Supabase Auth creates its business and settings rows (database triggers); the user then goes through onboarding.
+Each business has its own login (its owner). Creating a login in Supabase Auth creates its business and settings rows (database triggers); the user then goes through onboarding. A login can open several businesses (`business_members`, 0030): "Add account" links one that has its own login (signing in with it once; only set-up businesses) or starts a new one ("Setting up" until its Brand Bible is approved); switching picks one per device and reloads the tab. The list is on the login, so it's the same on every device.
+
+- **Which business**: `current_business_id()` reads the `x-prodo-business` header (the tab's business; `apiFetch` sends it on every call) or `x-prodo-pick` (the business picked on this device, from the `prodo_business` cookie, added by `lib/supabase/server.ts`), always checking the login belongs to it. A tab never acts on a business it wasn't loaded with.
 
 - **API routes**: the logged-in client; RLS (`business_id = current_business_id()`) limits every query, and inserts fill `business_id` by themselves. When the id is needed (events, storage keys) use `currentBusiness()` (`src/core/business.ts`).
-- **Agents and jobs**: `businessDb(businessId)` (`src/lib/supabase/business.ts`), the service role limited to one business: it filters every read, update and delete, stamps every insert and passes `p_business_id` to database functions. Never use `createAdminClient()` for tables; it's only for listing businesses and admin scripts.
+- **Agents and jobs**: `businessDb(businessId)` (`src/lib/supabase/business.ts`), the service role limited to one business: it filters every read, update and delete, stamps every insert and passes `p_business_id` to database functions. Never use `createAdminClient()` for tables; it's only for listing businesses, admin scripts, and linking or removing an account (`core/accounts.ts`, which works across logins).
 - **Events**: every Inngest event carries `businessId` (typed in `src/jobs/client.ts`). Concurrency keys and event ids built from dates include it. Crons send one event per active business (`cronForEveryBusiness`).
 - **Settings rows** (`business_profile`, `app_settings`, `brand_kit`) are one row per business: read them with `.single()`, update them with `ownRow(...)`.
 - The database backs it up: foreign keys include `business_id`, so a row can't point at another business's row, and a trigger stops a row moving to another business.
@@ -198,11 +200,11 @@ npx supabase gen types typescript --project-id focaedtidoocuixiupxn --schema pub
 
 Never append `2>&1` to the types command — stderr noise breaks the generated file. In PowerShell, `>` writes UTF-16, which breaks lint and the build; use `npx supabase gen types typescript --project-id focaedtidoocuixiupxn --schema public | Out-File -Encoding utf8 src/types/database.ts`.
 
-**Migrations**: never edit an applied migration; always add a new one, and list it in `docs/database.md`. Migrations 0001–0025 and 0027–0029 were applied by pasting them into the Supabase SQL Editor (0026 is pending), so the CLI's history doesn't know them. Before the first `db push`, run `npx supabase migration repair --status applied 0001 0002 0003 0004 0005 0006 0007 0008 0009 0010 0011 0012 0013 0014 0015 0016 0017 0018 0019 0020 0021 0022 0023 0024 0025 0027 0028 0029`.
+**Migrations**: never edit an applied migration; always add a new one, and list it in `docs/database.md`. Migrations 0001–0031 were applied by pasting them into the Supabase SQL Editor, so the CLI's history doesn't know them. Before the first `db push`, run `npx supabase migration repair --status applied 0001 0002 0003 0004 0005 0006 0007 0008 0009 0010 0011 0012 0013 0014 0015 0016 0017 0018 0019 0020 0021 0022 0023 0024 0025 0026 0027 0028 0029 0030 0031`.
 
 ### Schema rules
 
-- 30 tables plus `businesses`, all in `docs/database.md` (that file is the current truth). Every table has `business_id`. Settings tables (`business_profile`, `app_settings`, `brand_kit`) have one row per business (primary key `business_id`), made when the business is created.
+- 31 tables plus `businesses`, all in `docs/database.md` (that file is the current truth). Every table has `business_id`. Settings tables (`business_profile`, `app_settings`, `brand_kit`) have one row per business (primary key `business_id`), made when the business is created.
 - Products and services are one table, `offerings`, with `kind`. Type-specific details go in `attributes`.
 - Brand rows (`offerings`, `personas`, `content_pillars`, `offers`) are archived with `active = false`, never hard-deleted.
 - `brand_bible` is versioned; only one row per business can be `approved` (partial unique index).

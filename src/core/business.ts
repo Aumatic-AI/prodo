@@ -12,12 +12,15 @@ export interface CurrentBusiness {
   businessId: string;
 }
 
-/** The id of the logged-in user's business. `db` must be the logged-in client (RLS returns only their row). */
+/**
+ * The id of the business this request is for. `db` must be the logged-in client: the database picks the business
+ * the tab or device asked for, when the login belongs to it, else the login's own (current_business_id(), 0030).
+ */
 export async function businessIdOf(db: SupabaseClient): Promise<string> {
-  const { data, error } = await db.from("businesses").select("id").maybeSingle();
+  const { data, error } = await db.rpc("current_business_id");
   if (error) throw error;
   if (!data) throw new AppError(NO_BUSINESS_MESSAGE, "UNAUTHORIZED", false);
-  return data.id;
+  return data as string;
 }
 
 /** The logged-in user's business, for API routes. */

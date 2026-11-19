@@ -6,8 +6,9 @@ import { createClient } from "@/lib/supabase/server";
 // a business is never signed out here, so a link from another site can't log anyone out.
 export async function GET(req: NextRequest) {
   const db = await createClient();
-  const { data } = await db.from("businesses").select("id").maybeSingle();
-  if (data) return NextResponse.redirect(new URL("/week", req.nextUrl.origin));
+  // Any business on the login (one login can have several) means it isn't signed out
+  const { data } = await db.from("business_members").select("business_id").limit(1);
+  if (data?.length) return NextResponse.redirect(new URL("/week", req.nextUrl.origin));
 
   await db.auth.signOut();
   const url = new URL("/login", req.nextUrl.origin);
