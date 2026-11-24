@@ -2,7 +2,9 @@
 // checks, how brief labels become the client's photos and video moments, the look for a brand, and
 // the timeline the renderer draws (timing, captions, placement, sound).
 // Run: npm run smoke scripts/check/video-logic.ts
-process.env.IMAGE_AD_MODE ??= "designed";
+import { setImageAdModeForChecks } from "@/config/image-ads";
+// The checks below are about the designed image layouts
+setImageAdModeForChecks("designed");
 import assert from "node:assert/strict";
 import { FPS } from "@video/timeline";
 import { PRESETS } from "@video/presets";

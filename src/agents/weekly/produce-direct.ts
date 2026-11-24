@@ -17,7 +17,7 @@ import { finalName, mediaKey, publicUrl, ratioName, workKey } from "@/providers/
 import { upload } from "@/providers/storage/r2";
 import { logUsage, taskFor } from "./task";
 
-// Direct image ad (IMAGE_AD_MODE=direct): a test of "just give the image model everything".
+// Direct image ad (the mode in config/image-ads.ts): a test of "just give the image model everything".
 // No Creative Director, no QA gates, no logo drawn by code. All the context the Creative Director
 // would read goes to the image model as plain text, with the product photos and the logo attached,
 // and its picture is the final ad (only resized to each platform's size).

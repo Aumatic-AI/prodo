@@ -2,11 +2,11 @@
 // No vendor calls, no database. Run: npm run smoke scripts/check/weekly-logic.ts
 import assert from "node:assert/strict";
 import { freeAdPrompt } from "@/agents/producer/static-free";
-import { gpt2Resolution, openaiImageSize } from "@/config/image-ads";
+import { gpt2Resolution, openaiImageSize, setImageAdModeForChecks } from "@/config/image-ads";
 import { directBrief, directContext, directPrompt } from "@/agents/creative-director/direct-context";
 
 // Most checks below are about the designed layouts; the free image ad ones switch the mode on for their own run
-process.env.IMAGE_AD_MODE = "designed";
+setImageAdModeForChecks("designed");
 import { addDays, nextWeekStart, weekStartOf, zonedParts, zonedToUtc } from "@/lib/zoned-time";
 import { allocate, allowedFormats, avoidRepeats, planSlots } from "@/agents/planner/slots";
 import { assembleBrief, pickDesign } from "@/agents/creative-director/assemble";
@@ -552,7 +552,7 @@ await check("referenceUse and adPhotoPrompt: a product photo gives the product o
 });
 
 await check("free image ad: no diagnosis, hook-variety or word-limit problems; the logo corner is kept; truth checks stay", () => {
-  process.env.IMAGE_AD_MODE = "free";
+  setImageAdModeForChecks("free");
   try {
     const out = assembleBrief(raw({ diagnosis: null, headline: "", logoCorner: "bottom-right", hooks: [{ type: "question", text: "Why save it for your suitcase?" }] }), "static", ctx, book);
     assert.ok(out.brief, out.problems.join("; "));
@@ -565,7 +565,7 @@ await check("free image ad: no diagnosis, hook-variety or word-limit problems; t
     const wrongPrice = assembleBrief(raw({ diagnosis: null, imagePrompt: 'A bright kitchen with the text "Only €99" in the corner, plain space top left for a logo' }), "static", ctx, book);
     assert.ok(checkBrief(wrongPrice.brief!, ctx).some((p) => p.includes("prices that aren't the current ones")));
   } finally {
-    process.env.IMAGE_AD_MODE = "designed";
+    setImageAdModeForChecks("designed");
   }
 });
 

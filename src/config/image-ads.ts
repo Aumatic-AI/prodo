@@ -1,14 +1,21 @@
-// How image ads are made.
-// "free" (default): the image model makes the whole ad, words included, from a prompt the Creative
-// Director writes with no template; our code only adds the logo in a corner.
-// "designed": the earlier way: the model makes a photo and our Satori layouts draw every word.
-// "direct" (a test): no Creative Director and no QA. All the context, the product photos and the logo
+// How image ads are made. Set here, not in env, so every deploy makes them the same way.
+// "direct" (in use): no Creative Director and no QA. All the context, the product photos and the logo
 // go straight to the image model, and its picture is the final ad.
-// Set IMAGE_AD_MODE=designed to go back. Carousels, videos and the video end card are unaffected.
+// "free": the image model makes the whole ad, words included, from a prompt the Creative Director
+// writes with no template; our code only adds the logo in a corner.
+// "designed": the earlier way: the model makes a photo and our Satori layouts draw every word.
+// Carousels, videos and the video end card are unaffected.
 
 export type ImageAdMode = "free" | "designed" | "direct";
 
-export const imageAdMode = (): ImageAdMode => (process.env.IMAGE_AD_MODE === "designed" ? "designed" : process.env.IMAGE_AD_MODE === "direct" ? "direct" : "free");
+let mode: ImageAdMode = "direct";
+
+export const imageAdMode = (): ImageAdMode => mode;
+
+/** Offline checks only: they test the other modes' rules too */
+export const setImageAdModeForChecks = (next: ImageAdMode): void => {
+  mode = next;
+};
 
 /**
  * Which image model makes a direct ad. "kie-gpt2" (default): GPT Image 2 on Kie. "openai": OpenAI's own

@@ -4,7 +4,7 @@ import { isImageStyle, styleBrief } from "@/core/content/styles";
 import { briefSchema, type Brief, type CtaLink } from "@/core/creative/brief";
 import type { CreativeContext } from "./context";
 
-// "Direct" image ads (IMAGE_AD_MODE=direct): no Creative Director and no QA. Everything the Creative
+// "Direct" image ads (the mode in config/image-ads.ts): no Creative Director and no QA. Everything the Creative
 // Director would have read goes to the image model as plain facts, together with the product photos
 // and the logo, and the model's picture is the final ad. Nothing here says how the picture should
 // look. The brief that goes with the post is made by code, since the post still needs a title,
