@@ -22,6 +22,9 @@ import { cn } from "@/lib/utils";
 import { useResource } from "@/modules/brand/hooks/useResource";
 import { EMPTY_VIDEO_TO_COPY, VideoToCopy, videoToCopyInput, videoToCopyMissing } from "@/modules/library/components/ad-library/VideoToCopy";
 import { useCreateAd } from "../hooks/usePlan";
+import { CreditAmount } from "@/components/kit/Credits";
+import { itemAction } from "@/core/credits/items";
+import { useCreditPrices } from "@/modules/insights/hooks/useInsights";
 
 /** The formats, plus copying a video the owner likes */
 type Choice = Format | "copy";
@@ -29,7 +32,7 @@ type Choice = Format | "copy";
 const FORMATS: { value: Choice; label: string; description: string; icon: React.ReactNode }[] = [
   { value: "static", label: "Image ad", description: "One designed image", icon: <ImageIcon size={18} /> },
   { value: "carousel", label: "Carousel", description: "5–8 swipeable slides", icon: <GalleryHorizontal size={18} /> },
-  { value: "video", label: "Video", description: "Up to 50 s, edited with music", icon: <Clapperboard size={18} /> },
+  { value: "video", label: "Video", description: "Up to 30 s, with voice and music", icon: <Clapperboard size={18} /> },
   { value: "text", label: "Text post", description: "Words only", icon: <FileText size={18} /> },
   { value: "copy", label: "Copy a video", description: "A video you like, with your product", icon: <Copy size={18} /> },
 ];
@@ -76,6 +79,10 @@ export function CreateAdModal({ open, onOpenChange, onCreated }: { open: boolean
   const [liked, setLiked] = useState<Upload[]>([]);
 
   const usable = useMemo(() => platforms.filter((p) => fits(made, p)), [platforms, made]);
+  // What this post costs: the same rule the server charges by
+  const { data: prices } = useCreditPrices();
+  const action = itemAction({ format: made, reference_image_key: made === "static" ? (liked[0]?.key ?? null) : null, reference_video_id: copying ? "copy" : null });
+  const cost = prices?.find((p) => p.action === action)?.credits;
   const toggle = (p: string) => setPlatforms((list) => (list.includes(p) ? list.filter((x) => x !== p) : [...list, p]));
 
   async function submit() {
@@ -110,9 +117,12 @@ export function CreateAdModal({ open, onOpenChange, onCreated }: { open: boolean
       footer={
         <div className="flex flex-wrap items-center justify-between gap-3">
           <span className="text-[13px] text-ob-muted">Usually ready in 2–4 minutes for images, about 10 for videos.</span>
-          <button type="button" className={button()} disabled={create.isPending || !usable.length || (copying ? !!videoToCopyMissing(video) || offeringId === NONE : idea.trim().length < 3)} onClick={submit}>
-            <Sparkles size={16} /> {create.isPending ? "Starting…" : "Create ad"}
-          </button>
+          <div className="flex items-center gap-3">
+            {cost !== undefined && <CreditAmount value={cost} unit size={14} className="text-[13px] font-semibold text-ob-muted" />}
+            <button type="button" className={button()} disabled={create.isPending || !usable.length || (copying ? !!videoToCopyMissing(video) || offeringId === NONE : idea.trim().length < 3)} onClick={submit}>
+              <Sparkles size={16} /> {create.isPending ? "Starting…" : "Create ad"}
+            </button>
+          </div>
         </div>
       }
     >

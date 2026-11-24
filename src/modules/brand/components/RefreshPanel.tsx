@@ -11,6 +11,7 @@ import { RESEARCH_AGENTS } from "@/core/onboarding/research";
 import type { ResearchProgress } from "@/core/onboarding/progress";
 import { RESEARCH_AGENT_META } from "@/modules/onboarding/config";
 import { useResearchProgress, useRetryResearch } from "@/modules/onboarding/hooks/useResearchProgress";
+import { useCreditPrices } from "@/modules/insights/hooks/useInsights";
 
 const STATE = {
   queued: { icon: Clock, className: "text-ob-faint" },
@@ -31,9 +32,14 @@ export function RefreshButton() {
   const queryClient = useQueryClient();
   const active = useRefreshActive();
   const [confirming, setConfirming] = useState(false);
+  const { data: prices } = useCreditPrices();
+  const refreshCredits = prices?.find((p) => p.action === "brand_refresh")?.credits;
   const refresh = useMutation({
     mutationFn: () => apiFetch<ResearchProgress>("/api/brand/refresh", { method: "POST" }),
-    onSuccess: (progress) => queryClient.setQueryData(["onboarding", "progress"], progress),
+    onSuccess: (progress) => {
+      queryClient.setQueryData(["onboarding", "progress"], progress);
+      queryClient.invalidateQueries({ queryKey: ["credits"] });
+    },
   });
 
   return (
@@ -49,7 +55,7 @@ export function RefreshButton() {
         description={
           <p className="m-0">
             The agents read your website, visuals, socials and competitors again and write a new Brand Bible draft. Your current Bible stays in use until you
-            approve the new one. It takes about 10 minutes and uses some of this month&apos;s budget.
+            approve the new one. It takes about 10 minutes and uses {refreshCredits ?? "some"} credits.
           </p>
         }
         confirmLabel="Refresh"
@@ -78,7 +84,7 @@ export function RefreshProgress() {
         <div className="flex flex-col gap-0.5">
           <strong className="text-base">{research.state === "running" ? "Refreshing your brand" : "The refresh didn't finish"}</strong>
           <span className="text-[13px] text-ob-muted">
-            {done} of {RESEARCH_AGENTS.length} agents finished{data?.costUsd ? ` · $${data.costUsd.toFixed(2)} so far` : ""} · your current Bible stays in use
+            {done} of {RESEARCH_AGENTS.length} agents finished · your current Bible stays in use
           </span>
         </div>
         {(research.state === "failed" || data?.stale) && (

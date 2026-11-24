@@ -1,7 +1,7 @@
 import { NonRetriableError } from "inngest";
 import sharp from "sharp";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { directBrief, directContext, directPrompt, type DirectImage } from "@/agents/creative-director/direct-context";
+import { directBrief, directContext, directPhotos, directPrompt, type DirectImage } from "@/agents/creative-director/direct-context";
 import { loadCreativeContext } from "@/agents/creative-director/context";
 import { canvasesFor, kieRatio } from "@/agents/producer/canvases";
 import { gpt2Resolution, imageEngine, openaiFallbackSize, openaiImage, openaiImageSize } from "@/config/image-ads";
@@ -22,7 +22,7 @@ import { logUsage, taskFor } from "./task";
 // would read goes to the image model as plain text, with the product photos and the logo attached,
 // and its picture is the final ad (only resized to each platform's size).
 
-/** Product photos sent with the request, besides the logo */
+/** Photos sent with the request, besides the logo */
 const MAX_PHOTOS = 4;
 
 export async function produceDirect(
@@ -42,11 +42,9 @@ export async function produceDirect(
       if (usage) track(usage);
       const theme = await loadTheme(db());
       const logo = theme.logo.onLight ?? theme.logo.onDark;
-      // Only this product's own photos: another product's photo would pull it into the picture. A post about the brand (no
-      // product) or a product with no photo of its own gets a couple of the brand's photos instead. ctx.assets has no videos,
-      // and no people photos when the owner chose none.
-      const own = ctx.offering ? ctx.assets.filter((a) => a.offeringId === ctx.offering!.id) : [];
-      const photos = own.length ? own.slice(0, MAX_PHOTOS) : ctx.assets.slice(0, 2);
+      // The product's own photos, or for a post about the brand a mix of the brand's and each product's (directPhotos).
+      // ctx.assets has no videos, and no people photos when the owner chose none.
+      const photos = directPhotos(ctx, MAX_PHOTOS);
       // An ad the owner likes, when they gave one and it's still in storage (it's deleted after 7 days)
       const liked = ctx.item.reference_image_key ? publicUrl(ctx.item.reference_image_key) : null;
       const likedReady = liked ? await fetch(liked, { method: "HEAD" }).then((r) => r.ok).catch(() => false) : false;

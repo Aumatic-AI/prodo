@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { getAdmin } from "@/core/admin/guard";
 
 // Signs out a login that isn't linked to a business (the app layouts send it here) and explains why
 // on the login page. Route handlers can clear the session cookies; layouts can't. A login that has
@@ -9,6 +10,8 @@ export async function GET(req: NextRequest) {
   // Any business on the login (one login can have several) means it isn't signed out
   const { data } = await db.from("business_members").select("business_id").limit(1);
   if (data?.length) return NextResponse.redirect(new URL("/week", req.nextUrl.origin));
+  // An admin has no business: its home is the admin panel
+  if (await getAdmin()) return NextResponse.redirect(new URL("/admin", req.nextUrl.origin));
 
   await db.auth.signOut();
   const url = new URL("/login", req.nextUrl.origin);

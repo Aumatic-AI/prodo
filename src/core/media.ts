@@ -1,7 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { removeFiles } from "@/providers/storage/remove-files";
-import { AppError } from "@/core/errors";
+import { userMessage } from "@/core/errors";
 import { inngest } from "@/jobs/client";
+import { refundCredits, spendCredits } from "@/core/credits/ledger";
+import type { CreditAction } from "@/config/credits";
 
 export type MediaType = "image" | "video" | "text" | "carousel";
 export type MediaSource = "generated" | "uploaded";
@@ -127,17 +129,37 @@ export async function productNameFor(db: SupabaseClient, media: Media): Promise<
   return media.creative_spec?.product_name || undefined;
 }
 
+/** What making a media item costs: a video, an image ad, or one from a reference image */
+export function mediaAction(media: { type: string; reference_image_key?: string | null }): CreditAction {
+  return media.type === "video" ? "video" : media.reference_image_key ? "image_ad_reference" : "image_ad";
+}
+
 /**
- * Starts making a media item (image or video job). A failed start marks it failed with a plain
- * message, so it never sits at "generating" with nothing running.
+ * Starts making a media item (image or video job), taking its credits first (given back when the job fails).
+ * A failed start marks it failed with a plain message, so it never sits at "generating" with nothing running.
  */
-export async function startGenerating(db: SupabaseClient, businessId: string, media: { id: string; type: string }, eventId: string): Promise<void> {
+export async function startGenerating(
+  db: SupabaseClient,
+  businessId: string,
+  media: { id: string; type: string; idea?: string | null; reference_image_key?: string | null },
+  eventId: string
+): Promise<void> {
   const name = media.type === "video" ? "media/generate-video" : "media/generate-image";
+  const creditKey = `media:${media.id}:${eventId}`;
+  const idea = media.idea?.trim();
+  const label = `${media.type === "video" ? "Video" : "Image"}${idea ? ` · ${idea.slice(0, 80)}` : ""}`;
   try {
-    await inngest.send({ name, data: { businessId, mediaId: media.id }, id: eventId });
-  } catch {
-    const message = "Couldn't start making it. Try again in a moment.";
-    await markFailed(db, media.id, message);
-    throw new AppError(message, "PROVIDER_DOWN", true);
+    await spendCredits(businessId, { action: mediaAction(media), label, refId: media.id, key: creditKey }, media.type === "video" ? "This video" : "This image");
+  } catch (err) {
+    await markFailed(db, media.id, userMessage(err));
+    throw err;
+  }
+  try {
+    await inngest.send({ name, data: { businessId, mediaId: media.id, creditKey }, id: eventId });
+  } catch (err) {
+    // The exact reason (inngest.send names who failed and why), on the media and on screen
+    await refundCredits(businessId, creditKey);
+    await markFailed(db, media.id, userMessage(err));
+    throw err;
   }
 }

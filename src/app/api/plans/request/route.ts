@@ -7,6 +7,8 @@ import { findPlanByWeek } from "@/core/plans/plans";
 import { resolveWeek, weekClock } from "@/core/plans/week";
 import { addDays } from "@/lib/zoned-time";
 import { inngest } from "@/jobs/client";
+import { assertCredits } from "@/core/credits/ledger";
+import { priceOf } from "@/core/credits/prices";
 
 const schema = z.object({ week: z.string().default("next"), replace: z.boolean().default(false) });
 
@@ -29,6 +31,8 @@ export const POST = apiHandler(async (req: NextRequest) => {
   if (existing && ["planning", "producing"].includes(existing.status) && replace) {
     throw new AppError("The agents are still working on this week. Wait until they finish, then plan again.", "INVALID_INPUT", false);
   }
+  // The plan's own credits at least; the Planner checks every post's once it knows the slots
+  await assertCredits(businessId, await priceOf("week_plan"), "Planning a week");
   await inngest.send({ name: "plan/requested", id: `plan-${businessId}-${weekStart}-${replace ? "again" : "new"}-${Math.floor(Date.now() / 60_000)}`, data: { businessId, weekStart, replace, source: "client" } });
   return NextResponse.json({ weekStart, started: true });
 });

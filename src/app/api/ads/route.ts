@@ -4,7 +4,7 @@ import { apiHandler } from "@/lib/api-handler";
 import { currentBusiness } from "@/core/business";
 import { referenceFolder } from "@/providers/storage/paths";
 import { earlierBreakdown, referenceFromLink } from "@/core/brand/reference-link";
-import { AppError } from "@/core/errors";
+import { AppError, userMessage } from "@/core/errors";
 import { FORMATS, type Format } from "@/core/creative/brief";
 import { loadContentRules } from "@/core/content/prefs";
 import { isVideoStyle, stylesFor } from "@/core/content/styles";
@@ -16,6 +16,7 @@ import { allowedFormats } from "@/agents/planner/slots";
 import { safeZone, weekStartOf, zonedParts } from "@/lib/zoned-time";
 import { inngest } from "@/jobs/client";
 import { assertVideoReady } from "@/providers/ffmpeg/client";
+import { assertItemCredits } from "@/core/credits/check";
 
 const schema = z.object({
   format: z.enum(FORMATS),
@@ -90,6 +91,8 @@ export const POST = apiHandler(async (req: NextRequest) => {
   // A copied video follows the reference, not a content style
   const style = copying ? null : await styleFor(db, input.format, input.style);
   await assertStyleHasFacts(db, style, input.offeringId ?? null);
+  // Enough credits for this post before anything is downloaded or started (its run takes them)
+  await assertItemCredits(businessId, { format: input.format, reference_image_key: input.referenceImageKey, reference_video_id: copying ? "copy" : null });
 
   // A reference video: a reference_videos row linked to this post. Its breakdown is kept for good; the file
   // only waits in tmp/ while it's read
@@ -162,6 +165,12 @@ export const POST = apiHandler(async (req: NextRequest) => {
     .single();
   if (error) throw error;
 
-  await inngest.send({ name: "plan-item/produce", id: `produce-${item.id}`, data: { businessId, itemId: item.id, planId: plan.id, oneOff: true } });
+  try {
+    await inngest.send({ name: "plan-item/produce", id: `produce-${item.id}`, data: { businessId, itemId: item.id, planId: plan.id, oneOff: true } });
+  } catch (err) {
+    // The post is saved but its run never started: failed with the reason (Make again works), never "planned" forever
+    await db.from("plan_items").update({ status: "failed", error: userMessage(err) }).eq("id", item.id);
+    throw err;
+  }
   return NextResponse.json(await getItemView(db, item.id), { status: 201 });
 });

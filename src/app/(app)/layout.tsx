@@ -3,14 +3,15 @@ import { MobileTopBar } from "@/components/layout/MobileTopBar";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { SplashScreen } from "@/components/layout/SplashScreen";
 import { NO_BUSINESS_SIGN_OUT, getSession } from "@/core/session";
+import { getAdmin } from "@/core/admin/guard";
 import { SessionStoreProvider } from "@/stores/SessionStoreProvider";
 
 // Checked once per page load (layouts stay mounted while moving between tabs)
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession();
   if (!session) redirect("/login");
-  // A login without a business can't use the app: sign it out with a plain message
-  if (!session.business) redirect(NO_BUSINESS_SIGN_OUT);
+  // A login without a business: an admin goes to the admin panel; anyone else is signed out with a plain message
+  if (!session.business) redirect((await getAdmin()) ? "/admin" : NO_BUSINESS_SIGN_OUT);
   if (session.business.onboardingStatus !== "done") redirect("/onboarding");
 
   return (

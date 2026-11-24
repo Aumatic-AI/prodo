@@ -19,7 +19,8 @@ const KIND: Record<NotificationKind, { icon: LucideIcon; className: string; labe
   plan_scheduled: { icon: CalendarCheck, className: "bg-ob-primary-soft text-ob-primary", label: "Scheduled" },
   post_failed: { icon: XCircle, className: "bg-ob-danger-soft text-ob-danger", label: "Post failed" },
   agent_stopped: { icon: TriangleAlert, className: "bg-ob-danger-soft text-ob-danger", label: "Stopped" },
-  budget_reached: { icon: TriangleAlert, className: "bg-ob-warn-soft text-ob-warn", label: "Budget" },
+  budget_reached: { icon: TriangleAlert, className: "bg-ob-warn-soft text-ob-warn", label: "Limit" },
+  credits_low: { icon: TriangleAlert, className: "bg-ob-danger-soft text-ob-danger", label: "Credits" },
   weekly_report: { icon: LineChart, className: "bg-ob-primary-soft text-ob-primary", label: "Weekly report" },
 };
 

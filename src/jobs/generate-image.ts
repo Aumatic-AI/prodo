@@ -2,6 +2,7 @@ import { inngest } from "./client";
 import { adoptFinishedMedia } from "@/core/plans/plans";
 import { failureMessage, toInngestError } from "./to-inngest-error";
 import { businessDb } from "@/lib/supabase/business";
+import { refundCredits } from "@/core/credits/ledger";
 import { getMedia, markReady, markFailed, productNameFor, type Media } from "@/core/media";
 import { getProfile } from "@/core/profile";
 import { AppError } from "@/core/errors";
@@ -26,6 +27,8 @@ export const generateImage = inngest.createFunction(
       const { businessId } = event.data.event.data;
       const db = businessDb(businessId);
       const msg = failureMessage(event.data.error);
+      // Nothing was made: its credits go back
+      if (event.data.event.data.creditKey) await refundCredits(businessId, event.data.event.data.creditKey);
       await markFailed(db, event.data.event.data.mediaId, msg);
     },
   },

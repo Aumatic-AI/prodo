@@ -39,7 +39,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: "Performance", href: "/performance", icon: LineChart },
       { label: "Activity", href: "/activity", icon: Activity },
-      { label: "Costs", href: "/costs", icon: Coins },
+      { label: "Credits", href: "/credits", icon: Coins },
     ],
   },
 ];

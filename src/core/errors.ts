@@ -11,6 +11,8 @@ export type ErrorType =
   | "INVALID_INPUT"
   | "NOT_CONFIGURED"
   | "BUDGET_REACHED"
+  /** The business has too few credits for this action (the admin adds more) */
+  | "NO_CREDITS"
   | "PAUSED"
   | "TIMEOUT"
   | "UNAUTHORIZED"
@@ -47,7 +49,7 @@ export const untag = (message: string) => message.replace(TAG, "");
 export const tagType = (type: ErrorType, message: string) => `[[${type}]] ${untag(message)}`;
 
 // Retrying can't fix these: the same call fails the same way until someone changes something
-const PERMANENT = new Set<ErrorType>(["OUT_OF_CREDIT", "LIMIT_REACHED", "NOT_CONFIGURED", "BUDGET_REACHED", "PAUSED", "INVALID_INPUT", "CONTENT_BLOCKED", "ACCOUNT_DISCONNECTED", "UNAUTHORIZED"]);
+const PERMANENT = new Set<ErrorType>(["OUT_OF_CREDIT", "LIMIT_REACHED", "NOT_CONFIGURED", "BUDGET_REACHED", "NO_CREDITS", "PAUSED", "INVALID_INPUT", "CONTENT_BLOCKED", "ACCOUNT_DISCONNECTED", "UNAUTHORIZED"]);
 
 /** The type of any error (ours, one Inngest passed back, the database's, a bug's) and whether trying again can fix it */
 export function classify(err: unknown): { type: ErrorType; retryable: boolean; retryAfterMs?: number } {
@@ -61,7 +63,7 @@ export function classify(err: unknown): { type: ErrorType; retryable: boolean; r
  * About the whole account, not one page or one photo: no credit, a wrong key or setting, a daily cap,
  * the budget or the pause switch. Every later call fails the same way, so the agent stops at once.
  */
-const ACCOUNT_WIDE = new Set<ErrorType>(["OUT_OF_CREDIT", "LIMIT_REACHED", "NOT_CONFIGURED", "BUDGET_REACHED", "PAUSED"]);
+const ACCOUNT_WIDE = new Set<ErrorType>(["OUT_OF_CREDIT", "LIMIT_REACHED", "NOT_CONFIGURED", "BUDGET_REACHED", "NO_CREDITS", "PAUSED"]);
 export const isAccountWide = (err: unknown) => ACCOUNT_WIDE.has(classify(err).type);
 
 /** The exact message for any error: ours as written, anyone else's described by describeError. */

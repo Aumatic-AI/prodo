@@ -25,6 +25,28 @@ export interface DirectColours {
 
 const list = (label: string, values: string[]) => (values.length ? [`${label}: ${values.join("; ")}`] : []);
 
+/** The price as the owner set it (" · price …", or nothing): a service may be "from", per hour, monthly or a quote */
+function priceText(price: number | null, currency: string | null, model: string | null): string {
+  const amount = `${price} ${currency ?? ""}`.trim();
+  if (model === "quote") return " · price on request";
+  if (price === null) return "";
+  return ` · price ${model === "from" ? `from ${amount}` : model === "hourly" ? `${amount} per hour` : model === "subscription" ? `${amount} (monthly or per package)` : amount}`;
+}
+
+/** A post about the brand lists this many products and services, so the range fits in the image model's prompt */
+const MAX_RANGE = 12;
+
+/**
+ * The photos sent with a direct image or video: the product's own; for a post about the brand, the
+ * brand's photos and each product's in turn (the context's order); a product with no photo of its own
+ * gets a couple of the brand's own (never another product's, which would pull it into the picture).
+ */
+export function directPhotos(ctx: CreativeContext, max: number): CreativeContext["assets"] {
+  if (!ctx.offering) return ctx.assets.slice(0, max);
+  const own = ctx.assets.filter((a) => a.offeringId === ctx.offering!.id);
+  return own.length ? own.slice(0, max) : ctx.assets.filter((a) => !a.offeringId).slice(0, 2);
+}
+
 /** The business, the post and the research as plain text: the same information the Creative Director gets. */
 export function directContext(ctx: CreativeContext, colours: DirectColours | null, images: DirectImage[]): string {
   const b = ctx.bible;
@@ -61,6 +83,7 @@ export function directContext(ctx: CreativeContext, colours: DirectColours | nul
 
   lines.push("", "THIS POST", `Platforms: ${it.platforms.map((p) => platformMeta(p).label).join(", ")}`, `Angle: ${it.angle ?? "brand post"}`);
   if (it.objective) lines.push(`What it should do: ${it.objective}`);
+  if (!ctx.offering) lines.push(`Product: none picked, so no single product or service is the star of this post${ctx.range.length ? "; where it shows what the business sells, it shows the range (WHAT THE BUSINESS SELLS)" : ""}`);
   if (it.ad_objective) lines.push(`Objective: ${it.ad_objective}`);
   if (it.desire) lines.push(`Desire: ${it.desire}`);
   if (it.awareness_level) lines.push(`Audience awareness: ${it.awareness_level}`);
@@ -74,16 +97,22 @@ export function directContext(ctx: CreativeContext, colours: DirectColours | nul
     lines.push("", `AUDIENCE: ${p.name}`, ...(p.summary ? [p.summary] : []), ...list("Pains", p.pains), ...list("Desires", p.desires), ...list("Objections", p.objections), ...list("Buying triggers", p.triggers), ...list("Words they use", p.phrases));
   }
 
+  if (!ctx.offering && ctx.range.length) {
+    const shown = ctx.range.slice(0, MAX_RANGE);
+    lines.push(
+      "",
+      "WHAT THE BUSINESS SELLS",
+      ...shown.map((o) => {
+        const about = o.description?.replace(/\s+/g, " ").trim();
+        return `- ${o.kind === "service" ? "Service" : "Product"}: ${o.name}${priceText(o.price, o.currency, o.priceModel)}${about ? ` · ${about.length > 110 ? `${about.slice(0, 110).trimEnd()}…` : about}` : ""}`;
+      }),
+      ...(ctx.range.length > shown.length ? [`- and ${ctx.range.length - shown.length} more`] : [])
+    );
+  }
+
   if (ctx.offering) {
     const o = ctx.offering;
-    const amount = `${o.price} ${o.currency ?? ""}`.trim();
-    // The price as the owner set it: a service may be "from", per hour, monthly or a quote
-    const price =
-      o.priceModel === "quote"
-        ? " · price on request"
-        : o.price === null
-          ? ""
-          : ` · price ${o.priceModel === "from" ? `from ${amount}` : o.priceModel === "hourly" ? `${amount} per hour` : o.priceModel === "subscription" ? `${amount} (monthly or per package)` : amount}`;
+    const price = priceText(o.price, o.currency, o.priceModel);
     const a = o.attributes ?? {};
     const text = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
     const steps = Array.isArray(a.process) ? a.process.filter((s): s is string => typeof s === "string" && !!s.trim()) : [];
@@ -124,7 +153,7 @@ export function directContext(ctx: CreativeContext, colours: DirectColours | nul
 
 /** What goes to the image model: one plain request, then everything above. */
 export const DIRECT_REQUEST =
-  "Create one new ad image for this business's post, based on the details below. The attached images are references for the real product (or the business's own place, team or work) and the brand's logo: make a new picture, not a collage of them.";
+  "Create one new ad image for this business's post, based on the details below. The attached images are references for the real products (or the business's own place, team or work) and the brand's logo: make a new picture, not a collage of them.";
 
 /** Kie's prompt box is large but not endless; the context rarely comes near this. */
 const MAX_PROMPT = 12_000;

@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { AppError } from "@/core/errors";
+import { assertItemCredits } from "@/core/credits/check";
+import { AppError, userMessage } from "@/core/errors";
 import { deleteMedia } from "@/core/media";
 import { inngest } from "@/jobs/client";
 import { getItem, getPlan } from "./plans";
@@ -91,13 +92,15 @@ export async function regenerateItem(db: SupabaseClient, itemId: string, note: s
  * "planned" forever (which also blocked any later "make it again").
  */
 export async function restartItem(db: SupabaseClient, businessId: string, itemId: string, note: string | null): Promise<PlanItem> {
+  // Making it again costs its credits again: say so now if there aren't enough (the run takes them)
+  await assertItemCredits(businessId, await getItem(db, itemId));
   const item = await regenerateItem(db, itemId, note);
   try {
     await inngest.send({ name: "plan-item/produce", id: `produce-${itemId}-${Date.now()}`, data: { businessId, itemId, planId: item.plan_id, note } });
-  } catch {
-    const message = "Couldn't start the agents. Try again in a moment.";
-    await db.from("plan_items").update({ status: "failed", error: message }).eq("id", itemId);
-    throw new AppError(message, "PROVIDER_DOWN", true);
+  } catch (err) {
+    // The exact reason (inngest.send names who failed and why), on the slot and on screen
+    await db.from("plan_items").update({ status: "failed", error: userMessage(err) }).eq("id", itemId);
+    throw err;
   }
   return item;
 }

@@ -12,7 +12,6 @@ import { cn } from "@/lib/utils";
 import { AGENT_NAMES } from "@/modules/week/lib/status";
 import { useActivityFeed, type ActivityItem } from "../hooks/useInsights";
 import { ActivityRowItem, AGENT_ICON } from "../components/activity/ActivityRowItem";
-import { usd } from "../lib/format";
 
 const AGENTS = Object.keys(AGENT_ICON);
 
@@ -33,13 +32,12 @@ export function ActivityPage() {
   const rows = useMemo(() => feed.data?.pages.flat() ?? [], [feed.data]);
 
   const days = useMemo(() => {
-    const groups: { title: string; rows: ActivityItem[]; cost: number }[] = [];
+    const groups: { title: string; rows: ActivityItem[] }[] = [];
     for (const row of rows) {
       const title = dayTitle(row.created_at);
       let g = groups[groups.length - 1];
-      if (!g || g.title !== title) groups.push((g = { title, rows: [], cost: 0 }));
+      if (!g || g.title !== title) groups.push((g = { title, rows: [] }));
       g.rows.push(row);
-      g.cost += Number(row.cost_usd ?? 0);
     }
     return groups;
   }, [rows]);
@@ -95,7 +93,7 @@ export function ActivityPage() {
               <div className="flex items-baseline justify-between px-2 pb-1 pt-1 sm:px-3">
                 <h2 className="m-0 text-[15px] font-bold">{d.title}</h2>
                 <span className="text-[12px] text-ob-muted">
-                  {d.rows.length} steps{d.cost > 0 ? ` · ${usd(d.cost)}` : ""}
+                  {d.rows.length} steps
                 </span>
               </div>
               <ol className="m-0 flex list-none flex-col p-0">

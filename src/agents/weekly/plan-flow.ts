@@ -3,7 +3,7 @@ import { approvePlan } from "@/core/plans/approval";
 import { getPlan, listItems, setPlanStatus } from "@/core/plans/plans";
 import { SETTLED } from "@/core/plans/types";
 import { notify } from "@/core/notifications/notify";
-import { businessDb } from "@/lib/supabase/business";
+import { businessDb, listAutoPlanBusinessIds } from "@/lib/supabase/business";
 import { cronForEveryBusiness } from "@/jobs/every-business";
 import { nextWeekStart, safeZone, zonedParts } from "@/lib/zoned-time";
 
@@ -12,8 +12,11 @@ import { nextWeekStart, safeZone, zonedParts } from "@/lib/zoned-time";
 // - when every slot of a plan has settled: plan → review, tell the client
 // - full autopilot: approve by itself after the timeout (slots that need review never go out)
 
-/** Hourly: asks every business whether it's time to plan (each has its own day, hour and time zone). */
-export const weeklyPlanCron = cronForEveryBusiness("weekly-plan-cron", "TZ=UTC 0 * * * *", "plan/check-due");
+/**
+ * Hourly: asks each business that plans by itself ("Plan my week automatically") whether it's time (each has its
+ * own day, hour and time zone). The others aren't asked at all, which saves an Inngest run per business per hour.
+ */
+export const weeklyPlanCron = cronForEveryBusiness("weekly-plan-cron", "TZ=UTC 0 * * * *", "plan/check-due", listAutoPlanBusinessIds);
 
 /** Plans the business's next week when it's its plan day and hour in its time zone. */
 export const weeklyPlanCheck = inngest.createFunction(

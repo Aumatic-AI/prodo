@@ -31,16 +31,21 @@ export async function findPlanByWeek(db: SupabaseClient, weekStart: string): Pro
   return (data as ContentPlan) ?? null;
 }
 
-/** A plan with its slots in time order, the names behind every id, and what the agents spent on it. */
+/** A plan with its slots in time order, the names behind every id, and the credits it and each post used. */
 export async function loadPlanView(db: SupabaseClient, plan: ContentPlan): Promise<PlanView> {
-  const [items, runs] = await Promise.all([
-    db.from("plan_items").select(ITEM_VIEW).eq("plan_id", plan.id).order("slot_at").order("created_at").order("id"),
-    db.from("agent_runs").select("cost_usd").eq("plan_id", plan.id),
-  ]);
+  const items = await db.from("plan_items").select(ITEM_VIEW).eq("plan_id", plan.id).order("slot_at").order("created_at").order("id");
   if (items.error) throw items.error;
-  if (runs.error) throw runs.error;
-  const costUsd = (runs.data ?? []).reduce((sum, r) => sum + Number(r.cost_usd ?? 0), 0);
-  return { ...plan, items: (items.data ?? []).map(toView), costUsd: Math.round(costUsd * 100) / 100 };
+  const ids = [plan.id, ...(items.data ?? []).map((i: { id: string }) => i.id)];
+  // Charges less refunds, for the plan itself and for each of its posts
+  const { data: ledger, error } = await db.from("credit_ledger").select("ref_id, credits").in("ref_id", ids).in("kind", ["charge", "refund"]);
+  if (error) throw error;
+  const used = new Map<string, number>();
+  for (const r of ledger ?? []) used.set(r.ref_id, (used.get(r.ref_id) ?? 0) - Number(r.credits));
+  return {
+    ...plan,
+    items: (items.data ?? []).map((row) => ({ ...toView(row), credits: used.get(row.id) ?? 0 })),
+    credits: [...used.values()].reduce((sum, n) => sum + n, 0),
+  };
 }
 
 export async function getItem(db: SupabaseClient, id: string): Promise<PlanItem> {

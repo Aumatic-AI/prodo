@@ -55,11 +55,33 @@ export function businessDb(businessId: string): SupabaseClient {
  * The only unscoped read the jobs make.
  */
 export async function listActiveBusinessIds(): Promise<string[]> {
-  const { data, error } = await createAdminClient()
-    .from("business_profile")
-    .select("business_id, business:businesses!inner(owner_id)")
-    .eq("onboarding_status", "done")
-    .not("business.owner_id", "is", null);
-  if (error) throw error;
-  return (data ?? []).map((row) => row.business_id as string);
+  const ids: string[] = [];
+  // A page at a time: one query stops at the API's 1,000-row cap, and the businesses past it would get no runs
+  for (let from = 0; ; from += LIST_PAGE) {
+    const { data, error } = await createAdminClient()
+      .from("business_profile")
+      .select("business_id, business:businesses!inner(owner_id)")
+      .eq("onboarding_status", "done")
+      .not("business.owner_id", "is", null)
+      .order("business_id")
+      .range(from, from + LIST_PAGE - 1);
+    if (error) throw error;
+    ids.push(...(data ?? []).map((row) => row.business_id as string));
+    if ((data ?? []).length < LIST_PAGE) return ids;
+  }
 }
+
+/**
+ * Active businesses that plan their week by themselves ("Plan my week automatically" on, not paused). The hourly
+ * plan cron checks only these, instead of every business every hour for nothing.
+ */
+export async function listAutoPlanBusinessIds(): Promise<string[]> {
+  const { data, error } = await createAdminClient().from("app_settings").select("business_id").eq("auto_plan", true).eq("paused", false);
+  if (error) throw error;
+  const planning = new Set((data ?? []).map((row) => row.business_id as string));
+  if (!planning.size) return [];
+  return (await listActiveBusinessIds()).filter((id) => planning.has(id));
+}
+
+/** The API returns at most this many rows per query */
+const LIST_PAGE = 1000;

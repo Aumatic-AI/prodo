@@ -27,6 +27,8 @@ export interface CreativeContext {
   persona: { id: string; name: string; summary: string | null; pains: string[]; desires: string[]; objections: string[]; triggers: string[]; phrases: string[] } | null;
   pillar: { name: string; description: string | null } | null;
   offering: { id: string; name: string; kind: string; description: string | null; price: number | null; currency: string | null; priceModel: string | null; benefits: string[]; objections: string[]; audience: string | null; url: string | null; attributes?: Record<string, unknown> } | null;
+  /** A post about the brand (no offering): every active product and service, so the range is known. Empty otherwise */
+  range: { name: string; kind: string; description: string | null; price: number | null; currency: string | null; priceModel: string | null }[];
   offer: { id: string; title: string; details: string | null; code: string | null; endsAt: string | null } | null;
   proof: { id: string; kind: string; content: string; author: string | null; rating: number | null }[];
   /** The client's own photos; `offeringName` says which product a product photo shows */
@@ -69,14 +71,32 @@ function toneLine(tone: Record<string, number> | null): string {
 
 const texts = (claims: any[] | undefined) => (claims ?? []).map((c) => c?.text).filter(Boolean) as string[];
 
+/**
+ * A post about the brand: the brand's own photos and each product's, taken in turn (brand, product A,
+ * product B… then again), so the first few show the brand and its range instead of one product.
+ */
+function mixed<T extends { offering_id: string | null }>(rows: T[]): T[] {
+  const groups = new Map<string, T[]>([["brand", []]]);
+  for (const r of rows) {
+    const key = r.offering_id ?? "brand";
+    groups.set(key, [...(groups.get(key) ?? []), r]);
+  }
+  const out: T[] = [];
+  for (let i = 0; out.length < rows.length; i++) for (const g of groups.values()) if (g[i]) out.push(g[i]);
+  return out;
+}
+
 export async function loadCreativeContext(db: SupabaseClient, itemId: string): Promise<{ ctx: CreativeContext; usage: Usage | null }> {
   const item = await getItem(db, itemId);
   const [plan, bible] = await Promise.all([getPlan(db, item.plan_id), approvedBible(db)]);
-  const [profile, persona, pillar, offering, offer, proof, assets, kit, hooks] = await Promise.all([
+  const [profile, persona, pillar, offering, range, offer, proof, assets, kit, hooks] = await Promise.all([
     db.from("business_profile").select("*").single(),
     item.persona_id ? db.from("personas").select("*").eq("id", item.persona_id).maybeSingle() : Promise.resolve({ data: null, error: null }),
     item.pillar_id ? db.from("content_pillars").select("name, description").eq("id", item.pillar_id).maybeSingle() : Promise.resolve({ data: null, error: null }),
     item.offering_id ? db.from("offerings").select("*").eq("id", item.offering_id).eq("active", true).maybeSingle() : Promise.resolve({ data: null, error: null }),
+    item.offering_id
+      ? Promise.resolve({ data: [], error: null })
+      : db.from("offerings").select("id, name, kind, description, price, currency, price_model").eq("active", true).order("created_at").limit(40),
     item.offer_id ? db.from("offers").select("*").eq("id", item.offer_id).eq("active", true).maybeSingle() : Promise.resolve({ data: null, error: null }),
     db
       .from("proof_items")
@@ -89,11 +109,12 @@ export async function loadCreativeContext(db: SupabaseClient, itemId: string): P
       .from("brand_assets")
       .select("id, kind, ai_description, offering_id, storage_key, tags, offerings(name)")
       .in("kind", ["product_photo", "person", "general", "team", "location", "work"])
+      .order("created_at")
       .limit(60),
     db.from("brand_kit").select("photo_style, layout_style, design_language, template_ids, logo_variants").single(),
     db.from("hook_library").select("text").order("created_at", { ascending: false }).limit(25),
   ]);
-  for (const r of [profile, persona, pillar, offering, offer, proof, assets, kit, hooks]) if (r.error) throw r.error;
+  for (const r of [profile, persona, pillar, offering, range, offer, proof, assets, kit, hooks]) if (r.error) throw r.error;
 
   // Image ads: the last image ads' designs (any week), so this one doesn't repeat them
   const { data: recent, error: recentError } =
@@ -136,12 +157,12 @@ export async function loadCreativeContext(db: SupabaseClient, itemId: string): P
   const c = bible.content ?? {};
   const offerRow = offer.data;
   const rules = contentRules(p);
-  // Photos of this offering first, then general brand photos; no photos of people when the client wants none
-  const assetRows = (assets.data ?? [])
+  // Photos of this offering first, then general brand photos; a post about the brand gets the brand's and each
+  // product's in turn (mixed). No photos of people when the client wants none
+  const usable = (assets.data ?? [])
     .filter((a) => !/\.(mp4|mov)$/i.test(a.storage_key))
-    .filter((a) => rules.people !== "none" || !["person", "team"].includes(a.kind))
-    .sort((a, b) => Number(b.offering_id === item.offering_id) - Number(a.offering_id === item.offering_id))
-    .slice(0, 12);
+    .filter((a) => rules.people !== "none" || !["person", "team"].includes(a.kind));
+  const assetRows = (item.offering_id ? usable.sort((a, b) => Number(b.offering_id === item.offering_id) - Number(a.offering_id === item.offering_id)) : mixed(usable)).slice(0, 12);
 
   return {
     usage,
@@ -203,6 +224,7 @@ export async function loadCreativeContext(db: SupabaseClient, itemId: string): P
             attributes: offering.data.attributes ?? {},
           }
         : null,
+      range: (range.data ?? []).map((o) => ({ name: o.name, kind: o.kind, description: o.description, price: o.price, currency: o.currency, priceModel: o.price_model })),
       // An offer the client hasn't confirmed is never used
       offer: offerRow && offerRow.verified !== false ? { id: offerRow.id, title: offerRow.title, details: offerRow.details, code: offerRow.code, endsAt: offerRow.ends_at } : null,
       proof: (proof.data ?? []).map((r) => ({ id: r.id, kind: r.kind, content: r.content, author: r.author, rating: r.rating })),

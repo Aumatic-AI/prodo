@@ -3,7 +3,7 @@ import { Activity, ArrowUpRight, BadgeCheck, BookOpen, CalendarRange, Clapperboa
 import { cn } from "@/lib/utils";
 import { AGENT_NAMES } from "@/modules/week/lib/status";
 import type { ActivityItem } from "../../hooks/useInsights";
-import { duration, usd } from "../../lib/format";
+import { duration } from "../../lib/format";
 
 export const AGENT_ICON: Record<string, LucideIcon> = {
   website_analyst: Globe,
@@ -26,7 +26,6 @@ export function ActivityRowItem({ row }: { row: ActivityItem }) {
   const failed = row.status === "failed";
   const running = row.status === "running";
   const Icon = running ? Loader2 : failed ? TriangleAlert : (AGENT_ICON[row.agent] ?? Activity);
-  const cost = Number(row.cost_usd ?? 0);
   return (
     <li className="group flex gap-3 rounded-ob-md px-2 py-2.5 transition-colors hover:bg-ob-sunken sm:px-3">
       <span
@@ -46,7 +45,6 @@ export function ActivityRowItem({ row }: { row: ActivityItem }) {
           {failed ? (row.error ?? "Failed") : (row.summary ?? (running ? "Working…" : "Done"))}
         </p>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11.5px] text-ob-faint">
-          {cost > 0 && <span className="tabular-nums">{usd(cost, 3)}</span>}
           {row.duration_ms ? <span className="tabular-nums">{duration(row.duration_ms)}</span> : null}
           {row.plan_item_id && (
             <Link href={`/week?item=${row.plan_item_id}`} className="inline-flex items-center gap-0.5 font-semibold text-ob-primary hover:underline">

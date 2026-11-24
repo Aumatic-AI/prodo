@@ -7,6 +7,8 @@ import { Alert } from "@/components/kit/Alert";
 import { PlatformIcon } from "@/components/kit/PlatformIcon";
 import { button } from "@/components/kit/styles";
 import { openConnectLink, useAccounts } from "../hooks/useAccounts";
+import { CreditIcon } from "@/components/kit/Credits";
+import { useCreditPrices } from "@/modules/insights/hooks/useInsights";
 
 const LABELS: Record<PostingPlatform, string> = {
   instagram: "Instagram",
@@ -22,6 +24,8 @@ export function AccountsList({ planned }: { planned?: Partial<Record<PostingPlat
   const { data: accounts = [], isLoading, error, refetch, isFetching } = useAccounts();
   const [opening, setOpening] = useState<string | null>(null);
   const [connectError, setConnectError] = useState<string | null>(null);
+  const { data: prices } = useCreditPrices();
+  const accountCredits = prices?.find((p) => p.action === "social_account")?.credits;
 
   async function connect(platform: string) {
     setConnectError(null);
@@ -79,6 +83,10 @@ export function AccountsList({ planned }: { planned?: Partial<Record<PostingPlat
         })}
       </ul>
       {connectError && <Alert tone="error">{connectError}</Alert>}
+      <p className="m-0 flex items-center gap-1.5 text-[12.5px] text-ob-muted">
+        <CreditIcon size={13} className="text-ob-primary" />
+        Each connected account uses {accountCredits ?? 60} credits a month, taken on the 1st.
+      </p>
     </div>
   );
 }

@@ -8,6 +8,8 @@ import { weekClock } from "@/core/plans/week";
 import { addDays, weekStartOf } from "@/lib/zoned-time";
 import { inngest } from "@/jobs/client";
 import { assertVideoReady } from "@/providers/ffmpeg/client";
+import { assertItemsCredits } from "@/core/credits/check";
+import type { Format } from "@/core/creative/brief";
 
 const MAX_BATCH = 10;
 
@@ -25,6 +27,9 @@ export const POST = apiHandler(async (req: NextRequest) => {
   const { db, businessId } = await currentBusiness();
   await approvedBible(db);
   if (counts.video > 0) await assertVideoReady();
+  // Every post's credits are there before anything starts (each post's run takes its own)
+  const posts = (["static", "carousel", "video"] as Format[]).flatMap((format) => Array.from({ length: counts[format as "static"] }, () => ({ format })));
+  await assertItemsCredits(businessId, posts, [], "This batch");
 
   const { data: profile, error } = await db.from("business_profile").select("posting_prefs").single();
   if (error) throw error;

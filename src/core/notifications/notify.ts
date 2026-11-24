@@ -7,7 +7,7 @@ import { buildEmail } from "./email-template";
 // In-app notifications (notifications table), optionally also by email to Settings → notification email.
 // Email sending stays off until EMAIL_ENABLED=1: the email is built and logged, and the row says 'skipped'.
 
-export type NotificationKind = "plan_ready" | "item_needs_review" | "plan_scheduled" | "post_failed" | "ad_ready" | "agent_stopped" | "budget_reached" | "weekly_report";
+export type NotificationKind = "plan_ready" | "item_needs_review" | "plan_scheduled" | "post_failed" | "ad_ready" | "agent_stopped" | "budget_reached" | "credits_low" | "weekly_report";
 
 export interface NotifyInput {
   kind: NotificationKind;

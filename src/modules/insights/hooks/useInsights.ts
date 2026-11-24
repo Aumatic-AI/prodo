@@ -3,7 +3,9 @@
 import { useInfiniteQuery, useMutation, useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api-client";
 import type { PerformanceView } from "@/core/performance/dashboard";
-import type { CostsView } from "@/core/performance/costs";
+import type { CreditsView } from "@/core/credits/view";
+import type { CreditPrice } from "@/core/credits/prices";
+import type { FeesDue } from "@/core/credits/ledger";
 import type { ActivityRow } from "@/modules/week/hooks/usePlan";
 
 export function usePerformance(days: number) {
@@ -14,8 +16,24 @@ export function useLearnNow() {
   return useMutation({ mutationFn: () => apiFetch<{ started: boolean }>("/api/performance/learn", { method: "POST" }) });
 }
 
-export function useCosts(month: string) {
-  return useQuery<CostsView>({ queryKey: ["costs", month], queryFn: () => apiFetch(`/api/costs?month=${month}`) });
+/** The month's credits: balance, use by kind of work and by day, every change */
+export function useCredits(month: string) {
+  return useQuery<CreditsView>({ queryKey: ["credits", "month", month], queryFn: () => apiFetch(`/api/credits?month=${month}`) });
+}
+
+/** The balance for the sidebar; refreshed every minute and after anything that uses credits ("credits" key) */
+export function useCreditBalance() {
+  return useQuery<{ credits: number; feesDue: FeesDue | null }>({
+    queryKey: ["credits", "balance"],
+    queryFn: () => apiFetch("/api/credits/balance"),
+    refetchInterval: 60_000,
+    staleTime: 20_000,
+  });
+}
+
+/** What each action costs, for the hints on buttons */
+export function useCreditPrices() {
+  return useQuery<CreditPrice[]>({ queryKey: ["credits", "prices"], queryFn: () => apiFetch("/api/credits/prices"), staleTime: 5 * 60_000 });
 }
 
 export interface ActivityFilters {

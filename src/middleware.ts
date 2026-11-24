@@ -9,6 +9,12 @@ function isPublic(pathname: string) {
   return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }
 
+// The admin panel: only logins in public.admins. Everyone else gets "not found" (the pages and API routes
+// check again on their own, so this is the first of three locks)
+function isAdminPath(pathname: string) {
+  return pathname === "/admin" || pathname.startsWith("/admin/") || pathname === "/api/admin" || pathname.startsWith("/api/admin/");
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   if (pathname.startsWith("/api/inngest")) return NextResponse.next();
@@ -50,6 +56,14 @@ export async function middleware(request: NextRequest) {
     url.search = "";
     if (pathname !== "/") url.searchParams.set("next", `${pathname}${request.nextUrl.search}`);
     return NextResponse.redirect(url);
+  }
+
+  if (user && isAdminPath(pathname)) {
+    const { data: admin } = await supabase.rpc("is_admin");
+    if (admin !== true) {
+      if (pathname.startsWith("/api/")) return NextResponse.json({ error: { code: "NOT_FOUND", message: "Not found." } }, { status: 404 });
+      return NextResponse.rewrite(new URL("/404", request.url), { status: 404 });
+    }
   }
 
   if (user && pathname.startsWith("/login")) {

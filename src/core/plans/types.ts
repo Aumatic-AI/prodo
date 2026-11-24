@@ -107,11 +107,14 @@ export interface PlanItemView extends PlanItem {
   offer: { title: string } | null;
   media: { id: string; type: string; status: string; storage_key: string | null; error: string | null; cost_usd: number } | null;
   post: { id: string; status: string } | null;
+  /** Credits this post used (charges less refunds); on plan views only */
+  credits?: number;
 }
 
 export interface PlanView extends ContentPlan {
   items: PlanItemView[];
-  costUsd: number;
+  /** Credits the plan and its posts used (charges less refunds) */
+  credits: number;
 }
 
 /** Statuses where the agents are still working on a slot. */

@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { Bot } from "lucide-react";
 import { Badge } from "@/components/kit/Badge";
 import { styleName } from "@/core/content/styles";
-import { STATUS_META, TYPE_META, fullDate, money } from "../../lib/display";
+import { STATUS_META, TYPE_META, fullDate } from "../../lib/display";
 import type { MediaListItem } from "../../types";
 
 function Fact({ label, children }: { label: string; children: ReactNode }) {
@@ -14,7 +14,7 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-/** What was asked for and what it cost. */
+/** What was asked for and how it was made. */
 export function DetailFacts({ media }: { media: MediaListItem }) {
   const isVideo = media.type === "video";
   // The content style it was made in (kept in the brief the post was made from); older and manual media have none
@@ -54,7 +54,6 @@ export function DetailFacts({ media }: { media: MediaListItem }) {
         {isVideo && media.language && <Fact label="Language">{media.language}</Fact>}
         {media.type === "image" && media.use_logo != null && <Fact label="Logo">{media.use_logo ? "Added" : "Not added"}</Fact>}
         {media.reference_image_key && <Fact label="Reference photo">Used</Fact>}
-        <Fact label="Cost">{money(media.cost_usd)}</Fact>
         <Fact label="Created">{fullDate(media.created_at)}</Fact>
       </dl>
 

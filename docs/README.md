@@ -70,13 +70,13 @@ Every vendor sits behind an adapter in `src/providers/`; nothing else names a ve
 
 ## How it works
 
-One repo, one deploy for every business (multi-tenant). **Every business is separate**: its own brand, plans, media, posts, connected accounts (its own Zernio profile), budget and files, and its own login. A login can add other businesses ("Add account": one with its own login, after signing in with it once, or a new one) and switch between them on any device; it never sees a business it wasn't given. Every table has `business_id`; RLS keeps logged-in users to their own business, and agents and jobs use `businessDb(businessId)`.
+One repo, one deploy for every business (multi-tenant). **Every business is separate**: its own brand, plans, media, posts, connected accounts (its own Zernio profile), credits and files, and its own login. A login can add other businesses ("Add account": one with its own login, after signing in with it once, or a new one) and switch between them on any device; it never sees a business it wasn't given. Every table has `business_id`; RLS keeps logged-in users to their own business, and agents and jobs use `businessDb(businessId)`.
 
 1. **Onboarding**: the client gives their website (a background scan reads it), then their content choices, basics, products or services, accounts. Agents 1–4 research the brand; the client approves the Brand Bible.
 2. **Weekly loop**: Planner → Creative Director → QA Gate 1 → Producer → QA Gate 2 → client approval (or full autopilot) → Publisher.
 3. **Learning loop**: the Performance Analyst reads post results daily and writes learnings weekly; the Planner uses them.
 
-Every agent step is logged with its cost; a monthly budget and a pause switch stop all spending. Details in [`technical.md`](technical.md).
+Clients pay with **credits** (1 credit = $0.10): the client pays outside the app and an admin adds the credits in the **admin panel** (`/admin`, for Prodo's team only), which also makes each client's login, and shows usage, top-ups, money in and our AI cost. Every action that costs money takes its credits (refunded when the work fails); without enough, nothing starts. Every agent step is logged with its cost; a monthly safety cap and a pause switch stop all spending. Details in [`technical.md`](technical.md).
 
 ### Tabs
 
@@ -85,12 +85,12 @@ Every agent step is logged with its cost; a monthly budget and a pause switch st
 | **This week** (`/week`, home) | The week's plan on a board, approval inbox ("Needs you"), theme and pillar mix, live agent activity, "Auto-create" (a chosen number of images, carousels and videos, nothing to type), "Create an ad", "Plan this week"; click a post for its preview, reasons, brief, captions, QA scores and steps |
 | **Performance** | Weekly report, KPIs, reach over time, platforms, top posts, what's working (learnings), followers |
 | **Activity** | Every agent step across the app, filterable |
-| **Costs** | The month's AI spend against the budget, by agent, day, asset and weekly plan |
+| **Credits** | The balance, what the month used credits on (by kind of work, action and day), every change, and what things cost. The balance is always in the sidebar |
 | **Media** | Create images and videos with AI, or upload your own |
 | **Posts** | Create a post from media, pick accounts, write captions, publish or schedule |
 | **Calendar** | Month and week views of posts, planned slots and key dates; "Add a date" |
 | **Brand** | Brand Bible (versions, approve), offerings, offers, proof, photos and videos, personas, pillars, competitors, brand kit; "Refresh brand" |
-| **Settings** | Business profile (incl. goals), Content (images or videos, styles, people, voice and music, logo, where customers go), Automation (autopilot, plan day and time, posts per week, budget, pause, notification email), Connected accounts |
+| **Settings** | Business profile (incl. goals), Content (images or videos, styles, people, voice and music, logo, where customers go), Automation (autopilot, plan day and time, posts per week, pause, notification email), Connected accounts |
 | **Onboarding** | Website → Your content → Basics → products or services → connect → review → live research → Brand Bible approval → This week (the first plan starts on approval) |
 
 ## Deployment

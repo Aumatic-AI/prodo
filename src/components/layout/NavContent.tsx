@@ -13,6 +13,9 @@ import { useSession } from "@/stores/SessionStoreProvider";
 import { floating, focusRing } from "@/components/kit/styles";
 import { publicUrl } from "@/components/kit/MediaUploader";
 import { useNotifications } from "@/modules/notifications/hooks/useNotifications";
+import { useCreditBalance } from "@/modules/insights/hooks/useInsights";
+import { CreditIcon } from "@/components/kit/Credits";
+import { LOW_CREDITS, formatCredits } from "@/config/credits";
 import type { AccountView } from "@/core/accounts";
 import { AccountsSection } from "./accounts/AccountsSection";
 import { AddAccountModal, RemoveAccountDialog } from "./accounts/AccountDialogs";
@@ -144,12 +147,44 @@ export function NavGroups({ collapsed = false, onNavigate }: { collapsed?: boole
 
 export const NOTIFICATIONS_ITEM: NavItem = { label: "Notifications", href: "/notifications", icon: Bell };
 
-/** Notifications and Settings, at the bottom of the navigation. */
+/** The credits left, always in sight: amber when low, red when a monthly fee is waiting. Opens Credits. */
+function CreditsLink({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: () => void }) {
+  const isActive = useIsActive();
+  const { data } = useCreditBalance();
+  const active = isActive("/credits");
+  const tone = data?.feesDue ? "text-ob-danger" : data && data.credits < LOW_CREDITS ? "text-ob-warn" : "text-ob-primary";
+  const amount = data ? formatCredits(data.credits) : "…";
+  return (
+    <Link
+      href="/credits"
+      onClick={onNavigate}
+      title={collapsed ? `${amount} credits` : undefined}
+      aria-label={`Credits: ${amount} left`}
+      className={cn(
+        "mb-1 flex items-center gap-3 rounded-ob-md border py-2 transition-colors",
+        focusRing,
+        collapsed ? "justify-center border-transparent px-0" : "px-3",
+        active ? "border-ob-primary/30 bg-ob-primary-soft" : "border-ob-line bg-ob-sunken/60 hover:bg-ob-sunken"
+      )}
+    >
+      <CreditIcon size={19} className={tone} />
+      {!collapsed && (
+        <>
+          <span className="flex-1 text-[13px] font-semibold text-ob-muted">Credits</span>
+          <strong className={cn("text-[14.5px] font-extrabold tabular-nums", data?.feesDue ? "text-ob-danger" : "text-ob-ink")}>{amount}</strong>
+        </>
+      )}
+    </Link>
+  );
+}
+
+/** Credits, Notifications and Settings, at the bottom of the navigation. */
 export function BottomLinks({ collapsed = false, onNavigate }: { collapsed?: boolean; onNavigate?: () => void }) {
   const isActive = useIsActive();
   const { data } = useNotifications();
   return (
     <div className="flex flex-col gap-1 border-t border-ob-line px-3 py-3">
+      <CreditsLink collapsed={collapsed} onNavigate={onNavigate} />
       <NavLink item={NOTIFICATIONS_ITEM} active={isActive(NOTIFICATIONS_ITEM.href)} collapsed={collapsed} onNavigate={onNavigate} badge={data?.unread} />
       <NavLink item={SETTINGS_ITEM} active={isActive(SETTINGS_ITEM.href)} collapsed={collapsed} onNavigate={onNavigate} />
     </div>

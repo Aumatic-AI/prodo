@@ -3,7 +3,9 @@ import { apiHandler } from "@/lib/api-handler";
 import { assertOwnKey, currentBusiness } from "@/core/business";
 import { brandFolder } from "@/providers/storage/paths";
 import { createClient } from "@/lib/supabase/server";
-import { listMedia, createMedia, startGenerating, type Media } from "@/core/media";
+import { listMedia, createMedia, mediaAction, startGenerating, type Media } from "@/core/media";
+import { assertCredits } from "@/core/credits/ledger";
+import { priceOf } from "@/core/credits/prices";
 import { AppError } from "@/core/errors";
 import type { MediaListItem } from "@/modules/library/types";
 import { assertVideoReady } from "@/providers/ffmpeg/client";
@@ -65,6 +67,8 @@ export const POST = apiHandler(async (req: NextRequest) => {
   if (body.reference_image_key) assertOwnKey(businessId, String(body.reference_image_key));
 
   const isText = body.type === "text";
+  // Enough credits before anything is made (startGenerating takes them)
+  if (!isText) await assertCredits(businessId, await priceOf(mediaAction({ type: body.type, reference_image_key: body.reference_image_key })), body.type === "video" ? "This video" : "This image");
 
   const media = await createMedia(db, {
     type: body.type,

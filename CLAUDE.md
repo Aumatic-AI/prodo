@@ -26,11 +26,11 @@ Older planning pages (the Blueprint, Data Model and Sprint plans on claude.ai) a
 - **Secrets** live only in `.env.local` (app) and `worker/.env` (VPS), both git-ignored. Never paste them into code, docs, commits or chat.
 - **Code style**: match the surrounding code: its comment density, naming and idiom. Comments say why, in plain words. One file does one job.
 
-## Current state (2026-10-31)
+## Current state (2026-11-24)
 
-- Built: onboarding v2 (website scan first) → brand research (agents 1–4) → Brand Bible approval → weekly loop (agents 5–9) → learning loop (agent 10). Manual Media, Posts and Calendar screens. Performance, Activity and Costs screens. Settings: Business profile, Content, Automation, Connected accounts.
+- Built: onboarding v2 (website scan first) → brand research (agents 1–4) → Brand Bible approval → weekly loop (agents 5–9) → learning loop (agent 10). Manual Media, Posts and Calendar screens. Performance, Activity and Credits screens. Settings: Business profile, Content, Automation, Connected accounts. Credits (clients pay with credits an admin adds) and the admin panel (`/admin`: dashboard, businesses, usage, top-ups, prices).
 - Videos: every video is drawn by Remotion on our worker from a Timeline our code builds (storylines per style, scene library, five looks, captions, cards, stickers, transitions, sound effects). The client's own videos are watched for usable moments and used in scenes. See `docs/technical.md` → Videos.
-- Files are in Cloudflare R2; the database is Supabase project `focaedtidoocuixiupxn`; migrations 0001–0031 are applied (0027 Ad library searches, 0028 "Plan my week automatically" off by default and autopilot approve each post, 0029 the website's design language, 0030 several businesses per login, 0031 the open business's login email for the account menu).
+- Files are in Cloudflare R2; the database is Supabase project `focaedtidoocuixiupxn`; migrations 0001–0032 are applied (0027 Ad library searches, 0028 "Plan my week automatically" off by default and autopilot approve each post, 0029 the website's design language, 0030 several businesses per login, 0031 the open business's login email for the account menu, 0032 credits, the admin panel, and the month's agent spend added up in the database). The first admin login (`admin@prodo.app`) was made before 0032; 0032 made it an admin and removed the empty business the old trigger gave it.
 - Not yet: a real end-to-end weekly run with paid calls, the publisher tested end to end, the worker update deployed to the VPS, email sending (`EMAIL_ENABLED` off), a custom domain for files (still `r2.dev`).
 
 ### Decisions worth knowing
@@ -38,6 +38,8 @@ Older planning pages (the Blueprint, Data Model and Sprint plans on claude.ai) a
 - **Multi-tenant**: one deploy (Vercel + Supabase + Inngest) for every business, every row tagged with `business_id`. Each business has its own login; a login can add others and switch (`business_members`, 0030).
 - **ScrapeCreators instead of SerpAPI** for search, ad libraries and public social data (no Google Trends or Maps reviews).
 - **This week (`/week`) is home**; there is no Dashboard tab.
+- **Credits, not dollars, for clients**: 1 credit = $0.10, packs in `config/credits.ts`, prices per action in `credit_prices` (admin panel → Prices). No payments in the app: an admin adds credits after the client pays. Every change is a `credit_ledger` row written only by the `credit_*` database functions. See `docs/technical.md` → Credits.
+- **Admin panel** (`/admin`): logins in `public.admins` (made with `scripts/setup/admin.ts`), no business; 404 for everyone else (middleware, layout and `adminHandler`). It makes client logins, adds credits, and shows usage, top-ups and our AI cost.
 - **Email** notifications are built (Resend) but only logged until `EMAIL_ENABLED=1`.
 - **Files in Cloudflare R2** (bucket `prodo-media`, S3 API signed with `aws4fetch`), not Supabase Storage. Public links come from `NEXT_PUBLIC_MEDIA_URL`. The bucket's CORS and auto-delete rules are set by `npm run smoke scripts/setup/r2-bucket.ts [origin…]`.
 - **The video worker** (`worker/`) runs on a Hostinger VPS with Docker + Caddy. Videos need it (`FFMPEG_WORKER_URL`, `FFMPEG_WORKER_SECRET`); Upload-Post's FFmpeg API is only a fallback for small ffmpeg jobs.
@@ -71,6 +73,7 @@ npm run smoke scripts/smoke/render-ad.ts       # A full sample ad on the deploye
 # One-time setup per bucket (free)
 npm run smoke scripts/setup/r2-bucket.ts [origin…]   # CORS + auto-delete rules
 npm run smoke scripts/setup/sfx.ts                   # Sound effects into shared/sfx/
+npm run smoke scripts/setup/admin.ts <email> [pw]    # An admin login for /admin (prints the password once)
 ```
 
 No unit test suite yet; the offline checks above are the tests. Inngest dev server: `npx inngest-cli@latest dev` at `http://localhost:8288` (`INNGEST_DEV=1` in `.env.local`, never in production).
@@ -130,7 +133,9 @@ All external services go through adapters in `src/providers/`. Never import a ve
 
 ### Agents
 
-Each agent is an Inngest function, one step per outside call, and logs every step (summary, tokens, `cost_usd`, duration) to `agent_runs` through `agentStep(step, id, opts, async (track) => …)` in `src/agents/run.ts`; call `track(result.usage)` after each paid call. Before the step runs, `assertBudget` (`src/agents/budget.ts`) stops it with `PAUSED` or `BUDGET_REACHED`.
+Each agent is an Inngest function, one step per outside call, and logs every step (summary, tokens, `cost_usd`, duration) to `agent_runs` through `agentStep(step, id, opts, async (track) => …)` in `src/agents/run.ts`; call `track(result.usage)` after each paid call. Before the step runs, `assertBudget` (`src/agents/budget.ts`) stops it with `PAUSED` or `BUDGET_REACHED` (the monthly AI safety cap, Prodo's own guard).
+
+**Credits**: anything that costs money takes the business's credits through `core/credits/` (`spendCredits` with a key, so retries never charge twice; `refundCredits` with the same key when the work fails; `assertCredits` / `check.ts` before starting from a screen). A post's production run charges `produce:<item>:<runId>` and its `onFailure` refunds it. Too few credits is `NO_CREDITS` (permanent, account-wide). New paid actions need a `credit_prices` row and a charge point; see `docs/technical.md` → Credits.
 
 Layout: one folder per agent. `index.ts` reads top to bottom as the agent's steps (`task(id, work, summary)`); each other file does one job (ranking, merge, colours, baselines…). Shared research code is in `src/agents/research/` (`defineResearchAgent`, context, Brand Brain). Wrap work the agent can live without in `optional(work, { failed: skipped.note("what it was doing") })`: the agent's summary then names what it skipped and why. `optional()` never skips an account-wide error (no credit, wrong key, daily cap, budget): it stops the agent. Mark `anyError: true` only for a service the agent can do without (Zernio's account list, Twelve Labs videos).
 
@@ -180,7 +185,7 @@ Vendor error → adapter translates to `AppError` (type + exact message + retry 
 - A failed agent step stores its message on `agent_runs.error`, with `output.retrying` when Inngest tries again; the activity feed shows both.
 - **Only what can change is retried.** `classify(err)` decides for any error: busy services, rate limits, timeouts, dropped connections and deadlocks retry; no credit, caps, wrong keys, no permission, rejected input, database rules, missing migrations and code bugs stop at once. `toInngestError` keeps the type in the message (`[[OUT_OF_CREDIT]] …`) because Inngest passes on only the message; `userMessage` / `failureMessage` strip it. Every `onFailure` saves `failureMessage(error)`.
 
-Starting a job can fail too: `restartItem()` and `startGenerating()` mark the row failed with a plain message instead of leaving it "planned" or "generating".
+Starting a job can fail too: `inngest.send` (`src/jobs/client.ts`) turns any failed send into an exact `AppError` (which run, the address and why: `Inngest (starting the post's agents) couldn't be reached at http://localhost:8288: the server refused the connection (ECONNREFUSED)…`), and `restartItem()`, `startGenerating()` and Create an ad (`/api/ads`) mark the row failed with that message instead of leaving it "planned" or "generating". `apiHandler` answers any other unexpected error with `userMessage(err)`, never the raw text ("fetch failed").
 
 ### Inngest jobs
 
@@ -200,11 +205,11 @@ npx supabase gen types typescript --project-id focaedtidoocuixiupxn --schema pub
 
 Never append `2>&1` to the types command — stderr noise breaks the generated file. In PowerShell, `>` writes UTF-16, which breaks lint and the build; use `npx supabase gen types typescript --project-id focaedtidoocuixiupxn --schema public | Out-File -Encoding utf8 src/types/database.ts`.
 
-**Migrations**: never edit an applied migration; always add a new one, and list it in `docs/database.md`. Migrations 0001–0031 were applied by pasting them into the Supabase SQL Editor, so the CLI's history doesn't know them. Before the first `db push`, run `npx supabase migration repair --status applied 0001 0002 0003 0004 0005 0006 0007 0008 0009 0010 0011 0012 0013 0014 0015 0016 0017 0018 0019 0020 0021 0022 0023 0024 0025 0026 0027 0028 0029 0030 0031`.
+**Migrations**: never edit an applied migration; always add a new one, and list it in `docs/database.md`. Migrations 0001–0032 were applied by pasting them into the Supabase SQL Editor, so the CLI's history doesn't know them. Before the first `db push`, run `npx supabase migration repair --status applied 0001 0002 0003 0004 0005 0006 0007 0008 0009 0010 0011 0012 0013 0014 0015 0016 0017 0018 0019 0020 0021 0022 0023 0024 0025 0026 0027 0028 0029 0030 0031 0032`.
 
 ### Schema rules
 
-- 31 tables plus `businesses`, all in `docs/database.md` (that file is the current truth). Every table has `business_id`. Settings tables (`business_profile`, `app_settings`, `brand_kit`) have one row per business (primary key `business_id`), made when the business is created.
+- 32 business tables plus `businesses`, and two that belong to no business (`admins`, `credit_prices`), all in `docs/database.md` (that file is the current truth). Every business table has `business_id`. Settings tables (`business_profile`, `app_settings`, `brand_kit`) have one row per business (primary key `business_id`), made when the business is created.
 - Products and services are one table, `offerings`, with `kind`. Type-specific details go in `attributes`.
 - Brand rows (`offerings`, `personas`, `content_pillars`, `offers`) are archived with `active = false`, never hard-deleted.
 - `brand_bible` is versioned; only one row per business can be `approved` (partial unique index).
@@ -219,9 +224,9 @@ Never append `2>&1` to the types command — stderr noise breaks the generated f
 
 ### Auth
 
-New logins are added in Supabase → Authentication → Users → Add user (there is no sign-up page). Keep "Allow new users to sign up" off, or anyone could create a business through the Auth API. A login with no business is signed out with a message (`/api/auth/signout`; it never signs out a login that has a business). Logging in or out reloads the page, so no cached data from one business shows for the next login.
+Client logins are added in the admin panel (Businesses → Add business: email, password and first credits); there is no sign-up page. Admin logins come from `scripts/setup/admin.ts` (app_metadata role `admin`: no business, listed in `public.admins`). Keep "Allow new users to sign up" off, or anyone could create a business through the Auth API. A login with no business is signed out with a message (`/api/auth/signout`; it never signs out a login that has a business, and an admin is sent to `/admin`). Logging in or out reloads the page, so no cached data from one business shows for the next login.
 
-`src/middleware.ts` protects every page and every `/api` route. Exceptions: `/login`, `/api/auth/callback`, `/api/inngest` (Inngest signs its own requests). Unauthenticated API calls get `401 { error: { code: "UNAUTHORIZED", message } }`. `apiHandler` checks the user again as a second layer; pass `{ public: true }` only for routes that must work logged out.
+`src/middleware.ts` protects every page and every `/api` route. Exceptions: `/login`, `/api/auth/callback`, `/api/inngest` (Inngest signs its own requests). `/admin` and `/api/admin` answer 404 to anyone who isn't an admin (`is_admin()`), checked again by the admin layout (`requireAdmin`) and every admin route (`adminHandler`). Unauthenticated API calls get `401 { error: { code: "UNAUTHORIZED", message } }`. `apiHandler` checks the user again as a second layer; pass `{ public: true }` only for routes that must work logged out.
 
 ## Styling
 

@@ -83,7 +83,6 @@ export function ProgressStep() {
           <span className="text-xs text-ob-faint">
             {done} of {RESEARCH_AGENTS.length} agents finished
             {research?.startedAt && ` · started ${minutesSince(research.startedAt)} min ago`}
-            {data && data.costUsd > 0 && ` · research cost so far $${data.costUsd.toFixed(2)}`}
           </span>
         </div>
       </section>

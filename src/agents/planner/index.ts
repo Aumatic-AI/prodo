@@ -1,6 +1,8 @@
 import { NonRetriableError } from "inngest";
 import { inngest } from "@/jobs/client";
-import { failureMessage } from "@/jobs/to-inngest-error";
+import { failureMessage, toInngestError } from "@/jobs/to-inngest-error";
+import { refundCredits, spendCredits } from "@/core/credits/ledger";
+import { assertItemsCredits } from "@/core/credits/check";
 import { MODELS } from "@/config/models";
 import { AppError, userMessage } from "@/core/errors";
 import { notify } from "@/core/notifications/notify";
@@ -24,6 +26,11 @@ import { addDays, zonedParts } from "@/lib/zoned-time";
 // → checks by code → save → start production of every slot.
 // "Auto-create" runs the same steps for a chosen number of posts over the next days: no week is
 // replaced, the posts join the plans of the weeks they fall in, and each is made as a single ad.
+// Credits: once the slots are known (by code, before any AI call), every post's credits must be there; a
+// week's plan takes its own credits then (given back when planning fails). Each post's run takes its own.
+
+/** The weekly plan's charge, once per run */
+const planCreditKey = (runId: string) => `plan:${runId}`;
 
 export const planner = inngest.createFunction(
   {
@@ -35,6 +42,7 @@ export const planner = inngest.createFunction(
       const { businessId, weekStart, batch } = event.data.event.data;
       const db = businessDb(businessId);
       const message = failureMessage(error);
+      await refundCredits(businessId, planCreditKey(event.data.run_id));
       // A batch never touches a week's plan, so there's no plan to mark failed
       if (!batch) await db.from("content_plans").update({ status: "failed", error: message }).eq("week_start", weekStart).eq("status", "planning");
       await notify(db, {
@@ -47,7 +55,7 @@ export const planner = inngest.createFunction(
     },
   },
   { event: "plan/requested" },
-  async ({ event, step }) => {
+  async ({ event, step, runId }) => {
     const { businessId, weekStart, replace = false, batch = null } = event.data;
     const db = () => businessDb(businessId);
 
@@ -137,6 +145,14 @@ export const planner = inngest.createFunction(
     );
 
     const slots = planned.slots;
+
+    // Every post's credits are there before the Planner writes anything; a week's plan takes its own now
+    await step.run("take-credits", async () => {
+      await assertItemsCredits(businessId, slots.map((slot) => ({ format: slot.format })), batch ? [] : ["week_plan"], batch ? "This batch" : "This week's plan").catch(toInngestError);
+      if (!batch) {
+        await spendCredits(businessId, { action: "week_plan", label: `Plan for the week of ${weekStart}`, refId: plan.id, key: planCreditKey(runId) }, "Planning the week").catch(toInngestError);
+      }
+    });
     const { prompt } = buildPlannerPrompt(ctx, slots);
     const reply = await task(
       "choose-content",

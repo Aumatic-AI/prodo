@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
 import { NO_BUSINESS_SIGN_OUT, getSession } from "@/core/session";
+import { getAdmin } from "@/core/admin/guard";
 import { getOnboardingDraft } from "@/modules/onboarding/server";
 import { SessionStoreProvider } from "@/stores/SessionStoreProvider";
 import { OnboardingStoreProvider } from "@/modules/onboarding/store/OnboardingStoreProvider";
@@ -12,8 +13,8 @@ export const metadata = { title: "Set up Prodo" };
 export default async function OnboardingLayout({ children }: { children: ReactNode }) {
   const session = await getSession();
   if (!session) redirect("/login");
-  // A login without a business can't use the app: sign it out with a plain message
-  if (!session.business) redirect(NO_BUSINESS_SIGN_OUT);
+  // A login without a business: an admin goes to the admin panel; anyone else is signed out with a plain message
+  if (!session.business) redirect((await getAdmin()) ? "/admin" : NO_BUSINESS_SIGN_OUT);
   if (session.business.onboardingStatus === "done") redirect("/week");
 
   const draft = await getOnboardingDraft();

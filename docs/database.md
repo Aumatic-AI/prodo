@@ -1,6 +1,6 @@
 # Database Schema
 
-31 tables + `businesses` in Supabase Postgres; files are in Cloudflare R2 (see File storage). This file is the current truth for the schema: every migration is listed here and every change explained. Migrations live in `supabase/migrations/` and are applied in order:
+32 business tables + `businesses`, plus `admins` and `credit_prices` (no business) in Supabase Postgres; files are in Cloudflare R2 (see File storage). This file is the current truth for the schema: every migration is listed here and every change explained. Migrations live in `supabase/migrations/` and are applied in order:
 
 | Migration | What |
 |---|---|
@@ -22,6 +22,7 @@
 | `0023_creative_knowledge.sql` | `plan_items.ad_objective` (awareness, converting, retargeting), `desire` (six permanent desires) and `awareness_level` (five levels), set by the Planner; `learnings` dimensions `ad_objective`, `desire`, `awareness_level`, `style_modifier` |
 | `0024_reference_video.sql` | `plan_items.reference_video_id` → `brand_assets` (a video the owner wants made again for the post's product; SET NULL), and a unique index on `brand_assets (id, business_id)` for the business-scoped foreign key |
 | `0026_reference_image.sql` | `plan_items.reference_image_key`: an ad image the owner likes, given on "Create an ad" or Media → Create → Image; the image model makes the new ad the same way. The file waits in `tmp/` (deleted after 7 days) |
+| `0032_credits.sql` | Credits and the admin panel: `businesses.credits` and `fees_due`; tables `credit_prices`, `credit_ledger`, `admins`; functions `credit_balance`, `credit_spend`, `credit_refund`, `credit_topup`, `is_admin`, `admin_businesses`, `admin_usage`, `admin_series`, `admin_ai_cost`; the new-login trigger gives admin logins no business (and removes the empty one an admin login got before); only the server may change `app_settings.monthly_budget_usd`. Also `month_spend(p_since, p_business_id)` (the month's agent spend added up in the database, for the safety cap) and `agent_runs` indexes `(business_id, created_at)` and `(created_at)` |
 | `0031_business_login_email.sql` | `business_login_email()`: the login email of the business a request is for (its owner's), shown in the account menu after switching |
 | `0030_business_accounts.sql` | Several businesses per login: `business_members`, `current_business_id()` follows the tab's or device's choice (always checked against the login's memberships), `businesses.owner_id` no longer unique, `member_reads` on `businesses`, `my_businesses()`, `create_business()` |
 | `0029_design_language.sql` | `brand_kit.design_language`: the website's signature look and motion, for image and video prompts |
@@ -80,7 +81,7 @@ Never edit an applied migration; add a new one.
 ## Multi-tenant (0017)
 
 ### `businesses` — new
-One row per business: `id` uuid PK, `owner_id` → `auth.users` (the login that made it; no longer unique since 0030; `on delete set null`, so deleting a login keeps its data), `owns_unfoldered_files` (true for the first business: only it may delete files from before 0017, which have no business folder), `created_at`. Logged-in users can read the businesses they belong to (`member_reads`, 0030).
+One row per business: `id` uuid PK, `owner_id` → `auth.users` (the login that made it; no longer unique since 0030; `on delete set null`, so deleting a login keeps its data), `owns_unfoldered_files` (true for the first business: only it may delete files from before 0017, which have no business folder), `credits` (integer, never below 0: the balance, changed only by the `credit_*` functions, 0032), `fees_due` (jsonb: a monthly fee that couldn't be taken, `{credits, label, key, action, since}`; publishing waits while it's set, 0032), `created_at`. Logged-in users can read the businesses they belong to (`member_reads`, 0030) and never write them.
 
 ### `business_members` — new (0030)
 Which logins can open which business: `user_id` → `auth.users` (cascade), `business_id` → `businesses` (cascade), `role` (`owner`: made with or by this login; `member`: linked by signing in once with that business's own login), `created_at`; primary key (`user_id`, `business_id`). A login reads only its own rows; only the server writes them. Every owner before 0030 became an `owner` row.
@@ -88,9 +89,22 @@ Which logins can open which business: `user_id` → `auth.users` (cascade), `bus
 - `current_business_id()`: the business this request is for (security definer). Column default of every `business_id`, used by every RLS policy. Since 0030: the `x-prodo-business` request header (the browser tab's business) when the login belongs to it, else none; or the `x-prodo-pick` header (the business picked on this device) when the login belongs to it; else the login's own first business.
 - `business_login_email()` (0031): the open business's own login email (its owner's), for the account menu.
 - `my_businesses()` (0030): the login's businesses with name, logo, onboarding status and role, for the account menu. `create_business()` (0030): "Add account" → a new business the login owns (its unfinished setup when it has one; at most 25 per login).
-- Trigger `prodo_create_business` on `auth.users`: every new login gets a business and is its owner (`business_members`, 0030). Trigger `seed_business` on `businesses`: creates its `business_profile`, `app_settings` (notification email = the owner's email) and `brand_kit` rows.
+- Trigger `prodo_create_business` on `auth.users`: every new login gets a business and is its owner (`business_members`, 0030); a login made with `app_metadata.role = 'admin'` gets none and is listed in `admins` instead (0032). Trigger `seed_business` on `businesses`: creates its `business_profile`, `app_settings` (notification email = the owner's email) and `brand_kit` rows.
 - Trigger `keep_business_id` on every table: a row can never move to another business.
-- Trigger `guard_server_columns`: only the server may set `app_settings.zernio_profile_id`, `post_targets.provider_ref` and `post_targets.provider_post_id`; logged-in users may only clear them.
+- Trigger `guard_server_columns`: only the server may set `app_settings.zernio_profile_id`, `app_settings.monthly_budget_usd` (0032), `post_targets.provider_ref` and `post_targets.provider_post_id`; logged-in users may only clear them.
+
+### `admins` — new (0032)
+The admin panel's logins: `user_id` PK → `auth.users` (cascade), `created_at`. RLS on with no policies: only the server reads it, and `is_admin()` (security definer) tells a logged-in user whether they are one. An admin has no business.
+
+## Credits (0032)
+
+### `credit_prices` — new
+What each action costs: `action` PK (`onboarding`, `brand_refresh`, `market_refresh`, `bible_regenerate`, `brand_video`, `week_plan`, `image_ad`, `image_ad_reference`, `carousel`, `text_post`, `video`, `video_copy`, `social_account`), `credits`, `label`, `sort`, `updated_at`. Every login reads it; only the server (the admin panel's Prices) changes it. Not per business.
+
+### `credit_ledger` — new
+Every change to a balance: `id`, `business_id` (cascade), `kind` (`topup`: an admin added credits; `adjust`: an admin removed some; `charge`: an action used them; `refund`: a charge given back), `credits` (+ added, - taken), `balance` (after this row, never below 0), `action` (`credit_prices.action`; null for top-ups), `label` (what the client sees, e.g. "Image ad · Summer sale"), `ref_id` (the slot, plan, media item, research run or asset), `amount_usd` (what was paid for a top-up, optional), `note` (admins only), `key` (unique per business: the same key is charged once), `refund_of` → the charge a refund gives back (unique), `created_by` → the admin (`on delete set null`), `created_at`. A logged-in business reads its own rows, but not `note`, `key` or `created_by` (column grants); only the server writes them (no insert, update or delete grants).
+
+Functions (0032): `credit_balance(p_business_id)` (security invoker: the balance and fee due of the logged-in business, or the one a job passes); `credit_spend(p_business_id, p_credits, p_action, p_label, p_ref_id, p_key)` (locks the business row; raises `NO_CREDITS needed=… have=…` when short; a used key charges nothing again); `credit_refund(p_business_id, p_key, p_label)` (gives back that key's charge once); `credit_topup(p_business_id, p_credits, p_amount_usd, p_note, p_admin)` (adds, or removes with a negative number, never below 0). Admin reads: `admin_businesses(p_business_id)` (every business with login email, setup, balance, fee due, safety cap, credits used this month and in 30 days, credits added, money paid, last top-up, our AI cost this month, posts in 30 days, last activity), `admin_usage(p_since, p_until, p_business_id)` (credits used and times per business and action), `admin_series(p_since, p_until, p_unit, p_business_id)` (per day, week or month: credits used and added, money paid, our AI cost), `admin_ai_cost(p_since, p_until)` (per business). The credit and admin functions run only with the service role.
 - On a database that already had data, 0017 gave it to the first business (the oldest login). A new project starts empty: every business comes from a login.
 
 ## Settings (one row per business)
@@ -136,7 +150,7 @@ How the system behaves, kept apart from brand facts so agents never see it in pr
 | `auto_plan` | boolean | "Plan my week automatically" (0028): the weekly cron plans and makes next week's posts only when on. Default off |
 | `plan_weekday`, `plan_time` | smallint (0 = Sunday), time | When the weekly plan runs (with `auto_plan` on). Default Sunday 09:00 |
 | `approval_timeout_hours` | int | Auto-approve after this, full mode only. Default 24 |
-| `monthly_budget_usd` | numeric | Agents stop when this month's `agent_runs.cost_usd` reaches it. Default 50 |
+| `monthly_budget_usd` | numeric | The monthly AI safety cap: agents stop when this month's `agent_runs.cost_usd` reaches it (summed by `month_spend()`, 0032). Prodo's own guard, set in the admin panel; only the server may change it (0032). Default 50 |
 | `notify_email` | text | Plan-ready and failure emails |
 | `zernio_profile_id` | text | This business's own Zernio profile. Created on first accounts or connect call (migration 0014), never the account's default |
 
@@ -339,10 +353,10 @@ Each page of Meta Ad Library results the business fetched (Copy a video → Ad l
 No foreign keys. An ad picked from here is copied through its Ad Library link: `reference_videos.source_url` is always `https://www.facebook.com/ads/library/?id=<id>` for a Meta ad, so a video copied again reuses its breakdown.
 
 ### `agent_runs` — new
-One row per agent step: `agent`, `run_id` (groups one workflow run, e.g. one onboarding research), `plan_id`, `plan_item_id`, `media_id`, `inngest_run_id`, `status` (`running`\|`done`\|`failed`), `summary` (shown in the activity feed), `input`, `output`, `model`, `tokens_in`, `tokens_out`, `cost_usd`, `duration_ms`, `error`, `created_at`. Powers the activity feed, cost per ad and the monthly budget stop.
+One row per agent step: `agent`, `run_id` (groups one workflow run, e.g. one onboarding research), `plan_id`, `plan_item_id`, `media_id`, `inngest_run_id`, `status` (`running`\|`done`\|`failed`), `summary` (shown in the activity feed), `input`, `output`, `model`, `tokens_in`, `tokens_out`, `cost_usd`, `duration_ms`, `error`, `created_at`. Powers the activity feed, our cost per business (admin panel) and the monthly safety cap.
 
 ### `notifications` — new
-`kind` (`plan_ready`, `ad_ready`, `item_needs_review`, `plan_scheduled`, `post_failed`, `agent_stopped`, `budget_reached`), `title`, `body`, `link` (app path), `read_at`, `created_at`, plus `email_status`, `email_to`, `email_error`, `emailed_at` (0016).
+`kind` (`plan_ready`, `ad_ready`, `item_needs_review`, `plan_scheduled`, `post_failed`, `agent_stopped`, `budget_reached` (the monthly safety limit), `credits_low` (publishing paused by an unpaid account fee, 0032), `weekly_report`), `title`, `body`, `link` (app path), `read_at`, `created_at`, plus `email_status`, `email_to`, `email_error`, `emailed_at` (0016).
 
 ## Foreign keys (29)
 

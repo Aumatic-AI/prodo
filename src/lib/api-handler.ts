@@ -1,13 +1,14 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { ZodError } from "zod";
 import { createClient } from "@/lib/supabase/server";
-import { AppError, type ErrorType } from "@/core/errors";
+import { AppError, userMessage, type ErrorType } from "@/core/errors";
 
 const APP_ERROR_STATUS: Partial<Record<ErrorType, number>> = {
   INVALID_INPUT: 400,
   CONTENT_BLOCKED: 422,
   ACCOUNT_DISCONNECTED: 409,
   BUDGET_REACHED: 402,
+  NO_CREDITS: 402,
   OUT_OF_CREDIT: 402,
   PAUSED: 409,
   RATE_LIMITED: 429,
@@ -56,7 +57,8 @@ export function apiHandler(handler: Handler, options: ApiHandlerOptions = {}): H
       }
 
       const status = err.status || 500;
-      const message = err.message || "Something went wrong";
+      // Described, never the raw text: fetch's own failure is just "fetch failed", a database error only its code
+      const message = userMessage(err);
       console.error(`[API] ${req.method} ${req.nextUrl.pathname}:`, err);
 
       return NextResponse.json(

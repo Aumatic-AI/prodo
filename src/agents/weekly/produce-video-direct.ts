@@ -1,7 +1,7 @@
 import { NonRetriableError } from "inngest";
 import sharp from "sharp";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { directBrief, directContext, type DirectImage } from "@/agents/creative-director/direct-context";
+import { directBrief, directContext, directPhotos, type DirectImage } from "@/agents/creative-director/direct-context";
 import { loadCreativeContext } from "@/agents/creative-director/context";
 import { studyReference } from "@/agents/creative-director/reference";
 import { copyToStorage, markMediaReady, syncCost } from "@/agents/producer/media";
@@ -50,9 +50,8 @@ export async function produceDirectVideo(
       if (usage) track(usage);
       const theme = await loadTheme(db());
       const logo = ctx.rules.showLogo ? (theme.logo.onLight ?? theme.logo.onDark ?? null) : null;
-      // This product's own photos (a post about the brand, or a product without photos, gets a couple of the brand's)
-      const own = ctx.offering ? ctx.assets.filter((a) => a.offeringId === ctx.offering!.id) : [];
-      const photos = own.length ? own.slice(0, DIRECT_VIDEO.maxPhotos) : ctx.assets.slice(0, 2);
+      // The product's own photos, or for a post about the brand a mix of the brand's and each product's (directPhotos)
+      const photos = directPhotos(ctx, DIRECT_VIDEO.maxPhotos);
       const images: DirectImage[] = [
         ...photos.map((a) => ({
           url: publicUrl(a.storageKey),

@@ -11,5 +11,5 @@ export const ROUTES = {
   settings: "/settings",
   performance: "/performance",
   activity: "/activity",
-  costs: "/costs",
+  credits: "/credits",
 } as const;

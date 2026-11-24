@@ -1,7 +1,6 @@
-import { CostsPage } from "@/modules/insights/pages/CostsPage";
+import { redirect } from "next/navigation";
 
-export const metadata = { title: "Costs" };
-
+// Costs became Credits: old links land on the new screen
 export default function Page() {
-  return <CostsPage />;
+  redirect("/credits");
 }

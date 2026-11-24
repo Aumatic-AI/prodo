@@ -8,13 +8,16 @@ import { Field } from "@/components/kit/Field";
 import { Modal } from "@/components/kit/Modal";
 import { button } from "@/components/kit/styles";
 import { useAutoCreate, type AutoCounts, type AutoKind } from "../hooks/usePlan";
+import { CreditAmount } from "@/components/kit/Credits";
+import { useCreditPrices } from "@/modules/insights/hooks/useInsights";
+import { formatCredits, type CreditAction } from "@/config/credits";
 
 const MAX_POSTS = 10;
 
-const KINDS: { value: AutoKind; label: string; hint: string; unit: [string, string]; icon: React.ReactNode }[] = [
-  { value: "static", label: "Image ads", hint: "Designed images, about $0.10 each", unit: ["image", "images"], icon: <ImageIcon size={18} /> },
-  { value: "carousel", label: "Carousels", hint: "5–8 swipeable slides, about $0.15 each", unit: ["carousel", "carousels"], icon: <GalleryHorizontal size={18} /> },
-  { value: "video", label: "Videos", hint: "Up to 50 s, edited with music, about $1 each", unit: ["video", "videos"], icon: <Clapperboard size={18} /> },
+const KINDS: { value: AutoKind; label: string; hint: string; action: CreditAction; unit: [string, string]; icon: React.ReactNode }[] = [
+  { value: "static", label: "Image ads", hint: "Designed images", action: "image_ad", unit: ["image", "images"], icon: <ImageIcon size={18} /> },
+  { value: "carousel", label: "Carousels", hint: "5–8 swipeable slides", action: "carousel", unit: ["carousel", "carousels"], icon: <GalleryHorizontal size={18} /> },
+  { value: "video", label: "Videos", hint: "Up to 30 s, with voice and music", action: "video", unit: ["video", "videos"], icon: <Clapperboard size={18} /> },
 ];
 
 /** Starting point: two images and one video */
@@ -31,6 +34,9 @@ export function AutoCreateModal({ open, onOpenChange, onStarted }: { open: boole
   // "" = spread over the next days; a day puts every post on it
   const [date, setDate] = useState("");
   const total = counts.static + counts.carousel + counts.video;
+  const { data: prices } = useCreditPrices();
+  const priceOf = (action: CreditAction) => prices?.find((p) => p.action === action)?.credits ?? null;
+  const credits = KINDS.reduce((sum, k) => sum + counts[k.value] * (priceOf(k.action) ?? 0), 0);
   const tomorrow = new Date(Date.now() + 86400_000);
   const minDate = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, "0")}-${String(tomorrow.getDate()).padStart(2, "0")}`;
   const weekday = date ? new Intl.DateTimeFormat("en-GB", { weekday: "long" }).format(new Date(`${date}T12:00:00`)) : null;
@@ -54,7 +60,16 @@ export function AutoCreateModal({ open, onOpenChange, onStarted }: { open: boole
       className="w-[min(calc(100vw-32px),680px)]"
       footer={
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <span className="text-[13px] text-ob-muted">{total ? `${summary}. Planned in about a minute, made in 2–10.` : "Pick at least one post."}</span>
+          <span className="flex flex-wrap items-center gap-x-2 text-[13px] text-ob-muted">
+            {total ? (
+              <>
+                {summary} ·
+                <CreditAmount value={credits} unit size={13} className="font-semibold text-ob-ink" />
+              </>
+            ) : (
+              "Pick at least one post."
+            )}
+          </span>
           <button type="button" className={button()} disabled={start.isPending || total < 1} onClick={submit}>
             <Wand2 size={16} /> {start.isPending ? "Starting…" : `Create ${total} post${total === 1 ? "" : "s"}`}
           </button>
@@ -63,7 +78,7 @@ export function AutoCreateModal({ open, onOpenChange, onStarted }: { open: boole
     >
       <div className="flex flex-col gap-5">
         {KINDS.map((k) => (
-          <Field key={k.value} label={k.label} hint={k.hint}>
+          <Field key={k.value} label={k.label} hint={`${k.hint} · ${priceOf(k.action) === null ? "…" : formatCredits(priceOf(k.action))} credits each`}>
             <Counter
               label={k.unit[1]}
               value={counts[k.value]}

@@ -38,7 +38,6 @@ export function ActivityList({ rows, compact = false }: { rows: ActivityRow[]; c
               <p className={cn("m-0 text-[12.5px] leading-snug", r.status === "failed" ? "text-ob-danger" : "text-ob-muted", compact && "line-clamp-2")}>
                 {r.status === "failed" ? (r.error ?? "Failed") : (r.summary ?? (r.status === "running" ? "Working…" : "Done"))}
               </p>
-              {Number(r.cost_usd) > 0 && <span className="text-[11px] tabular-nums text-ob-faint">${Number(r.cost_usd).toFixed(3)}</span>}
             </div>
           </li>
         );

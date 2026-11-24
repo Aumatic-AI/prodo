@@ -15,6 +15,7 @@ import { publishItem, publishPlan } from "@/agents/publisher";
 import { metricsCron, metricsSync } from "@/agents/performance-analyst/sync";
 import { learningsCron, weeklyLearnings } from "@/agents/performance-analyst/learn";
 import { monthlyRefresh, monthlyRefreshCron } from "./monthly-refresh";
+import { monthlyFees, monthlyFeesCron } from "./monthly-fees";
 import { applyPause } from "./apply-pause";
 import { watchFootage } from "./watch-footage";
 
@@ -50,5 +51,7 @@ export const functions = [
   // Housekeeping
   monthlyRefreshCron,
   monthlyRefresh,
+  monthlyFeesCron,
+  monthlyFees,
   applyPause,
 ];

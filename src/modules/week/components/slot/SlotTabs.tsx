@@ -1,6 +1,7 @@
 "use client";
 
 import { Check, FlaskConical, Quote, X } from "lucide-react";
+import { CreditAmount } from "@/components/kit/Credits";
 import { Badge } from "@/components/kit/Badge";
 import { TextArea } from "@/components/kit/inputs";
 import { button } from "@/components/kit/styles";
@@ -228,11 +229,15 @@ export function ActivityTab({ item, live }: { item: PlanItemView; live: boolean 
   const { data, isLoading } = useActivity({ itemId: item.id }, live);
   if (isLoading) return <p className="m-0 text-sm text-ob-muted">Loading…</p>;
   if (!data?.length) return <p className="m-0 text-sm text-ob-muted">No steps yet.</p>;
-  const cost = data.reduce((s, r) => s + Number(r.cost_usd ?? 0), 0);
   return (
     <div className="flex flex-col gap-3">
-      <span className="text-[13px] text-ob-muted">
-        {data.length} steps · <strong className="text-ob-ink">${cost.toFixed(2)}</strong> in total
+      <span className="flex flex-wrap items-center gap-x-1.5 text-[13px] text-ob-muted">
+        {data.length} steps
+        {!!item.credits && (
+          <>
+            · <CreditAmount value={item.credits} size={13} unit className="font-semibold text-ob-ink" /> used
+          </>
+        )}
       </span>
       <ActivityList rows={data} />
     </div>

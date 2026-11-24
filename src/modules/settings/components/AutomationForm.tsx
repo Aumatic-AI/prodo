@@ -30,12 +30,11 @@ const fromView = (v: AutomationView): Automation => ({
   plan_weekday: v.plan_weekday,
   plan_time: v.plan_time,
   approval_timeout_hours: v.approval_timeout_hours,
-  monthly_budget_usd: v.monthly_budget_usd,
   notify_email: v.notify_email,
   posts_per_week: v.posts_per_week,
 });
 
-/** How much the agents do on their own, when they plan, and how much they may spend. */
+/** How much the agents do on their own, when they plan, and where the emails go. */
 export function AutomationForm() {
   const queryClient = useQueryClient();
   const { data, isLoading, error } = useQuery({ queryKey: KEY, queryFn: () => apiFetch<AutomationView>("/api/settings/automation") });
@@ -63,8 +62,6 @@ export function AutomationForm() {
   const saved = fromView(data);
   const set = (patch: Partial<Automation>) => setForm({ ...form, ...patch });
   const dirty = JSON.stringify(form) !== JSON.stringify(saved);
-  const budget = Math.max(1, form.monthly_budget_usd || 1);
-  const used = Math.min(100, Math.round((data.spentThisMonth / budget) * 100));
 
   function submit() {
     const parsed = automationSchema.safeParse(form);
@@ -128,26 +125,6 @@ export function AutomationForm() {
               />
             </div>
           ))}
-        </div>
-      </Card>
-
-      <Card title="Monthly AI budget" description="Agents stop for the month when their spend reaches it.">
-        <div className="grid grid-cols-1 items-end gap-5 md:grid-cols-[220px_minmax(0,1fr)]">
-          <Field label="Budget (USD)" htmlFor="budget">
-            <NumberInput id="budget" min={1} value={form.monthly_budget_usd} onValueChange={(v) => set({ monthly_budget_usd: v ?? 0 })} />
-          </Field>
-          <div className="flex flex-col gap-2 pb-1">
-            <div className="flex justify-between text-sm">
-              <span className="font-semibold">${data.spentThisMonth.toFixed(2)} spent this month</span>
-              <span className="text-ob-muted">{used}%</span>
-            </div>
-            <div className="h-2 overflow-hidden rounded-full bg-ob-line">
-              <div
-                className={cn("h-full rounded-full transition-[width]", used >= 90 ? "bg-ob-danger" : used >= 70 ? "bg-ob-warn" : "bg-ob-primary")}
-                style={{ width: `${Math.max(2, used)}%` }}
-              />
-            </div>
-          </div>
         </div>
       </Card>
 

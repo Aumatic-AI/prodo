@@ -4,10 +4,13 @@ import { startPartialRefresh } from "@/core/onboarding/research";
 import { publicHolidays } from "@/providers/calendar/holidays";
 import { addDays } from "@/lib/zoned-time";
 import { cronForEveryBusiness } from "./every-business";
+import { refundCredits, spendCredits } from "@/core/credits/ledger";
+import { classify } from "@/core/errors";
 
 // Once a month, for each business: public holidays for its countries become key dates (source
 // system), and the Social & Market Analyst reads its market again (own posts, competitors, ads, hooks).
-// Skipped while paused or before onboarding is done.
+// Skipped while paused or before onboarding is done. The market refresh takes its credits for the month; without
+// enough it waits for next month (the key dates are free).
 
 const LOOKAHEAD_DAYS = 120;
 
@@ -48,7 +51,19 @@ export const monthlyRefresh = inngest.createFunction(
       return rows.length;
     });
 
-    const research = await step.run("start-market-refresh", () => startPartialRefresh(businessDb(businessId), ["social_market_analyst"]));
+    const research = await step.run("start-market-refresh", async () => {
+      const key = `market:${new Date().toISOString().slice(0, 7)}`;
+      try {
+        await spendCredits(businessId, { action: "market_refresh", label: "Monthly market refresh", key }, "The monthly market refresh");
+      } catch (err) {
+        if (classify(err).type === "NO_CREDITS") return null;
+        throw err;
+      }
+      const started = await startPartialRefresh(businessDb(businessId), ["social_market_analyst"]);
+      // Nothing started (one is already running): its credits go back
+      if (!started) await refundCredits(businessId, key);
+      return started;
+    });
     if (research) {
       await step.sendEvent("market-refresh", { name: "onboarding/started", id: research.attempt, data: { businessId, runId: research.id, attempt: research.attempt, agents: ["social_market_analyst"] } });
     }

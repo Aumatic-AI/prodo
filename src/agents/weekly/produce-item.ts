@@ -22,11 +22,18 @@ import { taskFor } from "./task";
 import { optional } from "@/agents/run";
 import { assertVideoReady } from "@/providers/ffmpeg/client";
 import { failureMessage, toInngestError } from "@/jobs/to-inngest-error";
+import { refundCredits, spendCredits } from "@/core/credits/ledger";
+import { itemAction, itemLabel, itemWhat } from "@/core/credits/items";
 
 // One slot, start to finish:
 // Creative Director → QA Gate 1 (below 7 goes back, at most two redos) → Producer → QA Gate 2
 // (only the failed photo or scenes are made again, at most twice) → ready for the client, or
 // "Needs review" with the reason. Money is only spent once the brief passes Gate 1.
+// Credits: each run takes the post's credits first ("Make again" is a new run and costs again; QA redos
+// inside a run don't), and gives them back when the run fails or nothing could be made.
+
+/** One charge per run: a retry of the run never charges twice, a new run ("Make again") charges again */
+const creditKey = (itemId: string, runId: string) => `produce:${itemId}:${runId}`;
 
 export const MAX_REDOS = 2;
 
@@ -40,13 +47,14 @@ export const produceItem = inngest.createFunction(
       const { businessId, itemId, planId, oneOff } = event.data.event.data;
       const db = businessDb(businessId);
       const message = failureMessage(error);
+      await refundCredits(businessId, creditKey(itemId, event.data.run_id));
       await db.from("plan_items").update({ status: "failed", error: message }).eq("id", itemId);
       await db.from("media").update({ status: "failed", error: message }).eq("plan_item_id", itemId).eq("status", "generating");
       await inngest.send({ name: "plan-item/settled", data: { businessId, itemId, planId, oneOff } });
     },
   },
   { event: "plan-item/produce" },
-  async ({ event, step }) => {
+  async ({ event, step, runId }) => {
     const { businessId, itemId, planId, note = null, oneOff = false } = event.data;
     const db = () => businessDb(businessId);
     const cd = taskFor(step, "creative_director", { businessId, planId, itemId });
@@ -63,6 +71,12 @@ export const produceItem = inngest.createFunction(
       const item = await getItem(db(), itemId);
       if (item.format === "video") await assertVideoReady().catch(toInngestError);
       return item.format;
+    });
+
+    // The post's credits, before anything is spent on it (too few: the post fails with the reason)
+    await step.run("take-credits", async () => {
+      const item = await getItem(db(), itemId);
+      await spendCredits(businessId, { action: itemAction(item), label: itemLabel(item), refId: itemId, key: creditKey(itemId, runId) }, itemWhat(item.format)).catch(toInngestError);
     });
 
     // Direct video: one written prompt, one Seedance video, final (config/video-direct.ts)
@@ -95,6 +109,7 @@ export const produceItem = inngest.createFunction(
     // The brief never passed: it is still made (the client asked for a post), and the post waits for the client with the reason
     const gate1Reason = passedGate1 ? null : `The brief scored ${lastScore}/10 after ${MAX_REDOS} rewrites (${feedback?.[0] ?? "below the bar"}). It was made anyway; look it over before approving.`;
     if (!brief) {
+      await step.run("return-credits", () => refundCredits(businessId, creditKey(itemId, runId)));
       await settle("needs_review", { reason: `The brief scored ${lastScore}/10 after ${MAX_REDOS} rewrites. Main issue: ${feedback?.[0] ?? "below the bar"}. Nothing was spent on images or video.` });
       await step.sendEvent("settled", { name: "plan-item/settled", data: { businessId, itemId, planId, oneOff } });
       return { status: "needs_review" };

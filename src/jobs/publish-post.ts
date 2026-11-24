@@ -6,6 +6,10 @@ import { publisherFor } from "@/providers/publishing/registry";
 import { publicUrl } from "@/providers/storage/paths";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { platformMeta } from "@/config/platforms";
+import { collectFees } from "@/core/credits/fees";
+import { AppError } from "@/core/errors";
+import { formatCredits } from "@/config/credits";
+import { toInngestError } from "./to-inngest-error";
 
 async function slideUrls(db: SupabaseClient, mediaId: string): Promise<string[]> {
   const { data } = await db
@@ -52,6 +56,14 @@ export const publishPost = inngest.createFunction(
     const { businessId } = event.data;
     const db = businessDb(businessId);
     const post = await step.run("load-post", () => getPost(db, event.data.postId));
+
+    // A monthly fee for the social accounts that couldn't be taken: nothing goes out until credits are added
+    await step.run("check-account-fee", async () => {
+      const due = await collectFees(businessId);
+      if (due) {
+        toInngestError(new AppError(`Publishing is paused: this month's fee for your social accounts (${formatCredits(due.credits)} credits) is still due. Ask the Prodo team to add credits, then post again.`, "NO_CREDITS", false));
+      }
+    });
 
     const isScheduled = !!post.publish_at && new Date(post.publish_at).getTime() > Date.now();
 

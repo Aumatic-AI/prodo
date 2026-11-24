@@ -1,4 +1,5 @@
 import { inngest } from "./client";
+import { refundCredits } from "@/core/credits/ledger";
 import { businessDb } from "@/lib/supabase/business";
 import { PARALLEL_AGENTS, RESEARCH_AGENTS, STRATEGIST, readResearch, setAgentState, setResearchState, type ResearchAgent } from "@/core/onboarding/research";
 import { websiteAnalyst } from "@/agents/website-analyst";
@@ -105,7 +106,16 @@ export const onboardingRun = inngest.createFunction(
 
 /** "Regenerate with a note": the Strategist writes a new draft from the same research. */
 export const regenerateBible = inngest.createFunction(
-  { id: "regenerate-bible", concurrency: [{ limit: 1, key: "event.data.businessId" }], retries: 0 },
+  {
+    id: "regenerate-bible",
+    concurrency: [{ limit: 1, key: "event.data.businessId" }],
+    retries: 0,
+    // Nothing new came of it: its credits go back
+    onFailure: async ({ event }) => {
+      const { businessId, creditKey } = event.data.event.data;
+      if (creditKey) await refundCredits(businessId, creditKey);
+    },
+  },
   { event: "brand/regenerate" },
   async ({ event, step }) => {
     const { businessId } = event.data;

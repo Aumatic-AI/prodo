@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { CreditAmount } from "@/components/kit/Credits";
 import { CalendarCheck, CheckCheck, Loader2, RotateCcw, Sparkles, TriangleAlert } from "lucide-react";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { button } from "@/components/kit/styles";
@@ -78,7 +79,11 @@ export function PlanBanner({ plan, latest }: { plan: PlanView; latest: string | 
           <span className="text-[13.5px] text-ob-muted">{line}</span>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {plan.costUsd > 0 && <span className="rounded-full bg-ob-surface/80 px-3 py-1 text-xs font-semibold text-ob-muted ring-1 ring-ob-line">${plan.costUsd.toFixed(2)} spent</span>}
+          {plan.credits > 0 && (
+            <span className="rounded-full bg-ob-surface/80 px-3 py-1 text-xs font-semibold text-ob-muted ring-1 ring-ob-line">
+              <CreditAmount value={plan.credits} size={13} unit /> used
+            </span>
+          )}
           {plan.status === "review" && ready > 0 && (
             <button type="button" className={button()} onClick={() => setConfirm(true)}>
               <CheckCheck size={17} /> Approve {ready} {ready === 1 ? "post" : "posts"}
